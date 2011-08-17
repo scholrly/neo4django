@@ -14,10 +14,10 @@ The original Neo4j Django integration restricted database access to in-process. 
 
 Other improvements over the original integration include
 - A number of custom properties
-  - ``EmailProperty``
-  - ``IntegerProperty``
-  - ``DateTimeProperty``
-  - ``URLProperty``
+    - ``EmailProperty``
+    - ``IntegerProperty``
+    - ``DateTimeProperty``
+    - ``URLProperty``
 - Improved indexing support.
 - Index-based querying.
 - Fancier QuerySet usage.
