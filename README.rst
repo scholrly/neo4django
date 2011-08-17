@@ -13,11 +13,12 @@ neo4django is a Django ORM integration for neo4j. It allows model definitions th
 The original Neo4j Django integration restricted database access to in-process. neo4django uses the Neo4j REST api to communicate with the database, freeing the database up for access by other processes and making it easy to host the database on another machine.
 
 Other improvements over the original integration include
+
 - A number of custom properties
-    - ``EmailProperty``
-    - ``IntegerProperty``
-    - ``DateTimeProperty``
-    - ``URLProperty``
+    * ``EmailProperty``
+    * ``IntegerProperty``
+    * ``DateTimeProperty``
+    * ``URLProperty``
 - Improved indexing support.
 - Index-based querying.
 - Fancier QuerySet usage.
