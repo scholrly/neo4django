@@ -1,0 +1,7 @@
+*.pyc
+*.swp
+.hg/*
+.hgignore
+.ropeproject
+.pydevproject
+.project

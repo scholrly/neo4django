@@ -1,0 +1,13 @@
+The INITIAL NEO4J/DJANGO INTEGRATION, on which this code was heavily based, was
+written by Tobias Ivarsson (https://github.com/thobe) with Neo4j. Thanks Tobias!
+
+The PRIMARY AUTHORS of this integration are (ordered by aproximated LOC number):
+
+    * Matt Luongo, @mhluongo, https://github.com/mhluongo
+    * Edd Purcell, @purpleplatypus, https://github.com/epurcell3
+    * Corbin Pon, @corbinpon, https://github.com/clp16
+    * Michael Meeks, @mmeeksy, https://github.com/msmeeks
+
+APPRECIATED CONTRIBUTORS:
+
+    * Get yourself on this list! We want your help!

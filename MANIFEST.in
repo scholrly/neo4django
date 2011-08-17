@@ -1,0 +1,6 @@
+include AUTHORS.txt
+include NOTICE.txt
+include LICENSE-GPL.txt
+include MANIFEST.in
+include README.rst
+include reg_settings.py
