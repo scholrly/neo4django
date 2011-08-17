@@ -1,4 +1,4 @@
-A neo4j/Django integration layer, based on @thobe_ 's original integration_ and @versae_ 's neo4jrestclient_.
+A neo4j/Django integration layer, based on `thobe`_'s original integration_ and `versae`_'s neo4jrestclient_.
 
 .. _thobe: https://github.com/thobe/
 .. _integration: http://journal.thobe.org/2009/12/seamless-neo4j-integration-in-django.html
@@ -27,7 +27,7 @@ Other improvements over the original integration include
 What It Doesn't Do (TODO)
 =========================
 
-@thobe_'s list of future features hasn't been impacted that much by our development. We're still working on
+`thobe`_'s list of future features hasn't been impacted that much by our development. We're still working on
 - Relationship models and querying
 - Neo4j-specific Manager API (to enable traversal, etc).
 - And, to a lesser extent, support for the Django admin interface.
