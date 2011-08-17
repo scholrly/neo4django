@@ -29,6 +29,7 @@ What It Doesn't Do (TODO)
 =========================
 
 `thobe`_'s list of future features hasn't been impacted that much by our development. We're still working on
+
 - Relationship models and querying
 - Neo4j-specific Manager API (to enable traversal, etc).
 - And, to a lesser extent, support for the Django admin interface.
@@ -119,6 +120,7 @@ QuerySets
 QuerySets now implement more of the `Django QuerySet API`_, like ``get_or_create``.
 
 They accept a slew of useful field lookups- namely
+
 - exact
 - gt
 - lt
