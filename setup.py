@@ -15,6 +15,7 @@ setup(
         'decorator>=3.3.1',
         'jexp>=0.1.0',
         'neo4jrestclient>=1.4.3',
+        'Django>=1.3',
     ],
     tests_require=[
         'nose>=1.0',
