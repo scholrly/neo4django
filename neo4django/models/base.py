@@ -134,14 +134,23 @@ class NodeModel(NeoModel):
         return self.__node.id
 
     def _set_pk_val(self, value):
-        if self.__node is None and value is None: return
-        raise TypeError("Cannot change the id of nodes.")
+        #import pdb; pdb.set_trace()
+        if self.__node is None:
+            if value is not None:
+                self.__node = self.connection.nodes[value]
+        else:
+            raise TypeError("Cannot change the id of nodes.")
 
     pk = id = IdProperty(_get_pk_val, _set_pk_val)
 
     @property
     def using(self):
         return self.__using
+
+    @classmethod
+    def from_model(cls, neo_model):
+    
+        pass
 
     @classmethod
     def index(cls, using=DEFAULT_DB_ALIAS):

@@ -6,6 +6,8 @@ cleaning for setup/teardown, which will be tough.
 
 import datetime
 
+from nose.tools import eq_
+
 Person = neo4django = gdb = neo4jrestclient = neo_constants = settings = None
 
 def setup():
@@ -16,7 +18,6 @@ def setup():
 
 def teardown():
     gdb.cleandb()
-        
 
 def test_save_delete():
     """Basic sanity check for NodeModel save and delete.  """
@@ -258,6 +259,33 @@ def test_nodemodel_independence():
     n2.save()
 
     assert not hasattr(n2, 'age'),  "Age should not be defined, as the new class didn't define it."
+
+def test_model_casting():
+    """Tests """
+    #create a model similar to person, but with relationships
+    class Doppelganger(neo4django.NodeModel):
+        name = neo4django.StringProperty()
+        original = neo4django.Relationship(Person,
+                                           rel_type=neo4django.Outgoing.MIMICS,
+                                           single=True)
+    #create a person
+    abe = Person.objects.create(name='Abraham Lincoln', age=202)
+    #cast it to the new model
+    imposter = Doppelganger.from_model(abe)
+    imposter.original = abe
+    #ensure the values are the same
+    eq_(abe.name, imposter.name)
+    #create another model with only relationships
+    class Vierfachganger(neo4django.NodeModel):
+        original = neo4django.Relationship(Person,
+                                           rel_type=neo4django.Outgoing.MIMICS,
+                                           single=True)
+    #cast to that model, and see if it works
+    double_imposter = Vierfachganger.from_model(imposter)
+    eq_(abe, double_imposter.original)
+
+def test_model_casting_validation():
+    raise AssertionError('Write this test!')
 
 def test_array_property_validator():
     """Tests that ArrayProperty validates properly."""

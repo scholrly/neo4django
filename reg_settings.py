@@ -51,7 +51,9 @@ tests=[
 	'test_filter_gte',
 	'test_filter_lt',
 	'test_filter_lte',
-	'test_filter_date_range']
+	'test_filter_date_range',
+	'test_model_casting',
+	'test_model_casting_validation']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
@@ -60,5 +62,8 @@ should_fail=[
 	'test_datetime_auto_now_add',
 	'test_nodemodel_independence',
 	'test_str_array_property_validator',
-    'test_url_array_property_validator',
-	'test_type_query']
+	'test_url_array_property_validator',
+	'test_type_query',
+	'test_model_casting',
+	'test_model_casting_validation',
+	'test_model_casting_validation']
