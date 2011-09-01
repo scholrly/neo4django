@@ -65,5 +65,4 @@ should_fail=[
 	'test_url_array_property_validator',
 	'test_type_query',
 	'test_model_casting',
-	'test_model_casting_validation',
 	'test_model_casting_validation']

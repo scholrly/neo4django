@@ -78,17 +78,39 @@ def test_dates():
     assert other.name == 'other'
     assert paper.datetime < other.datetime
     
-@with_setup(None, teardown)
-def test_all():
-    """Testing clone by calling all() and checking the objects aren't the same"""
-    clone1 = Person.objects.all()
-    clone2 = Person.objects.all()
-    assert clone1 is not clone2
-
 def setup_mice():
     IndexedMouse.objects.create(name='jerry',age=2)
     IndexedMouse.objects.create(name='Brain',age=3)
     IndexedMouse.objects.create(name='Pinky',age=2)
+
+def make_people(names, ages):
+    pairs = zip(names, ages)
+    for p in pairs:
+        Person.objects.create(name=p[0], age=p[1])
+
+people_names = ['Jack','Jill','Peter Pan','Tinker Bell','Candleja-']
+
+def setup_people():
+    make_people(people_names, [5,10,15,15,30])
+
+setup_people.num_people=4
+
+@with_setup(setup_people, teardown)
+def test_all():
+    """
+    Tests that all() returns all saved models of a type, and that calling it
+    twice returns two distinct Querysets.
+    """
+    results = list(Person.objects.all())
+    eq_(len(results), setup_people.num_people)
+
+    names = set(p.name for p in results)
+    for name in people_names:
+        assert name in names, '%s is not in %s' % (name, repr(name))
+
+    clone1 = Person.objects.all()
+    clone2 = Person.objects.all()
+    assert clone1 is not clone2
 
 @with_setup(setup_mice, teardown)
 def test_basic_indexed_query():
@@ -119,15 +141,6 @@ def test_negated_query():
     eq_(len(results), 1)
     assert len([m for m in results if m['name'] == 'jerry']) == 0, "The query"\
             " returned jerry, even though he was excluded."
-
-def make_people(names, ages):
-    pairs = zip(names, ages)
-    for p in pairs:
-        Person.objects.create(name=p[0], age=p[1])
-
-def setup_people():
-    make_people(['Jack','Jill','Peter Pan','Tinker Bell','Candleja-'],\
-                [5,10,15,15,30])
 
 @with_setup(setup_people, teardown)
 def test_unindexed_query():
@@ -202,6 +215,8 @@ def test_filter_iexact():
 def setup_teens():
     setup_people()
     make_people(['Tina', 'Rob', 'Tiny Tim'], [13, 15, 12])
+
+setup_teens.num_people = setup_people.num_people + 3
 
 @with_setup(setup_teens, teardown)
 def test_filter_gt():
@@ -278,5 +293,3 @@ def test_exclude_exact():
     pass
 
 #other test excludes
-
-import nodequeryset_reg

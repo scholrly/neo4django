@@ -112,13 +112,13 @@ def test_related_many_to_one():
     assert len(list(origin.references.all())) == 2, "The many side doesn't work!"
 
 def test_one_to_one():
-class Stalker(neo4django.NodeModel):
-    name = neo4django.StringProperty()
-    person = neo4django.Relationship(Person,
-                                        rel_type=neo4django.Outgoing.POINTS_TO,
-                                        single=True,
-                                        related_single=True
-                                    )
+    class Stalker(neo4django.NodeModel):
+        name = neo4django.StringProperty()
+        person = neo4django.Relationship(Person,
+                                            rel_type=neo4django.Outgoing.POINTS_TO,
+                                            single=True,
+                                            related_single=True
+                                        )
     p = Person.objects.create(name='Stalked')
     s = Stalker(name='Creeper')
     s.person = p
