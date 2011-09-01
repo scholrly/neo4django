@@ -128,8 +128,6 @@ class Relationship(object):
             if rel_type.direction != direction:
                 raise ValueError("Incompatible direction!")
             rel_type = rel_type.type
-        if related_single and single:
-            raise ValueError("One to one relationships aren't supported.")
         self.__target = target
         self.__name = rel_type
         self.__single = single

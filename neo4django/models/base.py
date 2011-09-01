@@ -149,8 +149,27 @@ class NodeModel(NeoModel):
 
     @classmethod
     def from_model(cls, neo_model):
-    
-        pass
+        """
+        Factory method that essentially allows "casting" from model to model.
+        The newly returned model instance is validated, but unsaved.
+        """
+        if neo_model.node is not None:
+            new_model = cls._neo4j_instance(neo_model.node)
+            return new_model
+        else:
+            #clone field by field
+            onto_field_names = [f.attname for f in neo_model._meta.fields]
+            new_model = cls()
+            for field in neo_model._meta.fields:
+                name = field.attname
+                if name not in onto_field_names or name in ('pk', 'id'): continue
+                val = getattr(neo_model, name)
+                if isinstance(val, models.Manager):
+                    for obj in val.all():
+                        getattr(new_model, name).add(obj)
+                else:
+                    setattr(new_model, name, val)
+            return new_model
 
     @classmethod
     def index(cls, using=DEFAULT_DB_ALIAS):

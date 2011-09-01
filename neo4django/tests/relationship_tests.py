@@ -1,3 +1,5 @@
+from nose.tools import eq_
+
 def setup():
     global Person, neo4django, settings, gdb
 
@@ -110,7 +112,22 @@ def test_related_many_to_one():
     assert len(list(origin.references.all())) == 2, "The many side doesn't work!"
 
 def test_one_to_one():
-    raise NotImplementedError('Write this test, dammit!')
+class Stalker(neo4django.NodeModel):
+    name = neo4django.StringProperty()
+    person = neo4django.Relationship(Person,
+                                        rel_type=neo4django.Outgoing.POINTS_TO,
+                                        single=True,
+                                        related_single=True
+                                    )
+    p = Person.objects.create(name='Stalked')
+    s = Stalker(name='Creeper')
+    s.person = p
+    s.save()
+
+    #test that the one-to-one is correct after a retrieval
+    from nose.tools import set_trace; set_trace()
+    new_s = list(Stalker.objects.all())[0]
+    eq_(new_s.person, p)
 
 def test_ordering():
     class Actor(neo4django.NodeModel):

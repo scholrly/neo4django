@@ -261,7 +261,7 @@ def test_nodemodel_independence():
     assert not hasattr(n2, 'age'),  "Age should not be defined, as the new class didn't define it."
 
 def test_model_casting():
-    """Tests """
+    """Tests functional model to model "casting"."""
     #create a model similar to person, but with relationships
     class Doppelganger(neo4django.NodeModel):
         name = neo4django.StringProperty()
@@ -282,6 +282,7 @@ def test_model_casting():
                                            single=True)
     #cast to that model, and see if it works
     double_imposter = Vierfachganger.from_model(imposter)
+    from nose.tools import set_trace; set_trace()
     eq_(abe, double_imposter.original)
 
 def test_model_casting_validation():
