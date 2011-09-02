@@ -1,0 +1,11 @@
+Changes
+-------
+
+0.1.2 (2011-09-01)
+------------------
+- Model to model casting. (issue #7)
+
+0.1.1 (2011-08-30)
+------------------
+- One-to-one relationship support. (issue #10)
+- Fixed a major bug where `NodeQueryset`s weren't returning models without filtering. Improved the test to catch a regression.

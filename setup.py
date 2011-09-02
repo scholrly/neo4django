@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='neo4django',
-    version='0.1.1',
+    version='0.1.2',
     author='Matt Luongo',
     author_email='mhluongo@gmail.com',
     description='A Django/Neo4j ORM layer based on the neo4j.py.',
