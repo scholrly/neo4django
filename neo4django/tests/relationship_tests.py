@@ -125,7 +125,6 @@ def test_one_to_one():
     s.save()
 
     #test that the one-to-one is correct after a retrieval
-    from nose.tools import set_trace; set_trace()
     new_s = list(Stalker.objects.all())[0]
     eq_(new_s.person, p)
 

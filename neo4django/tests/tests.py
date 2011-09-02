@@ -282,7 +282,6 @@ def test_model_casting():
                                            single=True)
     #cast to that model, and see if it works
     double_imposter = Vierfachganger.from_model(imposter)
-    from nose.tools import set_trace; set_trace()
     eq_(abe, double_imposter.original)
 
 def test_model_casting_validation():

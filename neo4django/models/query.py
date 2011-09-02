@@ -129,7 +129,13 @@ def filter_expression_from_condition(condition):
 
 def return_filter_from_conditions(conditions):
     exprs = [filter_expression_from_condition(c) for c in conditions]
-    return (str(reduce(and_, exprs)) if exprs else 'false') + ';'
+    #construct an expr to exclude the first node and type nodes. consider
+    #refactoring
+    pos = J('position')
+    length = pos.length()
+    last_rel = pos.lastRelationship()
+    exprs += [(length != 0) & (last_rel.getType().name() != "<<TYPE>>")]
+    return (str(reduce(and_, exprs)) if exprs else 'true') + ';'
 
 class Query(object):
     def __init__(self, nodetype, conditions=tuple()):
@@ -187,8 +193,9 @@ class Query(object):
             for r in filtered_result:
                 yield r
 
-        if unindexed or not indexed:
+        if not indexed:
             return_filter = return_filter_from_conditions(unindexed + indexed)
+            print return_filter
             rel_types = [neo4j.Outgoing.get('<<TYPE>>'),
                          neo4j.Outgoing.get('<<INSTANCE>>')]
             type_node = self.nodetype._type_node(using)
@@ -397,6 +404,8 @@ class NodeQuerySet(QuerySet):
         pass
 
     #TODO can defer or only do anything useful? I think so...
+    #using gremlin and some other magin in query, we might be able to swing
+    #retrieving only particular fields.
 
     @not_implemented
     def defer(self, *fields):
@@ -416,31 +425,10 @@ class NodeQuerySet(QuerySet):
         "Return the database that will be used if this query is executed now"
         return self._db
 
-    #############
-    #  OLD CODE #
-    #############
+    #################
+    #  OLD COMMENTS #
+    #################
 
-    def check_properties(self, node, check):
-        #TODO documentation dammit
-        match = True
-        for k in check.items():
-            if ((k[0] == 'id') and (int(k[1]) == node.id)):
-                return True
-            elif not ((k[0] in node) and (node[k[0]] == k[1])):
-                match = False
-        return match
-     
-    def query_graph(self, using):
-        node = self.model._type_node(using)
-        traversal = node.traverse(
-                      types = [neo4j.Outgoing.get('<<INSTANCE>>')],
-                      uniqueness = neo_constants.NODE_GLOBAL) 
-        if len(self._properties) == 0:
-            return traversal
-        return [n for n in traversal
-                            if self.check_properties(n, self._properties)
-                          ]
-    
     # filter TODO get should be based off this method somehow...
     #TODO should any non-indexed fields even be *allowed* to be used here? hm...
     # select_related  TODO explore implementing this with the traversal lib

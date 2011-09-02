@@ -93,7 +93,7 @@ people_names = ['Jack','Jill','Peter Pan','Tinker Bell','Candleja-']
 def setup_people():
     make_people(people_names, [5,10,15,15,30])
 
-setup_people.num_people=4
+setup_people.num_people=5
 
 @with_setup(setup_people, teardown)
 def test_all():
