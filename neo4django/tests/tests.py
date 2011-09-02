@@ -260,7 +260,7 @@ def test_nodemodel_independence():
 
     assert not hasattr(n2, 'age'),  "Age should not be defined, as the new class didn't define it."
 
-def test_model_casting():
+def test_saved_model_casting():
     """Tests functional model to model "casting"."""
     #create a model similar to person, but with relationships
     class Doppelganger(neo4django.NodeModel):
@@ -273,6 +273,7 @@ def test_model_casting():
     #cast it to the new model
     imposter = Doppelganger.from_model(abe)
     imposter.original = abe
+    imposter.save()
     #ensure the values are the same
     eq_(abe.name, imposter.name)
     #create another model with only relationships
@@ -284,8 +285,14 @@ def test_model_casting():
     double_imposter = Vierfachganger.from_model(imposter)
     eq_(abe, double_imposter.original)
 
+def test_model_copy():
+    pass
+
+def test_unsaved_model_casting():
+    pass
+
 def test_model_casting_validation():
-    raise AssertionError('Write this test!')
+    raise NotImplementedError('Write this test!')
 
 def test_array_property_validator():
     """Tests that ArrayProperty validates properly."""
