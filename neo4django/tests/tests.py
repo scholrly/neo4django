@@ -260,8 +260,8 @@ def test_nodemodel_independence():
 
     assert not hasattr(n2, 'age'),  "Age should not be defined, as the new class didn't define it."
 
-def test_saved_model_casting():
-    """Tests functional model to model "casting"."""
+def test_model_casting():
+    """Tests functional saved model to model "casting"."""
     #create a model similar to person, but with relationships
     class Doppelganger(neo4django.NodeModel):
         name = neo4django.StringProperty()
@@ -285,14 +285,22 @@ def test_saved_model_casting():
     double_imposter = Vierfachganger.from_model(imposter)
     eq_(abe, double_imposter.original)
 
-def test_model_copy():
-    pass
-
-def test_unsaved_model_casting():
-    pass
-
 def test_model_casting_validation():
     raise NotImplementedError('Write this test!')
+
+def test_model_copy():
+    class NameOwner(neo4django.NodeModel):
+        name = neo4django.StringProperty()
+        confidantes = neo4django.Relationship(Person, neo4django.Outgoing.KNOWS)
+
+    pete = Person(name='Pete')
+    pete2 = NameOwner.copy_model(pete)
+    eq_(pete.name, pete2.name)
+
+    pete2.confidantes.add(pete)
+    pete3 = NameOwner.copy_model(pete2)
+    assert pete in list(pete3.confidantes.all()),\
+            "Copying isn't commuting relationships!"
 
 def test_array_property_validator():
     """Tests that ArrayProperty validates properly."""

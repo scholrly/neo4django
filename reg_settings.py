@@ -53,7 +53,8 @@ tests=[
 	'test_filter_lte',
 	'test_filter_date_range',
 	'test_model_casting',
-	'test_model_casting_validation']
+	'test_model_casting_validation',
+	'test_model_copy']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
@@ -64,5 +65,4 @@ should_fail=[
 	'test_str_array_property_validator',
 	'test_url_array_property_validator',
 	'test_type_query',
-	'test_model_casting',
 	'test_model_casting_validation']
