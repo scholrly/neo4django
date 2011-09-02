@@ -54,11 +54,11 @@ tests=[
 	'test_filter_date_range',
 	'test_model_casting',
 	'test_model_casting_validation',
-	'test_model_copy']
+	'test_model_copy',
+	'test_one_to_one',]
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
-	'test_one_to_one',
 	'test_relationship_model',
 	'test_datetime_auto_now_add',
 	'test_nodemodel_independence',

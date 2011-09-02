@@ -131,10 +131,9 @@ class NodeModel(NeoModel):
         return instance
 
     def _get_pk_val(self, meta=None):
-        return self.__node.id
+        return self.__node.id if self.__node else None
 
     def _set_pk_val(self, value):
-        #import pdb; pdb.set_trace()
         if self.__node is None:
             if value is not None:
                 self.__node = self.connection.nodes[value]
