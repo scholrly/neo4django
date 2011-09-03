@@ -45,7 +45,6 @@ class IdLookup(object):
             parents = [cls for cls in type(self.__model).__bases__
                         if issubclass(cls, NodeModel) and cls is not NodeModel]
 
-            print 'parents! %s' % repr(parents)
             if parents:
                 parent_label = parents[0]._meta.app_label
                 parent_model = parents[0].__name__

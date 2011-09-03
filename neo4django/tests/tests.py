@@ -103,7 +103,6 @@ def test_datetime_auto_now():
     b.save()
     time1 = datetime.datetime.now()
     test1, test2 = get_times(time1, b.date_modified)
-    print b.date_modified
     assert abs(test1-test2) <= timediff
     ##Confirm the date auto sets when saved and something changes
     sleep(timediff)
@@ -111,7 +110,6 @@ def test_datetime_auto_now():
     b.save()
     time2 = datetime.datetime.now()
     test1, test2 = get_times(time2, b.date_modified)
-    print b.date_modified
     assert abs(test1-test2) <= timediff
     ##Confirm the date auto sets when saved and nothing changes
     sleep(timediff)

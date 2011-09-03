@@ -195,7 +195,6 @@ class Query(object):
 
         if not indexed:
             return_filter = return_filter_from_conditions(unindexed + indexed)
-            print return_filter
             rel_types = [neo4j.Outgoing.get('<<TYPE>>'),
                          neo4j.Outgoing.get('<<INSTANCE>>')]
             type_node = self.nodetype._type_node(using)
