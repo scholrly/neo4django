@@ -153,11 +153,11 @@ class NodeModel(NeoModel):
         represented by the same node in the graph, but allow different views
         of the same properties and relationships.
         """
-        if neo_model.node is not None:
+        if neo_model.pk:
             new_model = cls._neo4j_instance(neo_model.node)
             return new_model
         else:
-            raise TypeError('from_model() only operates on saved models.')
+            return cls.copy_model(neo_model)
 
 
     @classmethod

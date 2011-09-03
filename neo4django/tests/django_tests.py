@@ -6,7 +6,6 @@ def setup():
 def teardown():
     gdb.cleandb()
 
-
 def test_json_serialize():
     from django.core import serializers
     dave = Person(name='dave')
@@ -19,5 +18,3 @@ def test_json_serialize():
     dave = Person()
     dave.save()
     assert json_serializer.serialize(Person.objects.all())
-
-import django_reg
