@@ -236,12 +236,10 @@ class BoundProperty(AttrRouter):
         self.__class = cls
         self.__propname = propname
         self.__attname = attname
-        self.__meta = metadata
         properties = self._properties_for(cls)
         properties[self.name] = self # XXX: weakref
 
     attname = name = property(lambda self: self.__attname)
-    meta = property(lambda self: self.__meta)
 
     def _property_type(self):
         return type(self._property)

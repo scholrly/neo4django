@@ -369,3 +369,11 @@ def test_url_array_property_validator():
         pass
     else:
         raise AssertionError('tuples of ints should not work')
+
+def test_prop_metadata():
+    class NodeWithMetadata(neo4django.NodeModel):
+        name = neo4django.StringProperty(metadata={'test':123})
+    meta_fields = filter(lambda f: hasattr(f, 'meta'), NodeWithMetadata._meta.fields)
+    eq_(len(meta_fields), 1)
+    assert 'test' in meta_fields[0].meta
+    eq_(meta_fields[0].meta['test'], 123)

@@ -190,3 +190,13 @@ def test_multinode_setting():
     assert len(list(classroom.students.all())) == 3
     classroom.students = students[3:]
     assert len(list(classroom.students.all())) == 1
+
+def test_rel_metadata():
+    class NodeWithRelMetadata(neo4django.NodeModel):
+        contacts = neo4django.Relationship(Person,
+                                           rel_type=neo4django.Outgoing.KNOWS,
+                                           metadata={'test':123})
+    meta_fields = filter(lambda f: hasattr(f, 'meta'), NodeWithRelMetadata._meta.fields)
+    eq_(len(meta_fields), 1)
+    assert 'test' in meta_fields[0].meta
+    eq_(meta_fields[0].meta['test'], 123)
