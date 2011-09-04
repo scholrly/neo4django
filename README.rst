@@ -145,6 +145,20 @@ Multiple Databases
 
 We wrote neo4django to support multiple databases- but haven't tested it. In the future, we'd like to fully support multiple databases and routing similar to that already in Django.
 
+Further Introspection
+=====================
+
+When possible, neo4django follows Django ORM, and thus allows some introspection of the schema. Because Neo4j is schema-less, though, further introspection and a more dynamic data layer can be handy. Initially, there's only one additional option to enable decoration of `Property`s and `Relationship`s - `other_metadata`::
+
+    class N(NodeModel):
+        name = StringProperty(other_metadata={'authoritative':True})
+        aliases = StringArrayProperty(other_metadata={'authoritative':False, 'authority':name})
+
+    >>> for field in N._meta.fields:
+    ...     if hasattr(field, 'meta'):
+    ...         if field.meta['authoritative']:
+    ...             #do something with the authoritative field
+
 Running the Test Suite
 ======================
 
