@@ -38,7 +38,7 @@ class Property(object):
                  indexed_range=False, has_own_index = False, unique=False,
                  name=None, editable=True, null=True, blank=True, validators=[],
                  choices=None, error_messages=None, required=False,
-                 serialize=True, other_metadata={}, default=NOT_PROVIDED,
+                 serialize=True, metadata={}, default=NOT_PROVIDED,
                  **kwargs):
         if unique and not indexed:
             raise ValueError('A unique property must be indexed.')
@@ -51,7 +51,7 @@ class Property(object):
         self.blank = blank
         self.null = null
         self.serialize = serialize
-        self.meta = other_metadata
+        self.meta = metadata
         self._default = default
 
         self.__name = name
