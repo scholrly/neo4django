@@ -203,7 +203,7 @@ class BoundProperty(AttrRouter):
     primary_key = False
     def __init__(self, prop, cls, propname, attname, *args, **kwargs):
         super(BoundProperty, self).__init__(*args, **kwargs)
-        self.__property = prop
+        self._property = prop
 
         self._route(['creation_counter',
                      'choices',
@@ -228,7 +228,7 @@ class BoundProperty(AttrRouter):
                      'serialize',
                      'MAX',
                      'MIN',
-                    ], self.__property)
+                    ], self._property)
 
         self.__class = cls
         self.__propname = propname
@@ -239,7 +239,7 @@ class BoundProperty(AttrRouter):
     attname = name = property(lambda self: self.__attname)
 
     def _property_type(self):
-        return type(self.__property)
+        return type(self._property)
 
     def __cmp__(self, other):
         return cmp(self.creation_counter, other.creation_counter)
@@ -249,10 +249,10 @@ class BoundProperty(AttrRouter):
         try:
             values = instance.__values
             for key, prop in BoundProperty._all_properties_for(instance).items(): #XXX: Might be a faster/more elegant way
-                if hasattr(prop.__property, 'auto_now'):
-                    if prop.__property.auto_now and prop.__attname not in values:
+                if hasattr(prop._property, 'auto_now'):
+                    if prop._property.auto_now and prop.__attname not in values:
                         values[prop.__attname] = datetime.datetime.now() #XXX:Setting to None here sets the node's datetime to None
-                        if type(prop.__property) == DateProperty: #XXX:Kinda gross way to handle it :\
+                        if type(prop._property) == DateProperty: #XXX:Kinda gross way to handle it :\
                             values[prop.__attname] = datetime.datetime.date(values[prop.__attname])
         except:
             values = {}
@@ -338,7 +338,7 @@ class BoundProperty(AttrRouter):
             pass
         else:
             try:
-                return self.__property.from_neo(underlying[self.__propname])
+                return self._property.from_neo(underlying[self.__propname])
             except: # no value set on node
                 pass
         return self.get_default() # fall through: default value
@@ -361,11 +361,11 @@ class BoundProperty(AttrRouter):
             old = underlying[self.__propname]
         except:
             old = None
-        self.__property.clean(value, instance)
+        self._property.clean(value, instance)
         #supports null properties
         if not value is None:
             #should already have errored if self.null==False
-            value = self.__property.to_neo(value)
+            value = self._property.to_neo(value)
             underlying[self.__propname] = value
         elif self.__propname in underlying:
             #remove the property from the node if the val is None
