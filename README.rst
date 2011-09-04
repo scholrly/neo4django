@@ -148,7 +148,7 @@ We wrote neo4django to support multiple databases- but haven't tested it. In the
 Further Introspection
 =====================
 
-When possible, neo4django follows Django ORM, and thus allows some introspection of the schema. Because Neo4j is schema-less, though, further introspection and a more dynamic data layer can be handy. Initially, there's only one additional option to enable decoration of `Property`s and `Relationship`s - `other_metadata`::
+When possible, neo4django follows Django ORM, and thus allows some introspection of the schema. Because Neo4j is schema-less, though, further introspection and a more dynamic data layer can be handy. Initially, there's only one additional option to enable decoration of ``Property``s and ``Relationship``s - ``other_metadata``::
 
     class N(NodeModel):
         name = StringProperty(other_metadata={'authoritative':True})
