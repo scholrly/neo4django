@@ -108,7 +108,7 @@ class Relationship(object):
 
     def __init__(self, target, rel_type=None, direction=None, optional=True,
                  single=False, related_single=False, related_name=None,
-                 preserve_ordering=False, 
+                 preserve_ordering=False, other_metadata={},
                 ):
         if related_name is None:
             if related_single:
@@ -135,8 +135,11 @@ class Relationship(object):
         self.__related_single = related_single
         self.reversed_name = related_name
         self.__ordered = preserve_ordering
+        self.__meta = other_metadata
     target_model = property(lambda self: self.__target)
     ordered = property(lambda self: self.__ordered)
+    meta = property(lambda self: self.__meta)
+
 
     __is_reversed = False
     def reverse(self, target, name):
@@ -198,6 +201,7 @@ class BoundRelationship(AttrRouter):
                      'direction',
                      'target_model',
                      'ordered',
+                     'meta',
                     ],self.__rel)
 
     def _setup_reversed(self, target):

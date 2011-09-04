@@ -38,7 +38,8 @@ class Property(object):
                  indexed_range=False, has_own_index = False, unique=False,
                  name=None, editable=True, null=True, blank=True, validators=[],
                  choices=None, error_messages=None, required=False,
-                 serialize=True, default=NOT_PROVIDED, **kwargs):
+                 serialize=True, other_metadata={}, default=NOT_PROVIDED,
+                 **kwargs):
         if unique and not indexed:
             raise ValueError('A unique property must be indexed.')
         self.indexed = self.db_index = indexed
@@ -50,6 +51,7 @@ class Property(object):
         self.blank = blank
         self.null = null
         self.serialize = serialize
+        self.meta = other_metadata
         self._default = default
 
         self.__name = name
@@ -226,6 +228,7 @@ class BoundProperty(AttrRouter):
                      'run_validators',
                      'pre_save',
                      'serialize',
+                     'meta',
                      'MAX',
                      'MIN',
                     ], self._property)
@@ -233,10 +236,12 @@ class BoundProperty(AttrRouter):
         self.__class = cls
         self.__propname = propname
         self.__attname = attname
+        self.__meta = other_metadata
         properties = self._properties_for(cls)
         properties[self.name] = self # XXX: weakref
 
     attname = name = property(lambda self: self.__attname)
+    meta = property(lambda self: self.__meta)
 
     def _property_type(self):
         return type(self._property)
