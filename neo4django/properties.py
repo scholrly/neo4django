@@ -236,7 +236,7 @@ class BoundProperty(AttrRouter):
         self.__class = cls
         self.__propname = propname
         self.__attname = attname
-        self.__meta = other_metadata
+        self.__meta = metadata
         properties = self._properties_for(cls)
         properties[self.name] = self # XXX: weakref
 
