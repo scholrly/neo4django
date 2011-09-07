@@ -108,13 +108,16 @@ class Relationship(object):
 
     def __init__(self, target, rel_type=None, direction=None, optional=True,
                  single=False, related_single=False, related_name=None,
-                 preserve_ordering=False, metadata={},
+                 preserve_ordering=False, metadata={}, rel_metadata={},
                 ):
         if related_name is None:
             if related_single:
-                related_name = '%(name)s'
+                related_name = '%ss'
             else:
-                related_name = '%(name)s_set'
+                related_name = '%s_set'
+            related_name = related_name %\
+                    (target if isinstance(target, basestring)\
+                     else target.__name__.lower())
         if direction is Outgoing:
             direction = RELATIONSHIPS_OUT
         elif direction is Incoming:
@@ -136,6 +139,7 @@ class Relationship(object):
         self.reversed_name = related_name
         self.__ordered = preserve_ordering
         self.__meta = metadata
+        self.__related_meta = rel_metadata
     target_model = property(lambda self: self.__target)
     ordered = property(lambda self: self.__ordered)
     meta = property(lambda self: self.__meta)
@@ -151,7 +155,8 @@ class Relationship(object):
             direction = RELATIONSHIPS_OUT
         relationship = Relationship(
             target, rel_type=self.__name, direction=direction,
-            single=self.__related_single, related_name=name)
+            single=self.__related_single, related_name=name,
+            metadata=self.__related_meta)
         relationship.__is_reversed = True
         return relationship
 
