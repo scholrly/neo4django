@@ -2,6 +2,7 @@ import itertools
 from abc import ABCMeta
 
 from neo4django.decorators import transactional
+from neo4django import NodeModel
 
 def uniqify(seq):
     seen = set()
@@ -197,3 +198,23 @@ class AttrRouter(object):
 
     def _unroute_all(self, attrs, obj):
         self._unroute(attrs, obj, get=True, set=True, delete=True)
+
+def Neo4djangoIntegrationRouter():
+    def db_for_read(self, model, **hints):
+        return None
+
+    def db_for_write(self, model, **hints):
+        return None
+
+    def allow_relation(self, obj1, obj2, **hints):
+        "Disallow any relations between Neo4j and regular SQL models."
+        a, b = (isinstance(o, NodeModel) for o in (obj1, obj2))
+        if a != b:
+            return False
+        return None
+
+    def allow_syncdb(self, db, model):
+        "No Neo4j models should ever be synced."
+        if isinstance(model, NodeModel):
+            return False
+        return None
