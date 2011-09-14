@@ -8,7 +8,7 @@ setup(
     description='A Django/Neo4j ORM layer based on the neo4j.py.',
     license = 'GPL',
     url = "http://packages.python.org/neo4django",
-    packages=['neo4django','neo4django.models','neo4django.tests'],
+    packages=['neo4django','neo4django.db','neo4django.db.models','neo4django.tests'],
     long_description=open('README.rst').read(),
     platforms=['posix'],
     install_requires=[

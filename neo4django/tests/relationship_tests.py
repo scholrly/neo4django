@@ -1,9 +1,9 @@
 from nose.tools import eq_
 
 def setup():
-    global Person, neo4django, settings, gdb
+    global Person, neo4django, settings, gdb, models
 
-    from neo4django.tests import Person, neo4django, gdb
+    from neo4django.tests import Person, neo4django, gdb, models
 
 def teardown():
     gdb.cleandb()
@@ -13,8 +13,8 @@ def test_basic_relationship():
     Tests both sides of a simple many-to-many relationship (without relationship
     properties).
     """
-    class RelatedPaper(neo4django.NodeModel):
-        authors = neo4django.Relationship(Person,
+    class RelatedPaper(models.NodeModel):
+        authors = models.Relationship(Person,
                 rel_type = neo4django.Outgoing.OWNED_BY,
                 related_name = 'papers'
             )
@@ -31,11 +31,11 @@ def test_basic_relationship():
     assert sandra in authors, "Author not found in %s" % repr(work)
 
 def test_one_to_many():
-    class Origin1(neo4django.NodeModel):
-        name = neo4django.StringProperty()
+    class Origin1(models.NodeModel):
+        name = models.StringProperty()
 
-    class Reference1(neo4django.NodeModel):
-        origin = neo4django.Relationship(Origin1,
+    class Reference1(models.NodeModel):
+        origin = models.Relationship(Origin1,
                                          rel_type=neo4django.Outgoing.REFERS_TO,
                                          related_name='references',
                                          single=True)
@@ -50,11 +50,11 @@ def test_one_to_many():
             "Adding to the single side doesn't update the many side."
 
 def test_many_to_one():
-    class Origin2(neo4django.NodeModel):
-        name = neo4django.StringProperty()
+    class Origin2(models.NodeModel):
+        name = models.StringProperty()
 
-    class Reference2(neo4django.NodeModel):
-        origin = neo4django.Relationship(Origin2,
+    class Reference2(models.NodeModel):
+        origin = models.Relationship(Origin2,
                                          rel_type=neo4django.Outgoing.REFERS_TO,
                                          #TODO explore edge direction here, this is wrong
                                          related_name='references',
@@ -70,12 +70,12 @@ def test_many_to_one():
     assert len(list(origin.references.all())) == 1, "The many side doesn't work!"
 
 def test_related_one_to_many():
-    class AnotherReference(neo4django.NodeModel):
+    class AnotherReference(models.NodeModel):
         pass
 
-    class AnotherOrigin(neo4django.NodeModel):
-        name = neo4django.StringProperty()
-        references = neo4django.Relationship(AnotherReference,
+    class AnotherOrigin(models.NodeModel):
+        name = models.StringProperty()
+        references = models.Relationship(AnotherReference,
                                          rel_type=neo4django.Outgoing.REFERS_TO,
                                          related_name='origin',
                                          related_single=True)
@@ -90,12 +90,12 @@ def test_related_one_to_many():
             "Adding to the single side doesn't update the many side."
 
 def test_related_many_to_one():
-    class AnotherReference1(neo4django.NodeModel):
+    class AnotherReference1(models.NodeModel):
         pass
 
-    class AnotherOrigin1(neo4django.NodeModel):
-        name = neo4django.StringProperty()
-        references = neo4django.Relationship(AnotherReference1,
+    class AnotherOrigin1(models.NodeModel):
+        name = models.StringProperty()
+        references = models.Relationship(AnotherReference1,
                                          rel_type=neo4django.Outgoing.REFERS_TO,
                                          related_name='origin',
                                          related_single=True)
@@ -112,9 +112,9 @@ def test_related_many_to_one():
     assert len(list(origin.references.all())) == 2, "The many side doesn't work!"
 
 def test_one_to_one():
-    class Stalker(neo4django.NodeModel):
-        name = neo4django.StringProperty()
-        person = neo4django.Relationship(Person,
+    class Stalker(models.NodeModel):
+        name = models.StringProperty()
+        person = models.Relationship(Person,
                                             rel_type=neo4django.Outgoing.POINTS_TO,
                                             single=True,
                                             related_single=True
@@ -129,13 +129,13 @@ def test_one_to_one():
     eq_(new_s.person, p)
 
 def test_ordering():
-    class Actor(neo4django.NodeModel):
-        name = neo4django.StringProperty()
+    class Actor(models.NodeModel):
+        name = models.StringProperty()
         def __str__(self):
             return self.name
 
-    class MovieCredits(neo4django.NodeModel):
-        actors = neo4django.Relationship(Actor,
+    class MovieCredits(models.NodeModel):
+        actors = models.Relationship(Actor,
                                          rel_type=neo4django.Incoming.ACTS_IN,
                                          related_name='movies',
                                          preserve_ordering=True,
@@ -165,20 +165,20 @@ def test_ordering():
 
 def test_relationship_model():
     """Tests both sides of a many-to-many relationship with attached properties & model."""
-    class Authorship(neo4django.Relationship):
-        when = neo4django.DateProperty()
-    class ComplexRelatedPaper(neo4django.NodeModel):
+    class Authorship(models.Relationship):
+        when = models.DateProperty()
+    class ComplexRelatedPaper(models.NodeModel):
         pass
 
 def test_multinode_setting():
     """Tests setting a mutli-node relationship directly instead of adding."""
-    class Classroom(neo4django.NodeModel):
-        students = neo4django.Relationship(Person,
+    class Classroom(models.NodeModel):
+        students = models.Relationship(Person,
                                 rel_type=neo4django.Outgoing.COMES_TO,
                                 related_name="school"
                                 )
-    class Student(neo4django.NodeModel):
-        name = neo4django.StringProperty()
+    class Student(models.NodeModel):
+        name = models.StringProperty()
         def __str__(self):
             return self.name
 
@@ -192,8 +192,8 @@ def test_multinode_setting():
     assert len(list(classroom.students.all())) == 1
 
 def test_rel_metadata():
-    class NodeWithRelMetadata(neo4django.NodeModel):
-        contacts = neo4django.Relationship(Person,
+    class NodeWithRelMetadata(models.NodeModel):
+        contacts = models.Relationship(Person,
                                            rel_type=neo4django.Outgoing.KNOWS,
                                            metadata={'test':123})
     meta_fields = filter(lambda f: hasattr(f, 'meta'), NodeWithRelMetadata._meta.fields)

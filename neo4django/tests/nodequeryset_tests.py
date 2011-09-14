@@ -3,22 +3,18 @@ from nose.tools import with_setup, eq_
 import sys, datetime
 stdout = sys.stdout
 
-Person = neo4django = gdb = Query = OPERATORS = IndexedMouse = None
-DEFAULT_DB_ALIAS = return_filter_from_conditions = None
-Condition = None
-
 def setup():
     global Person, neo4django, gdb, Query, OPERATORS, IndexedMouse, \
-            DEFAULT_DB_ALIAS, return_filter_from_conditions, Condition
+            DEFAULT_DB_ALIAS, return_filter_from_conditions, Condition, models
 
-    from neo4django.tests import Person, neo4django, gdb
-    from neo4django import DEFAULT_DB_ALIAS
-    from neo4django.models.query import Query, OPERATORS, \
+    from neo4django.tests import Person, neo4django, gdb, models
+    from neo4django.db import DEFAULT_DB_ALIAS
+    from neo4django.db.models.query import Query, OPERATORS, \
             return_filter_from_conditions, Condition
 
-    class IndexedMouse(neo4django.NodeModel):
-        name = neo4django.StringProperty(indexed=True)
-        age = neo4django.IntegerProperty(indexed=True)
+    class IndexedMouse(models.NodeModel):
+        name = models.StringProperty(indexed=True)
+        age = models.IntegerProperty(indexed=True)
 
 def teardown():
     gdb.cleandb()
@@ -58,10 +54,10 @@ def test_iter():
 def test_dates():
     """Testing dates() with simple time right now""" 
     
-    class DatedPaper(neo4django.NodeModel):
-        name = neo4django.StringProperty()
-        date = neo4django.DateProperty()
-        datetime = neo4django.DateTimeProperty()
+    class DatedPaper(models.NodeModel):
+        name = models.StringProperty()
+        date = models.DateProperty()
+        datetime = models.DateTimeProperty()
         
     day0 = datetime.date.today()
     time0 = datetime.datetime.now()
@@ -260,10 +256,10 @@ def test_filter_range():
 
 @with_setup(None, teardown)
 def test_filter_date_range():
-    class Lifetime(neo4django.NodeModel):
-        dob = neo4django.DateProperty(indexed=True)
-        mid_life_crisis = neo4django.DateTimeProperty(indexed=True)
-        tod = neo4django.DateTimeProperty(indexed=False)
+    class Lifetime(models.NodeModel):
+        dob = models.DateProperty(indexed=True)
+        mid_life_crisis = models.DateTimeProperty(indexed=True)
+        tod = models.DateTimeProperty(indexed=False)
     date = datetime.date
     time = datetime.datetime
     bdays = [date(1952, 3, 5), date(1975, 8, 11), date(1988, 7, 27)]

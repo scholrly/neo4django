@@ -8,13 +8,11 @@ import datetime
 
 from nose.tools import eq_
 
-Person = neo4django = gdb = neo4jrestclient = neo_constants = settings = None
-
 def setup():
-    global Person, neo4django, gdb, neo4jrestclient, neo_constants, settings
+    global Person, neo4django, gdb, neo4jrestclient, neo_constants, settings, models
 
     from neo4django.tests import Person, neo4django, gdb, neo4jrestclient, \
-            neo_constants, settings
+            neo_constants, settings, models
 
 def teardown():
     gdb.cleandb()
@@ -50,10 +48,10 @@ def test_none_prop():
     pete.save()
     assert pete.name is None
     
-    class NotNullPerson(neo4django.NodeModel):
+    class NotNullPerson(models.NodeModel):
         class Meta:
             app_label = 'test'
-        name = neo4django.StringProperty(null=False)
+        name = models.StringProperty(null=False)
     try:
         andy = NotNullPerson(name = None)
         andy.save()
@@ -69,7 +67,7 @@ def test_integer():
         assert node.age == integer
         node.delete()
 
-    for i in [0,1,-1,28,neo4django.properties.MAX_INT,neo4django.properties.MIN_INT]:
+    for i in [0,1,-1,28,neo4django.db.models.properties.MAX_INT,neo4django.db.models.properties.MIN_INT]:
         try_int(i)
     
 def test_date_constructor():
@@ -83,8 +81,8 @@ def test_date_prop():
 def test_datetime_constructor():
     """Confirm `DateTimeProperty`s work from a NodeModel constructor."""
     #TODO cover each part of a datetime
-    class DateTimeNode(neo4django.NodeModel):
-        datetime = neo4django.DateTimeProperty()
+    class DateTimeNode(models.NodeModel):
+        datetime = models.DateTimeProperty()
 
     time = datetime.datetime.now()
     d = DateTimeNode(datetime = time)
@@ -94,9 +92,9 @@ def test_datetime_constructor():
 
 def test_datetime_auto_now():
     from time import sleep
-    class BlogNode(neo4django.NodeModel):
-        title = neo4django.Property()
-        date_modified = neo4django.DateTimeProperty(auto_now = True)
+    class BlogNode(models.NodeModel):
+        title = models.Property()
+        date_modified = models.DateTimeProperty(auto_now = True)
     timediff = .6 #can be this far apart
     ##Confirm the date auto sets on creation
     b = BlogNode(title = 'Snake House')
@@ -127,9 +125,9 @@ def get_times(t1, t2):
     return rv
 
 def test_datetime_auto_now_add():
-    class BlogNode(neo4django.NodeModel):
-        title = neo4django.Property()
-        date_created = neo4django.DateTimeProperty(auto_now_add = True)
+    class BlogNode(models.NodeModel):
+        title = models.Property()
+        date_created = models.DateTimeProperty(auto_now_add = True)
     timediff = .6
     ##Confrim date auto sets upon creation
     time1 = datetime.datetime.now()
@@ -147,9 +145,9 @@ def test_datetime_auto_now_add():
     assert b.date_created == time
 
 def test_date_auto_now():
-    class BlagNode(neo4django.NodeModel):
-        title = neo4django.Property()
-        date_changed = neo4django.DateProperty(auto_now = True)
+    class BlagNode(models.NodeModel):
+        title = models.Property()
+        date_changed = models.DateProperty(auto_now = True)
     ##Confirm the date auto sets on creation
     b = BlagNode(title = 'Snookie House')
     b.save()
@@ -166,9 +164,9 @@ def test_date_auto_now():
     assert b.date_changed == date3
 
 def test_date_auto_now_add():
-    class BlegNode(neo4django.NodeModel):
-        title = neo4django.Property()
-        date_made = neo4django.DateProperty(auto_now_add = True)
+    class BlegNode(models.NodeModel):
+        title = models.Property()
+        date_made = models.DateProperty(auto_now_add = True)
     ##Confirm the date auto sets on creation
     b = BlegNode(title = "d")
     b.save()
@@ -184,14 +182,14 @@ def test_date_auto_now_add():
 
 def test_type_nodes():
     """Tests for type node existence and uniqueness."""
-    class TestType(neo4django.NodeModel):
+    class TestType(models.NodeModel):
         class Meta:
             app_label = 'type_node_test'
 
     n1 = TestType()
     n1.save()
 
-    class TestType(neo4django.NodeModel):
+    class TestType(models.NodeModel):
         class Meta:
             app_label = 'type_node_test'
 
@@ -232,7 +230,7 @@ def test_model_inheritance():
     class TypeOPerson(Person):
         class Meta:
             app_label = 'newapp'
-        hobby = neo4django.Property()
+        hobby = models.Property()
 
     jake = TypeOPerson(name='Jake', hobby='kayaking')
     jake.save()
@@ -241,13 +239,13 @@ def test_model_inheritance():
 def test_nodemodel_independence():
     """Tests that NodeModel subclasses can be created and deleted independently."""
 
-    class TestSubclass(neo4django.NodeModel):
-        age = neo4django.IntegerProperty()
+    class TestSubclass(models.NodeModel):
+        age = models.IntegerProperty()
     
     n1 = TestSubclass(age = 5)
     n1.save()
 
-    class TestSubclass(neo4django.NodeModel):
+    class TestSubclass(models.NodeModel):
         pass
     
     n2 = TestSubclass()
@@ -261,9 +259,9 @@ def test_nodemodel_independence():
 def test_model_casting():
     """Tests functional saved model to model "casting"."""
     #create a model similar to person, but with relationships
-    class Doppelganger(neo4django.NodeModel):
-        name = neo4django.StringProperty()
-        original = neo4django.Relationship(Person,
+    class Doppelganger(models.NodeModel):
+        name = models.StringProperty()
+        original = models.Relationship(Person,
                                            rel_type=neo4django.Outgoing.MIMICS,
                                            single=True)
     #create a person
@@ -275,8 +273,8 @@ def test_model_casting():
     #ensure the values are the same
     eq_(abe.name, imposter.name)
     #create another model with only relationships
-    class Vierfachganger(neo4django.NodeModel):
-        original = neo4django.Relationship(Person,
+    class Vierfachganger(models.NodeModel):
+        original = models.Relationship(Person,
                                            rel_type=neo4django.Outgoing.MIMICS,
                                            single=True)
     #cast to that model, and see if it works
@@ -287,9 +285,9 @@ def test_model_casting_validation():
     raise NotImplementedError('Write this test!')
 
 def test_model_copy():
-    class NameOwner(neo4django.NodeModel):
-        name = neo4django.StringProperty()
-        confidantes = neo4django.Relationship(Person, neo4django.Outgoing.KNOWS)
+    class NameOwner(models.NodeModel):
+        name = models.StringProperty()
+        confidantes = models.Relationship(Person, neo4django.Outgoing.KNOWS)
 
     pete = Person(name='Pete')
     pete2 = NameOwner.copy_model(pete)
@@ -303,8 +301,8 @@ def test_model_copy():
 def test_array_property_validator():
     """Tests that ArrayProperty validates properly."""
     #TODO Make this not suck/add other iterables. -Edd
-    class ArrayNode(neo4django.NodeModel):
-        vals = neo4django.ArrayProperty()
+    class ArrayNode(models.NodeModel):
+        vals = models.ArrayProperty()
 
     n1 = ArrayNode(vals = (1, 2, 3))
     n1.save()
@@ -327,8 +325,8 @@ def test_array_property_validator():
 
 def test_int_array_property_validator():
     """Tests that IntArrayProperty validates properly."""
-    class StrArrayNode(neo4django.NodeModel):
-        vals = neo4django.IntArrayProperty()
+    class StrArrayNode(models.NodeModel):
+        vals = models.IntArrayProperty()
 
     n1 = StrArrayNode(vals = (1,2,3))
     n1.save()
@@ -342,8 +340,8 @@ def test_int_array_property_validator():
 
 def test_str_array_property_validator():
     """Tests that StringArrayProperty validates properly."""
-    class StrArrayNode(neo4django.NodeModel):
-        vals = neo4django.StringArrayProperty()
+    class StrArrayNode(models.NodeModel):
+        vals = models.StringArrayProperty()
 
     try:
         n2 = StrArrayNode(vals = (1,2,3,))
@@ -355,8 +353,8 @@ def test_str_array_property_validator():
 
 def test_url_array_property_validator():
     """Tests that StringArrayProperty validates properly."""
-    class URLArrayNode(neo4django.NodeModel):
-        vals = neo4django.URLArrayProperty()
+    class URLArrayNode(models.NodeModel):
+        vals = models.URLArrayProperty()
 
     n1 = URLArrayNode(vals = ('http://google.com',
                               'https://afsgdfvdfgdf.eu/123/asd',
@@ -371,8 +369,8 @@ def test_url_array_property_validator():
         raise AssertionError('tuples of ints should not work')
 
 def test_prop_metadata():
-    class NodeWithMetadata(neo4django.NodeModel):
-        name = neo4django.StringProperty(metadata={'test':123})
+    class NodeWithMetadata(models.NodeModel):
+        name = models.StringProperty(metadata={'test':123})
     meta_fields = filter(lambda f: hasattr(f, 'meta'), NodeWithMetadata._meta.fields)
     eq_(len(meta_fields), 1)
     assert 'test' in meta_fields[0].meta

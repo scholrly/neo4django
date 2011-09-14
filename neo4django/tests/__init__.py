@@ -2,18 +2,20 @@ import requests
 
 def setup():
     global neo4django, neo4jrestclient, gdb, Person, settings, neo_constants
+    global models
 
     from django.conf import settings
 
     import neo4django, neo4jrestclient.client as neo4jrestclient
+    from neo4django.db import models
     import neo4jrestclient.constants as neo_constants
     gdb_set = settings.NEO4J_DATABASES['default']
     gdb = neo4jrestclient.GraphDatabase('http://%s:%s%s' % 
                         (gdb_set['HOST'], str(gdb_set['PORT']), gdb_set['ENDPOINT']))
 
-    class Person(neo4django.NodeModel):
-        name = neo4django.Property()
-        age = neo4django.IntegerProperty(indexed=True)
+    class Person(models.NodeModel):
+        name = models.Property()
+        age = models.IntegerProperty(indexed=True)
 
     key = getattr(settings, 'NEO4J_DELETE_KEY', None)
     server = getattr(settings, 'NEO4J_DATABASES', None)

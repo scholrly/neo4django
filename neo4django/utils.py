@@ -1,7 +1,7 @@
 import itertools
 from abc import ABCMeta
 
-from .decorators import transactional
+from decorators import transactional
 
 def uniqify(seq):
     seen = set()
@@ -30,7 +30,7 @@ def buffer_iterator(constructor, items, size=1):
             yield item
 
 @transactional
-def apply_to_buffer(constructor, item s, size=1):
+def apply_to_buffer(constructor, items, size=1):
     result = [constructor(item) for item in
                 itertools.takewhile(countdown(size), items)]
     if not result:

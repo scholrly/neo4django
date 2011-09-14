@@ -1,7 +1,7 @@
 def setup():
-    global Person, neo4django, settings, gdb
+    global Person, neo4django, settings, gdb, models
 
-    from neo4django.tests import Person, neo4django, gdb
+    from neo4django.tests import Person, neo4django, gdb, models
 
 def teardown():
     gdb.cleandb()
@@ -11,8 +11,8 @@ def test_unique():
     Tests unique property behavior.
     """
 
-    class UniqueName(neo4django.NodeModel):
-        name = neo4django.StringProperty(indexed=True, unique=True)
+    class UniqueName(models.NodeModel):
+        name = models.StringProperty(indexed=True, unique=True)
 
     m = UniqueName(name='Matt')
     m.save()
@@ -33,14 +33,14 @@ def test_default_parents_index():
     """
     Tests whether indexed nodes, by default, share a parent index.
     """
-    class RootIndexedNode(neo4django.NodeModel):
-        name = neo4django.StringProperty(indexed=True)
+    class RootIndexedNode(models.NodeModel):
+        name = models.StringProperty(indexed=True)
 
     class ChildIndexedNode(RootIndexedNode):
-        name1 = neo4django.StringProperty(indexed=True)
+        name1 = models.StringProperty(indexed=True)
 
     class GrandChildIndexedNode(ChildIndexedNode):
-        name2 = neo4django.StringProperty(indexed=True)
+        name2 = models.StringProperty(indexed=True)
 
     root = RootIndexedNode(name='dave')
     root.save()
@@ -68,7 +68,7 @@ def test_indexed_types():
         except NotFoundError:
             return []
 
-    class SomeType(neo4django.NodeModel):
+    class SomeType(models.NodeModel):
         pass
 
     s = SomeType()

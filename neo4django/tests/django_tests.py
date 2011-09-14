@@ -1,5 +1,5 @@
 def setup():
-    global Person, neo4django, settings, gdb
+    global Person, gdb
 
     from neo4django.tests import Person, neo4django, gdb
 
