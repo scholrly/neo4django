@@ -24,6 +24,7 @@ Other improvements over the original integration include
 - Fancier QuerySet usage.
 - A significant test suite to empower future development.
 - Developed to Django 1.3.
+- Built to work alongside relational models.
 
 What It Doesn't Do (TODO)
 =========================
@@ -132,6 +133,15 @@ More will be implemented soon - they're pretty easy, and a great place to contri
 QuerySets take advantage of indexed properties, typing, and REST paged traversals to get you what you want, faster.
 
 .. _Django QuerySet API: https://docs.djangoproject.com/en/1.3/ref/models/querysets/
+
+Working Alongside Django ORM
+============================
+
+If you'd like to use Django with Neo4j and a relational database, we've got you covered. Simply install the provided database router, and the two ORMs will play nice.
+
+In you settings.py::
+
+    DATABASE_ROUTERS = ['neo4django.utils.Neo4djangoIntegrationRouter']
 
 Performance
 ===========
