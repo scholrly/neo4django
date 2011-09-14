@@ -1,8 +1,7 @@
 import itertools
 from abc import ABCMeta
 
-from neo4django.decorators import transactional
-from neo4django import NodeModel
+from .decorators import transactional
 
 def uniqify(seq):
     seen = set()
@@ -31,7 +30,7 @@ def buffer_iterator(constructor, items, size=1):
             yield item
 
 @transactional
-def apply_to_buffer(constructor, items, size=1):
+def apply_to_buffer(constructor, item s, size=1):
     result = [constructor(item) for item in
                 itertools.takewhile(countdown(size), items)]
     if not result:
@@ -207,6 +206,7 @@ def Neo4djangoIntegrationRouter():
         return None
 
     def allow_relation(self, obj1, obj2, **hints):
+        from neo4django import NodeModel
         "Disallow any relations between Neo4j and regular SQL models."
         a, b = (isinstance(o, NodeModel) for o in (obj1, obj2))
         if a != b:
@@ -214,6 +214,7 @@ def Neo4djangoIntegrationRouter():
         return None
 
     def allow_syncdb(self, db, model):
+        from neo4django import NodeModel
         "No Neo4j models should ever be synced."
         if isinstance(model, NodeModel):
             return False
