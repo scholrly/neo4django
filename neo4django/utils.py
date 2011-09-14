@@ -202,7 +202,7 @@ class Neo4djangoIntegrationRouter():
     def allow_relation(self, obj1, obj2, **hints):
         "Disallow any relations between Neo4j and regular SQL models."
         from neo4django.db.models import NodeModel
-        a, b = (isinstance(o, NodeModel) for o in (obj1, obj2))
+        a, b = (issubclass(o, NodeModel) for o in (obj1, obj2))
         if a != b:
             return False
         return None
@@ -210,6 +210,6 @@ class Neo4djangoIntegrationRouter():
     def allow_syncdb(self, db, model):
         "No Neo4j models should ever be synced."
         from neo4django.db.models import NodeModel
-        if isinstance(model, NodeModel):
+        if issubclass(model, NodeModel):
             return False
         return None
