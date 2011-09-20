@@ -62,11 +62,10 @@ tests=[
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
-	'test_basic_relationship_manager',
 	'test_relationship_model',
 	'test_datetime_auto_now_add',
 	'test_nodemodel_independence',
 	'test_str_array_property_validator',
 	'test_url_array_property_validator',
 	'test_type_query',
-	'test_model_casting_validation',]
+	'test_model_casting_validation']
