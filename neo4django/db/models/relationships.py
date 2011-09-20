@@ -443,7 +443,7 @@ class MultipleNodes(BoundRelationship):
                 state[self.name] = RelationshipInstance(self, obj)
             if hasattr(value, '__iter__'):
                 items = list(state[self.name].all())
-                notsaved = state[self.name]._RelationshipInstance__added
+                notsaved = state[self.name]._added
                 if items and len(notsaved) < len(items):
                     state[self.name].remove(*items) 
                     #TODO: make it so it only removes authors not in value
@@ -511,7 +511,10 @@ class MultipleNodes(BoundRelationship):
     def _extract_relationship(self, obj, ordered=False):
         rels = self._load_relationships(obj.node, ordered=ordered)
         #yes, we just choose one without further info (first if ordered)
-        return rels[0]
+        if len(rels) > 0:
+            return rels[0]
+        else:
+            return None
 
 class MultipleRelationships(BoundRelationshipModel): # WAIT!
     @not_implemented
@@ -525,29 +528,34 @@ class RelationshipInstance(models.Manager):
     def __init__(self, rel, obj):
         self.__rel = rel
         self.__obj = obj
-        self.__added = [] # contains domain objects
-        self.__removed = set() # contains relationships
+        self._added = [] # contains domain objects
+        self._removed = set() # contains relationships
 
     ordered = property(lambda self: self.__rel.ordered)
 
     def __save__(self, node):
         #Deletes all relationships removed since last save and adds any new
         #relatonships to the database.
-        for relationship in self.__removed:
+        for relationship in self._removed:
             relationship.delete()
-        for obj in self.__added:
+        for obj in self._added:
             self.__rel._create_neo_relationship(node, obj)
-        self.__removed.clear()
-        self.__added[:] = []
+        self._removed.clear()
+        self._added[:] = []
 
     def _neo4j_relationships(self, node):
         for rel in self.__rel._load_relationships(node, ordered=self.ordered):
-            if rel not in self.__removed:
+            if rel not in self._removed:
                 yield rel
 
     @property
     def _new(self):
-        for item in self.__added:
+        for item in self._added:
+            yield item
+
+    @property
+    def _old(self):
+        for item in self._removed:
             yield item
 
     def add(self, *objs):
@@ -557,7 +565,7 @@ class RelationshipInstance(models.Manager):
         """
         for obj in objs:
             self.__rel.accept(obj)
-        self.__added.extend(objs)
+        self._added.extend(objs)
 
     def remove(self, *objs):
         """
@@ -565,14 +573,29 @@ class RelationshipInstance(models.Manager):
         remove the first relationship to this object- otherwise, remove one
         of the relationships indiscriminately.
         """
-        for obj in objs:
-            rel = self.__rel
-            self.__removed.add(rel._extract_relationship(obj,
-                                                         ordered=self.ordered))
+        rel = self.__rel
+        if hasattr(self.__obj, 'node'):
+            for obj in objs:
+                extracted = rel._extract_relationship(obj, ordered=self.ordered)
+                if extracted is not None:
+                    self._removed.add(extracted)
+                else:
+                    try:
+                        self._added.remove(obj)
+                    except ValueError:
+                        pass
+        else:
+            for obj in objs:
+                if obj in self._added:
+                    try:
+                        self._added.remove(obj)
+                    except ValueError:
+                        raise rel.target_model.DoesNotExist("%r is not related to %r." % (obj, self.__obj))
 
-    @not_implemented
+
     def clear(self):
-        pass
+        all_objs = list(self.all())
+        self.remove(*all_objs)
 
     @not_implemented
     def create(self, *args, **kwargs):
@@ -597,17 +620,20 @@ class RelationshipQuerySet(object):
                 yield rel
 
     def __iter__(self):
+        removed = list(self.__inst._old)
+        added = list(self.__inst._new)
         try:
             node = self.__obj.node
         except:
             pass
         else:
             buffered = buffer_iterator(
-                lambda rel: self.__rel._neo4j_instance(node, rel),
+                lambda rel: (rel, self.__rel._neo4j_instance(node, rel)),
                 self.__relationships(node), size=10)
-            for item in buffered:
-                yield item
-        for item in self.__inst._new:
+            for rel, item in buffered:
+                if rel not in removed:
+                    yield item
+        for item in added:
             if self.__keep_instance(item):
                 yield item
 

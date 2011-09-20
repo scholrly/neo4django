@@ -30,6 +30,26 @@ def test_basic_relationship():
     authors = list(lifesWork.authors.all())
     assert sandra in authors, "Author not found in %s" % repr(work)
 
+def test_basic_relationship_manager():
+    class SomeOtherPaper(models.NodeModel):
+        authors = models.Relationship(Person,
+                rel_type = neo4django.Outgoing.OWNED_BY,
+                related_name = 'papers'
+            )
+    #from nose.tools import set_trace; set_trace()
+    pete = Person.objects.create(name="PETE!")
+    boring_paper = SomeOtherPaper()
+    boring_paper.authors.add(pete)
+    eq_(list(boring_paper.authors.all()), [pete])
+    
+    boring_paper.authors.remove(pete)
+    eq_(list(boring_paper.authors.all()), [])
+    
+    other_paper = SomeOtherPaper.objects.create()
+    other_paper.authors.add(pete)
+    other_paper.authors.clear()
+    eq_(list(other_paper.authors.all()), [])
+
 def test_one_to_many():
     class Origin1(models.NodeModel):
         name = models.StringProperty()
@@ -169,9 +189,10 @@ def test_relationship_model():
         when = models.DateProperty()
     class ComplexRelatedPaper(models.NodeModel):
         pass
+    raise NotImplementedError("Write this test!")
 
 def test_multinode_setting():
-    """Tests setting a mutli-node relationship directly instead of adding."""
+    """Tests setting a multi-node relationship directly instead of adding."""
     class Classroom(models.NodeModel):
         students = models.Relationship(Person,
                                 rel_type=neo4django.Outgoing.COMES_TO,
@@ -189,6 +210,7 @@ def test_multinode_setting():
     classroom.students.add(students[2])
     assert len(list(classroom.students.all())) == 3
     classroom.students = students[3:]
+    classroom.save()
     assert len(list(classroom.students.all())) == 1
 
 def test_rel_metadata():
