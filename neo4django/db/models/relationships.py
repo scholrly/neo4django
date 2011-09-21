@@ -11,6 +11,8 @@ from base import NodeModel
 
 from neo4jrestclient.constants import RELATIONSHIPS_ALL, RELATIONSHIPS_IN, RELATIONSHIPS_OUT
 
+from collections import defaultdict
+
 class LazyModel(object):
     """
     A proxy class that enables relationships to have str targets, eg
@@ -441,24 +443,18 @@ class MultipleNodes(BoundRelationship):
         if value is not None:
             if state.get(self.name) is None:
                 state[self.name] = RelationshipInstance(self, obj)
+            items = list(state[self.name].all())
+            notsaved = state[self.name]._added
+            if items and len(notsaved) < len(items):
+                state[self.name].remove(*items) 
+                #TODO: make it so it only removes authors not in value
+                #      and remove authors already there from value
+                #XXX: only works when removing from saved nodes
+            if notsaved:
+                notsaved[:] = [] #TODO give rel instance a method for this?
             if hasattr(value, '__iter__'):
-                items = list(state[self.name].all())
-                notsaved = state[self.name]._added
-                if items and len(notsaved) < len(items):
-                    state[self.name].remove(*items) 
-                    #TODO: make it so it only removes authors not in value
-                    #      and remove authors already there from value
-                    #XXX: only works when removing from saved nodes
-                if notsaved:
-                    notsaved[:] = []
                 state[self.name].add(*value)
             else:
-                items = list(state[self.name].all())
-                notsaved = state[self.name]._RelationshipInstance__added
-                if items and len(notsaved) < len(items):
-                    state[self.name].remove(*items)
-                if notsaved:
-                    notsaved[:] = []
                 state[self.name].add(value)
 
     def value_to_string(self, obj):
@@ -507,14 +503,6 @@ class MultipleNodes(BoundRelationship):
                 kwargs['attrs'] = { ORDER_ATTR:new_index }
         return super(MultipleNodes, self). \
                     _create_neo_relationship(node, *args, **kwargs)
-
-    def _extract_relationship(self, obj, ordered=False):
-        rels = self._load_relationships(obj.node, ordered=ordered)
-        #yes, we just choose one without further info (first if ordered)
-        if len(rels) > 0:
-            return rels[0]
-        else:
-            return None
 
 class MultipleRelationships(BoundRelationshipModel): # WAIT!
     @not_implemented
@@ -575,15 +563,25 @@ class RelationshipInstance(models.Manager):
         """
         rel = self.__rel
         if hasattr(self.__obj, 'node'):
+            neo_rels = list(rel._load_relationships(self.__obj.node,
+                                                    ordered=self.ordered))
+            rels_by_node = defaultdict(list)
+            for neo_rel in neo_rels:
+                other_end = neo_rel.start if neo_rel.end == self.__obj.node\
+                            else neo_rel.end
+                rels_by_node[other_end].append(neo_rel)
+            nodes_to_remove = [o.node for o in objs if hasattr(o, 'node')]
+            unsaved_obj_to_remove = [o for o in objs if not hasattr(o, 'node')]
             for obj in objs:
-                extracted = rel._extract_relationship(obj, ordered=self.ordered)
-                if extracted is not None:
-                    self._removed.add(extracted)
+                candidate_rels = rels_by_node[obj.node]\
+                        if hasattr(o, 'node') else []
+                if candidate_rels:
+                    self._removed.add(candidate_rels.pop(0))
                 else:
                     try:
                         self._added.remove(obj)
                     except ValueError:
-                        pass
+                        raise rel.target_model.DoesNotExist("%r is not related to %r." % (obj, self.__obj))
         else:
             for obj in objs:
                 if obj in self._added:
