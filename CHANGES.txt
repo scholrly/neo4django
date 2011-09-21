@@ -1,6 +1,11 @@
 Changes
 -------
 
+0.1.3 (2011-09-20)
+------------------
+- Refactored model access to be more like traditional Django. To define models, import `from neo4django.db import models`.
+- Added a database router to allow mixing of neo4django/Django ORM in one project.
+
 0.1.2 (2011-09-01)
 ------------------
 - Model to model casting. (issue #7)
