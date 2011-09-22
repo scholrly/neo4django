@@ -222,3 +222,25 @@ def test_rel_metadata():
     eq_(len(meta_fields), 1)
     assert 'test' in meta_fields[0].meta
     eq_(meta_fields[0].meta['test'], 123)
+
+def test_rel_self():
+    class MetaNode(models.NodeModel):
+        myself = models.Relationship('self', 'IS', single=True, related_name = 'myselves')
+
+    meta = MetaNode()
+    meta.myself = meta
+    meta.save()
+
+    eq_(meta.myself, meta)
+    assert meta in meta.myselves.all()
+
+def test_rel_string_target():
+    class Child(models.NodeModel):
+        parents = models.Relationship('neo4django.Person', 'CHILD_OF')
+
+    child = Child()
+    child.parents.add(Person.objects.create(name='Han'))
+    child.parents.add(Person.objects.create(name='Leia'))
+    child.save()
+
+    eq_(('Han','Leia'), tuple(sorted(p.name for p in child.parents.all())))

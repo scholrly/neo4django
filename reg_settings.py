@@ -57,8 +57,10 @@ tests=[
 	'test_model_copy',
 	'test_basic_relationship_manager',
 	'test_one_to_one',
+	'test_rel_metadata',
 	'test_prop_metadata',
-	'test_rel_metadata']
+	'test_rel_self',
+	'test_rel_string_target']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
@@ -68,4 +70,5 @@ should_fail=[
 	'test_str_array_property_validator',
 	'test_url_array_property_validator',
 	'test_type_query',
-	'test_model_casting_validation']
+	'test_model_casting_validation',
+]

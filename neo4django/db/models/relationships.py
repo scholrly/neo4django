@@ -20,10 +20,10 @@ class LazyModel(object):
         actors = Relationship('Actor', ...)
     """
     def __init__(self, cls, field, name, setup_reversed):
-        add_lazy_relation(cls, field, name, self.__setup)
         self.__setup_reversed = setup_reversed
+        add_lazy_relation(cls, field, name, self.__setup)
     def __setup(self, field, target, source):
-        if not issubclass(target, NodeModel)    :
+        if not issubclass(target, NodeModel):
             raise TypeError("Relationships may only extend from Nodes.")
         self.__target = target
         self.__setup_reversed(target)
@@ -167,11 +167,7 @@ class Relationship(object):
         if not issubclass(source, NodeModel):
             raise TypeError("Relationships may only extend from Nodes.")
         self.creation_counter = source.creation_counter
-        if isinstance(self.__target, basestring):
-            target = LazyModel(source, self, self.__target,
-                        lambda target: bound._setup_reversed(target))
-        else:
-            target = self.__target
+        
         if hasattr(self, 'Model'):
             if self.__single:
                 Bound = SingleRelationship
@@ -187,6 +183,10 @@ class Relationship(object):
             bound = Bound(self, source, self.__name or name, name)
         source._meta.add_field(bound)
         setattr(source, name, bound)
+        if isinstance(self.__target, basestring):
+            self.__target = LazyModel(source, self, self.__target,
+                        lambda target: bound._setup_reversed(target))
+        target = self.__target
         if not self.__is_reversed:
             bound._setup_reversed(target)
 
