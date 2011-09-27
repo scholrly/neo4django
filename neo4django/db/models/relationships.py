@@ -321,7 +321,9 @@ class BoundRelationship(AttrRouter):
         neo_rel_attrs = kwargs.get('attrs', {})
         neo_rel_attrs[INTERNAL_ATTR] = True
         #TODO 'using' throughout relationships.py, #175
-        other = obj._save_neo4j_node(DEFAULT_DB_ALIAS) #HACK!
+        if obj.pk is None:
+            obj.save(using=obj.using)
+        other = obj.node
         # TODO: verify that it's ok in the reverse direction?
         if self.direction != 'in':
             node, other = other, node
