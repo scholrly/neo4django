@@ -306,7 +306,7 @@ class NodeQuerySet(QuerySet):
     def get_or_create(self, **kwargs):
         try:
             return self.get(**kwargs)
-        except ValueError:
+        except:
             return self.create(**kwargs)
 
     @not_implemented
