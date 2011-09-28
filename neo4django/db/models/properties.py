@@ -307,15 +307,17 @@ class BoundProperty(AttrRouter):
             for key, value in values.items():
                 prop = properties[key]
                 if prop.auto and value is None:
-                    last_auto_nodes = list(prop.index(using=instance.using)[prop.attname][AUTO_PROP_INDEX_VALUE])
+                    index = prop.index(using=instance.using)
+                    last_auto_nodes = list(index[prop.attname][AUTO_PROP_INDEX_VALUE])
                     if len(last_auto_nodes) > 0:
                         last_auto_val = last_auto_nodes[0][prop.attname]
                         #generate new value
                         value = prop.next_value(last_auto_val)
+                        #remove old one from index
+                        index.delete(prop.attname, AUTO_PROP_INDEX_VALUE, last_auto_nodes[0])
                     else:
                         value = prop.auto_default
                     old, value = prop.__set_value(instance, value)
-                    #TODO remove old one from index
                     prop.index(using=instance.using).add(prop.attname, AUTO_PROP_INDEX_VALUE, node)
                 else:
                     value = prop.pre_save(node, node_is_new, prop.name) or value
@@ -331,10 +333,11 @@ class BoundProperty(AttrRouter):
                                 "Duplicate index entries for <%s>.%s" %
                                 (instance.__class__.__name__,
                                     prop.name))
+                    index = prop.index(using=instance.using)
                     if old is not None:
-                        prop.index(using=instance.using).remove(old, node)
+                        index.delete(prop.attname, old, node)
                     if value is not None:
-                        prop.index(using=instance.using).add(prop.attname, prop.to_neo_index(value), node)
+                        index.add(prop.attname, prop.to_neo_index(value), node)
             values.clear()
     NodeModel._save_properties = staticmethod(_save_) #TODO this needs to be revised. I hope there's a better way.
     del _save_
