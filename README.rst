@@ -19,6 +19,7 @@ Other improvements over the original integration include
     * ``IntegerProperty``
     * ``DateTimeProperty``
     * ``URLProperty``
+    * ``AutoProperty``
 - Improved indexing support.
 - Index-based querying.
 - Fancier QuerySet usage.
@@ -44,7 +45,7 @@ Using pip, you can install from PyPi::
 
 or straight from GitHub::
 
-    pip install -e https://github.com/scholrly/neo4django/
+    pip install -e git+https://github.com/scholrly/neo4django/#egg=neo4django
 
 Database Setup
 ==============
@@ -64,11 +65,11 @@ Note that if you want to use Django auth or other packages built on the regular 
 Models
 ==========
 
-These look just like the Django models you're used to, but instead of inheriting from ``django.db.model``, inherit from ``neo4django.NodeModel``::
+These look just like the Django models you're used to, but instead of inheriting from ``django.db.models.Model``, inherit from ``neo4django.db.models.NodeModel``::
 
-    class Person(neo4django.NodeModel):
-        name = neo4django.StringProperty()
-        age = neo4django.IntegerProperty()
+    class Person(models.NodeModel):
+        name = models.StringProperty()
+        age = models.IntegerProperty()
 
 Properties
 ==========
@@ -76,13 +77,13 @@ Properties
 As you can see, some basic properties are provided::
 
     class OnlinePerson(Person):
-        email = neo4django.EmailProperty()
-        homepage = neo4django.URLProperty()
+        email = models.EmailProperty()
+        homepage = models.URLProperty()
 
 Some property types can also be indexed by neo4django. This will speed up subsequent queries based on those properties::
 
     class EmployedPerson(Person):
-        job_title = neo4django.StringProperty(indexed=True)
+        job_title = models.StringProperty(indexed=True)
 
 All instances of ``EmployedPerson`` will have their ``job_title`` properties indexed.
 
@@ -95,12 +96,21 @@ Relationships
 
 Relationships are supported as in the original integration::
 
-    class Pet(neo4django.NodeModel):
-        owner = neo4django.Relationship(Person, 
-                                        rel_type=neo4django.Incoming.OWNS,
-                                        single=True,
-                                        related_name='pets'
-                                       )
+    class Pet(models.NodeModel):
+        owner = models.Relationship(Person, 
+                                    rel_type=neo4django.Incoming.OWNS,
+                                    single=True,
+                                    related_name='pets'
+                                   )
+
+... and like in relational Django, you can target a class that has yet to be defined with a string::
+
+    class Pet(models.NodeModel):
+        owner = models.Relationship('Person', 
+                                    rel_type=neo4django.Incoming.OWNS,
+                                    single=True,
+                                    related_name='pets'
+                                   )
 
 And then in the interpreter::
 
@@ -112,8 +122,6 @@ And then in the interpreter::
     [<Pet: Pet object]
 
 You can also add a new option, ``preserve_ordering``, to the ``Relationship``. In that case, the order of relationship creation will be persisted.
-
-Relationships caveat - currently, lazy initialization (``neo4django.Relationship("Person",...``) is borked, but should be fixed soon.
 
 QuerySets
 =========
@@ -160,9 +168,9 @@ Further Introspection
 
 When possible, neo4django follows Django ORM, and thus allows some introspection of the schema. Because Neo4j is schema-less, though, further introspection and a more dynamic data layer can be handy. Initially, there's only one additional option to enable decoration of ``Property`` s and ``Relationship`` s - ``metadata`` ::
 
-    class N(NodeModel):
-        name = StringProperty(metadata={'authoritative':True})
-        aliases = StringArrayProperty(metadata={'authoritative':False, 'authority':name})
+    class N(models.NodeModel):
+        name = models.StringProperty(metadata={'authoritative':True})
+        aliases = models.StringArrayProperty(metadata={'authoritative':False, 'authority':name})
 
     >>> for field in N._meta.fields:
     ...     if hasattr(field, 'meta'):
