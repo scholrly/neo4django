@@ -147,7 +147,6 @@ class Relationship(object):
     ordered = property(lambda self: self.__ordered)
     meta = property(lambda self: self.__meta)
 
-
     __is_reversed = False
     def reverse(self, target, name):
         if self.direction is RELATIONSHIPS_IN:
@@ -159,7 +158,7 @@ class Relationship(object):
         relationship = Relationship(
             target, rel_type=self.__name, direction=direction,
             single=self.__related_single, related_name=name,
-            metadata=self.__related_meta)
+            metadata=self.__related_meta, preserve_ordering=self.__ordered)
         relationship.__is_reversed = True
         return relationship
 
