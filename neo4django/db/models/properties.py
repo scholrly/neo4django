@@ -17,6 +17,7 @@ from relationships import Relationship
 from neo4django.validators import validate_array, validate_str_array,\
         validate_int_array, ElementValidator
 from neo4django.utils import AttrRouter, write_through
+from neo4django.constants import AUTO_PROP_INDEX_VALUE
 
 MIN_INT = -9223372036854775808
 MAX_INT = 9223372036854775807
@@ -38,10 +39,13 @@ class Property(object):
                  indexed_range=False, has_own_index = False, unique=False,
                  name=None, editable=True, null=True, blank=True, validators=[],
                  choices=None, error_messages=None, required=False,
-                 serialize=True, metadata={}, default=NOT_PROVIDED,
-                 **kwargs):
+                 serialize=True, auto=False, metadata={},
+                 auto_default=NOT_PROVIDED, default=NOT_PROVIDED, **kwargs):
         if unique and not indexed:
             raise ValueError('A unique property must be indexed.')
+        if auto and auto_default == NOT_PROVIDED:
+            raise ValueError('Properties with auto=True should also set an '
+                             'auto_default.')
         self.indexed = self.db_index = indexed
         self.indexed_fulltext = indexed_fulltext
         self.indexed_range = indexed_range
@@ -51,6 +55,8 @@ class Property(object):
         self.blank = blank
         self.null = null
         self.serialize = serialize
+        self.auto = auto
+        self.auto_default = auto_default
         self.meta = metadata
         self._default = default
 
@@ -228,6 +234,9 @@ class BoundProperty(AttrRouter):
                      'run_validators',
                      'pre_save',
                      'serialize',
+                     'auto',
+                     'auto_default',
+                     'next_value',
                      'meta',
                      'MAX',
                      'MIN',
@@ -286,19 +295,31 @@ class BoundProperty(AttrRouter):
         return new_property_dict
 
     def index(self, using):
-        if not self.indexed:
+        if not (self.indexed or self.auto):
             raise TypeError("'%s' is not indexed" % (self.__propname,))
         else:
             return self.__class.index(using)
 
-    def _save_(instance, node, node_is_new):
+    def _save_(instance, node, node_is_new): #TODO this entire method could be transactional
         values = BoundProperty.__values_of(instance)
         if values:
             properties = BoundProperty._all_properties_for(instance)
             for key, value in values.items():
                 prop = properties[key]
-                value = prop.pre_save(node, node_is_new, prop.name) or value
-                old, value = prop.__set_value(instance, value)
+                if prop.auto and value is None:
+                    last_auto_nodes = list(prop.index(using=instance.using)[prop.attname][AUTO_PROP_INDEX_VALUE])
+                    if len(last_auto_nodes) > 0:
+                        last_auto_val = last_auto_nodes[0][prop.attname]
+                        #generate new value
+                        value = prop.next_value(last_auto_val)
+                    else:
+                        value = prop.auto_default
+                    old, value = prop.__set_value(instance, value)
+                    #TODO remove old one from index
+                    prop.index(using=instance.using).add(prop.attname, AUTO_PROP_INDEX_VALUE, node)
+                else:
+                    value = prop.pre_save(node, node_is_new, prop.name) or value
+                    old, value = prop.__set_value(instance, value)
                 if prop.indexed:
                     if prop.unique:#TODO empty values? in validators.empty? # and value is not None:
                         try:
@@ -439,6 +460,18 @@ class IntegerProperty(Property):
         if len(s) > 20:
             raise ValueError('Values should be between {0} and {1}.'.format(MIN_INT, MAX_INT))
         return ('-' if value < 0 else '0') + s.zfill(19)
+
+class AutoProperty(IntegerProperty):
+    def __init__(self, *args, **kwargs):
+        kwargs['auto'] = True
+        kwargs['auto_default'] = 1
+        super(AutoProperty, self).__init__(*args, **kwargs)
+
+    def get_default(self):
+        return None
+
+    def next_value(self, old_value):
+        return old_value + 1
 
 class DateProperty(Property):
     __format = '%Y-%m-%d'

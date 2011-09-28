@@ -60,7 +60,9 @@ tests=[
 	'test_rel_metadata',
 	'test_prop_metadata',
 	'test_rel_self',
-	'test_rel_string_target']
+	'test_rel_string_target',
+    'test_auto_property',
+]
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',

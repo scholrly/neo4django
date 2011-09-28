@@ -375,3 +375,9 @@ def test_prop_metadata():
     eq_(len(meta_fields), 1)
     assert 'test' in meta_fields[0].meta
     eq_(meta_fields[0].meta['test'], 123)
+
+def test_auto_property():
+    class AutoNode(models.NodeModel):
+        some_id = models.AutoProperty()
+    nodes = [AutoNode.objects.create() for i in xrange(5)]
+    eq_([n.some_id for n in nodes], range(1, 6))
