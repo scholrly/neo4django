@@ -37,7 +37,6 @@ def test_basic_relationship():
     #test proper direction
     eq_(shared[0].end, sandra.node)
     eq_(shared[0].start, lifesWork.node)
-    
 
 def test_basic_relationship_manager():
     class SomeOtherPaper(models.NodeModel):
@@ -245,7 +244,8 @@ def test_rel_self():
 
 def test_rel_string_target():
     class Child(models.NodeModel):
-        parents = models.Relationship('neo4django.Person', 'CHILD_OF')
+        parents = models.Relationship('neo4django.Person',
+                                      neo4django.Outgoing.CHILD_OF)
 
     child = Child()
     child.parents.add(Person.objects.create(name='Han'))
@@ -253,3 +253,20 @@ def test_rel_string_target():
     child.save()
 
     eq_(('Han','Leia'), tuple(sorted(p.name for p in child.parents.all())))
+
+def test_rel_string_type():
+    class Child1(models.NodeModel):
+        parents = models.Relationship(Person, 'CHILD_OF')
+
+    child = Child1()
+    child.parents.add(Person.objects.create(name='Han'))
+    child.parents.add(Person.objects.create(name='Leia'))
+    child.save()
+
+    eq_(('Han','Leia'), tuple(sorted(p.name for p in child.parents.all())))
+
+    childs = child.node.relationships.all()
+    eq_(len(childs), 2)
+    #test proper direction
+    for r in childs:
+        eq_(r.start, child.node)

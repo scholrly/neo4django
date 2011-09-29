@@ -61,8 +61,8 @@ tests=[
 	'test_prop_metadata',
 	'test_rel_self',
 	'test_rel_string_target',
-    'test_auto_property',
-]
+	'test_auto_property',
+	'test_rel_string_type']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
@@ -73,4 +73,4 @@ should_fail=[
 	'test_url_array_property_validator',
 	'test_type_query',
 	'test_model_casting_validation',
-]
+	'test_rel_string_type']
