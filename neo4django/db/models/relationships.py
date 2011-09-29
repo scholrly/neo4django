@@ -129,7 +129,7 @@ class Relationship(object):
             if not isinstance(rel_type, basestring):
                 direction = rel_type.direction
             else:
-                direction = RELATIONSHIPS_ALL
+                direction = RELATIONSHIPS_OUT
         if not isinstance(rel_type, basestring):
             if rel_type.direction != direction:
                 raise ValueError("Incompatible direction!")
@@ -324,7 +324,7 @@ class BoundRelationship(AttrRouter):
             obj.save(using=obj.using)
         other = obj.node
         # TODO: verify that it's ok in the reverse direction?
-        if self.direction != 'in':
+        if self.direction != 'out':
             node, other = other, node
 
         node.relationships.create(self._type, other, **neo_rel_attrs)

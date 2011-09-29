@@ -24,19 +24,18 @@ def test_basic_relationship():
     lifesWork = RelatedPaper()
     lifesWork.save()
     lifesWork.authors.add(sandra)
+    
     lifesWork.save()
     work = list(sandra.papers.all())
     assert lifesWork in work, "Paper not found in %s" % repr(work)
     authors = list(lifesWork.authors.all())
     assert sandra in authors, "Author not found in %s" % repr(work)
     #find all shared neo4j relationships
-    sandras = sandra.node.relationships.all()
-    works = lifesWork.node.relationships.all()
-    shared = list(set(sandras) & set(works))
-    eq_(len(shared), 1)
+    sandras = sandra.node.relationships.all(['OWNED_BY'])[:]
+    eq_(len(sandras), 1)
     #test proper direction
-    eq_(shared[0].end, sandra.node)
-    eq_(shared[0].start, lifesWork.node)
+    eq_(sandras[0].end, sandra.node)
+    eq_(sandras[0].start, lifesWork.node)
 
 def test_basic_relationship_manager():
     class SomeOtherPaper(models.NodeModel):
@@ -265,7 +264,7 @@ def test_rel_string_type():
 
     eq_(('Han','Leia'), tuple(sorted(p.name for p in child.parents.all())))
 
-    childs = child.node.relationships.all()
+    childs = child.node.relationships.all(['CHILD_OF'])[:]
     eq_(len(childs), 2)
     #test proper direction
     for r in childs:
