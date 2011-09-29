@@ -29,6 +29,15 @@ def test_basic_relationship():
     assert lifesWork in work, "Paper not found in %s" % repr(work)
     authors = list(lifesWork.authors.all())
     assert sandra in authors, "Author not found in %s" % repr(work)
+    #find all shared neo4j relationships
+    sandras = sandra.node.relationships.all()
+    works = lifesWork.node.relationships.all()
+    shared = list(set(sandras) & set(works))
+    eq_(len(shared), 1)
+    #test proper direction
+    eq_(shared[0].end, sandra.node)
+    eq_(shared[0].start, lifesWork.node)
+    
 
 def test_basic_relationship_manager():
     class SomeOtherPaper(models.NodeModel):
