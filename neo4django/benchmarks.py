@@ -20,6 +20,36 @@ def indexed_creation_benchmark():
     for i in xrange(100):
         IndexedModel.objects.create(name=str(i), age=i)
 
+def related_creation_benchmark():
+    class Parent(models.NodeModel):
+        class Meta:
+            app_label = 'benchmark'
+        name = models.StringProperty()
+
+    class Child(models.NodeModel):
+        class Meta:
+            app_label = 'benchmark'
+        name = models.StringProperty()
+        age = models.IntegerProperty()
+        parents = models.Relationship(Parent, 'CHILD_OF')
+
+    class Employer(models.NodeModel):
+        class Meta:
+            app_label = 'benchmark'
+        name = models.StringProperty()
+        employees = models.Relationship(Parent, 'EMPLOYS')
+
+    for i in xrange(100):
+        class Meta:
+            app_label = 'benchmark'
+        employer = Employer(name=str(i))
+        employees = [Parent(name=str(x)) for x in xrange(5)]
+        for employee in employees:
+            employee.children = [Child(name=str(x)) for x in xrange(2)]
+        employer.employees = employees
+        employer.save()
+
+
 ################
 # BENCHMARKING #
 ################
