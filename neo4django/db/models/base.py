@@ -10,6 +10,10 @@ from neo4django.constants import TYPE_ATTR
 
 from manager import NodeModelManager
 
+import inspect
+from decorator import decorator
+from types import MethodType
+
 class IdProperty(object):
     def __init__(self, getter, setter):
         self.getter = getter
@@ -64,9 +68,9 @@ class IdLookup(object):
 
 class NeoModelBase(dj_models.Model.__metaclass__):
     """
-    Model metaclass that adds creation counters to models, and a hook for
-    adding custom "class Meta" style options to NeoModels beyond those
-    supported by Django.
+    Model metaclass that adds creation counters to models, a hook for adding 
+    custom "class Meta" style options to NeoModels beyond those supported by 
+    Django, and method transactionality.
     """
     meta_additions = ['has_own_index']
 
@@ -76,6 +80,7 @@ class NeoModelBase(dj_models.Model.__metaclass__):
         
     def __new__(cls, name, bases, attrs):
         super_new = super(NeoModelBase, cls).__new__
+        #process the extra meta options
         attr_meta = attrs.get('Meta', None)
         extra_options = {}
         if attr_meta:
@@ -83,7 +88,31 @@ class NeoModelBase(dj_models.Model.__metaclass__):
                 if hasattr(attr_meta, key):
                     extra_options[key] = getattr(attr_meta, key)
                     delattr(attr_meta, key)
+        #find all methods flagged transactional and decorate them
+        flagged_methods = [i for i in attrs.items()
+                           if getattr(i[1], 'transactional', False) and
+                            inspect.isfunction(i[1])]
+        @decorator
+        def trans_method(func, *args, **kw):
+            #the first arg should be 'self', since these functions are to be
+            #converted to methods. if there's another transaction in progress,
+            #do nothing
+            #TODO prevents nested transactions, reconsider
+            if len(args) > 0 and isinstance(args[0], NodeModel) and\
+               len(connections[args[0].using]._transactions) < 1:
+                #tx = connections[args[0].using].transaction()
+                #TODO this is where generalized transaction support will go,
+                #when it's ready in neo4jrestclient
+                ret = func(*args, **kw)
+                #tx.commit()
+                return ret
+            else:
+                return func(*args, **kw)
+        for i in flagged_methods:
+            attrs[i[0]] = trans_method(i[1])
+        #call the superclass method
         new_cls = super_new(cls, name, bases, attrs)
+        #set the extra meta options
         for k in extra_options:
             setattr(new_cls._meta, k, extra_options[k])
         return new_cls
@@ -120,7 +149,7 @@ class NodeModel(NeoModel):
         instance.__node = neo_node
 
         #take care of using by inferring from the neo4j node
-        names = [name_db_pair[1] for name_db_pair in connections.iteritems() 
+        names = [name_db_pair[0] for name_db_pair in connections.iteritems() 
             if name_db_pair[1].url in neo_node.url]
         if len(names) < 1:
             raise NoSuchDatabaseError(url=neo_node.url)
@@ -244,7 +273,7 @@ class NodeModel(NeoModel):
         return super(NodeModel, self).save(using=using, **kwargs)
 
     @alters_data
-    @transactional
+    #@transactional
     def save_base(self, raw=False, cls=None, origin=None,
                   force_insert=False, force_update=False,
                   using=DEFAULT_DB_ALIAS, *args, **kwargs):
