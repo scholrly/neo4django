@@ -62,4 +62,4 @@ for b in benchmarks:
     b[1]()
     end = time()
 
-    print "'%s':%d" % (b[0][:-10],end-start)
+    print "'%s':%.3f" % (b[0][:-10],end-start)
