@@ -202,7 +202,9 @@ class Neo4djangoIntegrationRouter():
     def allow_relation(self, obj1, obj2, **hints):
         "Disallow any relations between Neo4j and regular SQL models."
         from neo4django.db.models import NodeModel
-        a, b = (issubclass(o, NodeModel) for o in (obj1, obj2))
+        def type_test(o):
+            return issubclass(o, NodeModel) if isinstance(o, type) else isinstance(o, NodeModel)
+        a, b = (type_test(o) for o in (obj1, obj2))
         if a != b:
             return False
         return None

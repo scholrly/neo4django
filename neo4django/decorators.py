@@ -1,13 +1,13 @@
 from decorator import decorator
 
-@decorator
-def transactional(func, *args, **kw):
+def transactional(func):
     """
     A decorator that currently does, well, nothing. Regardless, flag functions
     that should be transactional so that they can be dealt with in the future,
     when the Neo4j REST interface supports transactions.
     """
-    return func(*args, **kw)
+    func.transactional = True
+    return func
 
 @decorator
 def not_supported(func, *args, **kw):
