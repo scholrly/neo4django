@@ -43,7 +43,6 @@ def test_basic_relationship_manager():
                 rel_type = neo4django.Outgoing.OWNED_BY,
                 related_name = 'papers'
             )
-    #from nose.tools import set_trace; set_trace()
     pete = Person.objects.create(name="PETE!")
     boring_paper = SomeOtherPaper()
     boring_paper.authors.add(pete)
