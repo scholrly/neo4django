@@ -69,7 +69,6 @@ should_fail=[
 	'test_relationship_model',
 	'test_datetime_auto_now_add',
 	'test_nodemodel_independence',
-	'test_str_array_property_validator',
 	'test_url_array_property_validator',
 	'test_type_query',
 	'test_model_casting_validation']
