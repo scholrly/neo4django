@@ -35,6 +35,11 @@ class LazyModel(object):
             raise ValueError("Lazy model not initialized!")
         else:
             return model
+    def __getstate__(self):
+        try:
+            return self.__model
+        except:
+            return None
     def __getattr__(self, attr):
         return getattr(self.__model, attr)
     def __call__(self, *args, **kwargs):
