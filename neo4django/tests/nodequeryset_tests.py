@@ -180,6 +180,18 @@ def test_get():
     eq_(p.name, name)
     eq_(p.age, age)
 
+@with_setup(setup_people, teardown)
+def test_get_by_id():
+    """
+    Tests Queryset.get() with and without filter parameters.
+    """
+    name = "The world's most interesting man"
+    age = 150
+    interesting_man = Person.objects.create(name=name, age=age)
+    p = Person.objects.get(id=interesting_man.id)
+    eq_(p.name, name)
+    eq_(p.age, age)
+
 @with_setup(None, teardown)
 def test_filter_exact():
     #TODO docstring

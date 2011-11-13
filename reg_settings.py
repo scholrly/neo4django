@@ -62,7 +62,8 @@ tests=[
 	'test_rel_self',
 	'test_rel_string_target',
 	'test_auto_property',
-	'test_rel_string_type']
+	'test_rel_string_type',
+	'test_get_by_id']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
@@ -71,4 +72,5 @@ should_fail=[
 	'test_nodemodel_independence',
 	'test_url_array_property_validator',
 	'test_type_query',
-	'test_model_casting_validation']
+	'test_model_casting_validation',
+	'test_get_by_id']
