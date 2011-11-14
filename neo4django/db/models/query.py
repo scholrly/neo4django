@@ -180,7 +180,7 @@ class Query(object):
                 unindexed.append(c)
 
         id_lookups = dict(itertools.groupby(id_conditions, lambda c: c.operator))
-        exact_id_lookups = id_lookups.get(OPERATORS.EXACT, [])
+        exact_id_lookups = list(id_lookups.get(OPERATORS.EXACT, []))
         #if we have an exact lookup, do it and return
         if len(exact_id_lookups) == 1:
             id_val = exact_id_lookups[0].value
@@ -196,7 +196,7 @@ class Query(object):
             raise ValueError("Conflicting exact id lookups - a node can't have two ids.")
 
         #if we have any id__in lookups, do the intersection and return
-        in_id_lookups = id_lookups.get(OPERATORS.IN, [])
+        in_id_lookups = list(id_lookups.get(OPERATORS.IN, []))
         if in_id_lookups:
             id_set = reduce(and_, (set(c.value) for c in in_id_lookups))
             if id_set:
