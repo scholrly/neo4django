@@ -196,7 +196,7 @@ def test_get_by_id():
 
     try:
         p2 = Person.objects.get(name="Less interesting man", id=interesting_man.id)
-    except ObjectDoesNotExist:
+    except exceptions.ObjectDoesNotExist:
         pass
     else:
         raise AssertionError('Interesting man was returned, though has has the '

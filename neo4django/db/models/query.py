@@ -186,7 +186,9 @@ class Query(object):
         if len(exact_id_lookups) == 1:
             id_val = exact_id_lookups[0].value
             try:
-                yield connections[using].nodes[int(id_val)]
+                node = connections[using].nodes[int(id_val)]
+                if all(matches_condition(n, c) for c in itertools.chain(indexed, unindexed)):
+                    yield node
             except:
                 pass
             return
