@@ -179,15 +179,15 @@ class Query(object):
             else:
                 unindexed.append(c)
 
-
-        #TODO IF WE HAVE ANY EXACT ID LOOKUPS, DO THEM, check against the other conditions, and we're done
-        exact_id_lookups = [c for c in id_conditions if c.operator is OPERATORS.EXACT]
+        id_lookups = dict(itertools.groupby(id_conditions, lambda c: c.operator))
+        exact_id_lookups = id_lookups.get(OPERATORS.EXACT, [])
         #if we have an exact lookup, do it and return
         if len(exact_id_lookups) == 1:
             id_val = exact_id_lookups[0].value
             try:
                 node = connections[using].nodes[int(id_val)]
-                if all(matches_condition(n, c) for c in itertools.chain(indexed, unindexed)):
+                #TODO also check type!!
+                if all(matches_condition(node, c) for c in itertools.chain(indexed, unindexed)):
                     yield node
             except:
                 pass
@@ -195,7 +195,23 @@ class Query(object):
         elif len(exact_id_lookups) > 1:
             raise ValueError("Conflicting exact id lookups - a node can't have two ids.")
 
-        #TODO if we have any IN ID lookups, do them, and check 
+        #if we have any id__in lookups, do the intersection and return
+        in_id_lookups = id_lookups.get(OPERATORS.IN, [])
+        if in_id_lookups:
+            id_set = reduce(and_, (set(c.value) for c in in_id_lookups))
+            if id_set:
+                ext = connections[using].extensions['GremlinPlugin']
+                gremlin_script = 'g.v(%s)'
+                gremlin_script %= ','.join(str(i) for i in id_set)
+                nodes = ext.execute_script(gremlin_script)
+                #TODO also check type!!
+                for node in nodes:
+                    if all(matches_condition(node, c) for c in itertools.chain(indexed, unindexed)):
+                        yield node
+                return
+            else:
+                raise ValueError('Conflicting id__in lookups - the intersection'
+                                 ' of the queried id lists is empty.')
                                                       
                                                       
         #TODO order by type - check against the global type first, so that if
@@ -286,7 +302,7 @@ def condition_from_kw(nodetype, keyval):
     attname = terms[0]
     field = getattr(nodetype, attname)
     
-    if op is OPERATORS.RANGE:
+    if op in (OPERATORS.RANGE, OPERATORS.IN):
         return Condition(field, tuple([field.to_neo(v) for v in keyval[1]]), op, False)
     else:
         return Condition(field, field.to_neo(keyval[1]), op, False)
