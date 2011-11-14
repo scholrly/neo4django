@@ -185,7 +185,7 @@ def test_get():
 @with_setup(setup_people, teardown)
 def test_get_by_id():
     """
-    Tests Queryset.get() with and without filter parameters.
+    Tests Queryset.get() using id as a filter parameter.
     """
     name = "The world's most interesting man"
     age = 150
@@ -230,6 +230,30 @@ def test_filter_iexact():
     eq_(len(list(jerrys)), 2)
 
 #test in
+
+@with_setup(setup_people, teardown)
+def test_in_id():
+    """
+    Tests Queryset.get() with and without filter parameters.
+    """
+    name = "The world's most interesting man"
+    age = 150
+    interesting_man = Person.objects.create(name=name, age=age)
+
+    boring_name = 'uninteresting man'
+    boring_age = age - 1
+    uninteresting_man = Person.objects.create(name=boring_name, age=boring_age)
+
+    Person.objects.create(age=boring_age)
+
+    people = list(Person.objects.filter(id__in=(interesting_man.id, uninteresting_man.id)))
+    eq_(len(people), 2)
+    eq_([boring_age, age], sorted(p.age for p in people))
+
+    people = list(Person.objects.filter(age=boring_age)
+                  .filter(id__in=(interesting_man.id, uninteresting_man.id)))
+    eq_(len(people), 1)
+    eq_(people[0].id, uninteresting_man.id)
 
 def setup_teens():
     setup_people()
