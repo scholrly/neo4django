@@ -1,5 +1,7 @@
 from nose.tools import with_setup, eq_
 
+from django.core import exceptions
+
 import sys, datetime
 stdout = sys.stdout
 
@@ -188,9 +190,18 @@ def test_get_by_id():
     name = "The world's most interesting man"
     age = 150
     interesting_man = Person.objects.create(name=name, age=age)
-    p = Person.objects.get(id=interesting_man.id)
-    eq_(p.name, name)
-    eq_(p.age, age)
+    p1 = Person.objects.get(id=interesting_man.id)
+    eq_(p1.name, name)
+    eq_(p1.age, age)
+
+    try:
+        p2 = Person.objects.get(name="Less interesting man", id=interesting_man.id)
+    except ObjectDoesNotExist:
+        pass
+    else:
+        raise AssertionError('Interesting man was returned, though has has the '
+                             'wrong name.')
+
 
 @with_setup(None, teardown)
 def test_filter_exact():
