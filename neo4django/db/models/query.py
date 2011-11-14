@@ -1,7 +1,7 @@
 import neo4jrestclient.client as neo4j
 import neo4jrestclient.constants as neo_constants
 
-from neo4django.db import DEFAULT_DB_ALIAS
+from neo4django.db import DEFAULT_DB_ALIAS, connections
 from neo4django.utils import Enum, uniqify
 from neo4django.decorators import transactional, not_supported, alters_data, \
         not_implemented
@@ -14,7 +14,7 @@ from jexp import J
 
 from collections import namedtuple
 from operator import itemgetter as getter, and_
-from itertools import groupby
+import itertools
 import re
 
 #python needs a bijective map... grumble... but a reg enum is fine I guess
@@ -31,22 +31,28 @@ def matches_condition(node, condition):
     """
     field, val, op, neg = condition
     passed = False
-    if node.get(field.attname, None):
+    #if this is an id field, the value should be the id
+    if getattr(field, 'id', None):
+        att = node.id
+    elif node.get(field.attname, None):
         att = node[field.attname]
-        passed = (op is OPERATORS.EXACT and att == val) or \
-                 (op is OPERATORS.RANGE and val[0] < att < val[1]) or \
-                 (op is OPERATORS.LT and att < val) or \
-                 (op is OPERATORS.LTE and att <= val) or \
-                 (op is OPERATORS.GT and att > val) or \
-                 (op is OPERATORS.GTE and att >= val) or \
-                 (op is OPERATORS.IN and att in val)
+    else:
+        att = None
+
+    passed = (op is OPERATORS.EXACT and att == val) or \
+             (op is OPERATORS.RANGE and val[0] < att < val[1]) or \
+             (op is OPERATORS.LT and att < val) or \
+             (op is OPERATORS.LTE and att <= val) or \
+             (op is OPERATORS.GT and att > val) or \
+             (op is OPERATORS.GTE and att >= val) or \
+             (op is OPERATORS.IN and att in val)
     if neg:
         passed = not passed
     return passed
 
 def is_of_types(node, ts):
     #TODO return true if the provided node is of type t, or of a subtype of t
-    pass
+    return True
 
 def q_from_condition(condition):
     """
@@ -157,21 +163,47 @@ class Query(object):
     #TODO optimize query by using type info, instead of just returning the
     #proper type
     #TODO when does a returned index query of len 0 mean we're done?
-    def execute(self, using, optimize=False): #TODO do ssomething with optimize
-        first = getter(0)
+    def execute(self, using):
         conditions = uniqify(self.conditions)
-        #gather all indexed fields
+
         #TODO exclude those that can't be evaluated against (eg exact=None, etc)
-        indexed = [c for c in conditions if first(c).indexed]
-        unindexed = [c for c in conditions if c not in indexed]
+        id_conditions = []
+        indexed = []
+        unindexed = []
 
-        results = {} #TODO this could perhaps be cached - think about it
-        filtered_results = set()
+        for c in conditions:
+            if getattr(c.field, 'id', False):
+                id_conditions.append(c)
+            elif c.field.indexed:
+                indexed.append(c)
+            else:
+                unindexed.append(c)
 
+
+        #TODO IF WE HAVE ANY EXACT ID LOOKUPS, DO THEM, check against the other conditions, and we're done
+        exact_id_lookups = [c for c in id_conditions if c.operator is OPERATORS.EXACT]
+        #if we have an exact lookup, do it and return
+        if len(exact_id_lookups) == 1:
+            id_val = exact_id_lookups[0].value
+            try:
+                yield connections[using].nodes[int(id_val)]
+            except:
+                pass
+            return
+        elif len(exact_id_lookups) > 1:
+            raise ValueError("Conflicting exact id lookups - a node can't have two ids.")
+
+        #TODO if we have any IN ID lookups, do them, and check 
+                                                      
+                                                      
         #TODO order by type - check against the global type first, so that if
         #we get an empty result set, we can return none
 
-        for index, group in groupby(indexed, lambda c:c.field.index(using)):
+        results = {} #TODO this could perhaps be cached - think2 about it
+        filtered_results = set()
+
+        cond_by_ind = itertools.groupby(indexed, lambda c:c.field.index(using))
+        for index, group in cond_by_ind:
             q = None
             for condition in group:
                 new_q = q_from_condition(condition)

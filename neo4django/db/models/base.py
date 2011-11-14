@@ -28,6 +28,7 @@ class IdProperty(object):
 class IdLookup(object):
     indexed = True
     unique = True
+    id=True
     def __init__(self, model):
         self.__model = model
     index = property(lambda self: self)
