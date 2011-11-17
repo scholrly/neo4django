@@ -92,31 +92,25 @@ class Property(object):
             return force_unicode(self._default, strings_only=True)
         return None
 
-    @classmethod
-    def to_neo(cls, value):
+    def to_neo(self, value):
         return value
 
-    @classmethod
-    def from_python(cls, value):
+    def from_python(self, value):
         """
         A python-centric alias for to_neo()
         """
-        return cls.to_neo(value)
+        return self.to_neo(value)
 
-    @classmethod
-    def from_neo(cls, value):
+    def from_neo(self, value):
         return value
 
-    @classmethod
-    def to_python(cls, value):
+    def to_python(self, value):
         """
         A python-centric alias for from_neo()
         """
-        return cls.from_neo(value)
+        return self.from_neo(value)
 
-
-    @classmethod
-    def to_neo_index(cls, value):
+    def to_neo_index(self, value):
         """
         Convert a Python value to how it should be represented in a Neo4j
         index - often, a string. Subclasses that wish to provide indexing
@@ -127,7 +121,7 @@ class Property(object):
         as how they should be returned by an ascending range query. Properties
         that don't support said option need not be concerned.
         """
-        return cls.to_neo(value)
+        return self.to_neo(value)
 
     def contribute_to_class(self, cls, name):
         """
@@ -390,7 +384,7 @@ class BoundProperty(AttrRouter):
             old = None
         self._property.clean(value, instance)
         #supports null properties
-        if not value is None:
+        if not value in validators.EMPTY_VALUES:
             #should already have errored if self.null==False
             value = self._property.to_neo(value)
             underlying[self.__propname] = value
@@ -419,7 +413,6 @@ class StringProperty(Property):
         if min_length is not None:
             self.validators.append(validators.MinLengthValidator(min_length))
 
-    @classmethod
     def to_neo(cls, value):
         return unicode(value)
 
@@ -455,8 +448,7 @@ class IntegerProperty(Property):
     def to_neo(self, value):
         return int(value)
 
-    @classmethod
-    def to_neo_index(cls, value):
+    def to_neo_index(self, value):
         #for now, we'll just use a fixed-width binary decimal encoding with a
         #'-' for negative and '0' for positive or 0.
         s = str(abs(value))
@@ -526,8 +518,7 @@ class DateProperty(Property):
                      .replace('%m', str(value.month).zfill(2))\
                      .replace('%d', str(value.day).zfill(2))
 
-    @classmethod
-    def from_neo(cls, value):
+    def from_neo(self, value):
         if value is None or value == '':
             return None
         if isinstance(value, datetime.datetime):
@@ -535,10 +526,9 @@ class DateProperty(Property):
         if isinstance(value, datetime.date):
             return value
 
-        return cls.__parse_date_string(value)
+        return self.__parse_date_string(value)
 
-    @classmethod
-    def to_neo(cls, value):
+    def to_neo(self, value):
         result = None
 
         if value is None:
@@ -548,9 +538,9 @@ class DateProperty(Property):
         elif isinstance(value, datetime.date):
             result = value
         else:
-            result = cls.__parse_date_string(value)
+            result = self.__parse_date_string(value)
 
-        return cls._format_date(result)
+        return self._format_date(result)
 
     def pre_save(self, model_instance, add, attname):
         if self.auto_now or (self.auto_now_add and add):
@@ -596,8 +586,7 @@ class DateTimeProperty(DateProperty):
 
         return result
 
-    @classmethod
-    def from_neo(cls, value):
+    def from_neo(self, value):
         if value is None or value == '':
             return None
 
@@ -606,10 +595,9 @@ class DateTimeProperty(DateProperty):
         if isinstance(value, datetime.date):
             return datetime.datetime(value.year, value.month, value.day)
 
-        return cls.__parse_datetime_string(value)
+        return self.__parse_datetime_string(value)
 
-    @classmethod
-    def to_neo(cls, value):
+    def to_neo(self, value):
         result = None
 
         if value is None:
@@ -619,9 +607,9 @@ class DateTimeProperty(DateProperty):
         elif isinstance(value, datetime.date):
             result = datetime.datetime(value.year, value.month, value.day)
         else:
-            result = cls.__parse_datetime_string(value)
+            result = self.__parse_datetime_string(value)
 
-        return cls._format_datetime(result)
+        return self._format_datetime(result)
 
     def pre_save(self, model_instance, add, attname):
         if self.auto_now or (self.auto_now_add and add):
@@ -653,6 +641,15 @@ class ArrayProperty(Property):
             else:
                 el_val = ElementValidator(vals_or_tuple)
             self.validators.append(el_val)
+
+    def get_default(self):
+        return []
+
+    #def from_neo(self, value):
+    #    from nose.tools import set_trace; set_trace()
+    #    if value is None:
+    #        return []
+    #    return value
 
 class StringArrayProperty(ArrayProperty):
     default_validators = [validate_str_array]

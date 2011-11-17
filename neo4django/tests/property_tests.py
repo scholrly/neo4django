@@ -184,13 +184,15 @@ def test_array_property_validator():
         raise AssertionError('strings should not work')
 
 def test_empty_array():
-    """Tests that an empty array can be saved properly."""
+    """Tests that an empty array is saved and retrieved properly."""
     class EmptyArrayNode(models.NodeModel):
         vals = models.ArrayProperty()
 
     n1 = EmptyArrayNode()
     n1.vals = []
     n1.save()
+
+    eq_(n1.vals, [])
 
 def test_int_array_property_validator():
     """Tests that IntArrayProperty validates properly."""
