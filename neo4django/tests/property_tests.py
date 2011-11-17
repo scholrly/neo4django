@@ -142,8 +142,6 @@ def test_date_auto_now():
     date3 = datetime.date.today()
     assert b.date_changed == date3
 
-
-
 def test_date_auto_now_add():
     class BlegNode(models.NodeModel):
         title = models.Property()
@@ -163,7 +161,6 @@ def test_date_auto_now_add():
 
 def test_array_property_validator():
     """Tests that ArrayProperty validates properly."""
-    #TODO Make this not suck/add other iterables. -Edd
     class ArrayNode(models.NodeModel):
         vals = models.ArrayProperty()
 
@@ -185,6 +182,15 @@ def test_array_property_validator():
         pass
     else:
         raise AssertionError('strings should not work')
+
+def test_empty_array():
+    """Tests that an empty array can be saved properly."""
+    class EmptyArrayNode(models.NodeModel):
+        vals = models.ArrayProperty()
+
+    n1 = EmptyArrayNode()
+    n1.vals = []
+    n1.save()
 
 def test_int_array_property_validator():
     """Tests that IntArrayProperty validates properly."""
