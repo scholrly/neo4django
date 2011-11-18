@@ -65,7 +65,8 @@ tests=[
 	'test_rel_string_type',
 	'test_get_by_id',
 	'test_in_id',
-    'test_empty_array']
+	'test_empty_array',
+	'test_typenode_transactionality']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
@@ -75,4 +76,4 @@ should_fail=[
 	'test_url_array_property_validator',
 	'test_type_query',
 	'test_model_casting_validation',
-]
+	'test_typenode_transactionality']
