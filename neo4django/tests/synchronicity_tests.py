@@ -10,8 +10,8 @@ def setup():
     from neo4django.tests import Person, neo4django, gdb, neo4jrestclient, \
             neo_constants, settings, models
 
-#def teardown():
-#    gdb.cleandb()
+def teardown():
+    gdb.cleandb()
 
 def test_typenode_transactionality():
     class RaceModel(models.NodeModel):

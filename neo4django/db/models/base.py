@@ -1,16 +1,19 @@
 from django.db import models as dj_models
+from django.core import exceptions
 
 import neo4jrestclient.client as neo_client
 import neo4jrestclient.constants as neo_constants
 
 from neo4django.db import connections, DEFAULT_DB_ALIAS
 from neo4django.exceptions import NoSuchDatabaseError
-from neo4django.decorators import not_implemented, alters_data, transactional, not_supported
+from neo4django.decorators import not_implemented, alters_data, transactional,\
+        not_supported, memoized
 from neo4django.constants import TYPE_ATTR
 
 from manager import NodeModelManager
 
 import inspect
+import itertools
 from decorator import decorator
 from types import MethodType
 
@@ -302,53 +305,66 @@ class NodeModel(NeoModel):
                 self.index(using=using).add(TYPE_ATTR, t._type_name(), node)
         return self.__node
 
-    #TODO memoize
     @classmethod
     def _type_node(cls, using):
         conn = connections[using]
-        app_label = cls._meta.app_label
-        model_name = cls.__name__
+        name = cls.__name__
 
-        def find_type_node(app_label, model_name):
-            traversal = conn.reference_node.traverse(
-                    types=[neo_client.Outgoing.get('<<TYPE>>')],
-                    uniqueness=neo_constants.NODE_GLOBAL,
-                    stop=neo_constants.STOP_AT_END_OF_GRAPH)
-            possible_nodes = [n for n in traversal
-                                if n.get('app_label', None) == app_label and \
-                                n.get('model_name', None) == model_name]
-            if len(possible_nodes) == 0:
-                return None
-            elif len(possible_nodes) == 1:
-                return possible_nodes[0]
-            else:
-                raise ValueError("There were multiple type nodes found for the"
-                                 " app_label and model_name - looks like your "
-                                 "graph might be messed up.")
-
-        node = find_type_node(app_label, model_name)
-        if node is not None:
-            return node
+        def model_parents(cls):
+            cur_cls = cls
+            while True:
+                bases = filter(lambda c: issubclass(c, NodeModel), cur_cls.__bases__) 
+                if len(bases) > 1:
+                    raise ValueError('Multiple inheritance of NodeModels is not currently supported.')
+                elif len(bases) == 0:
+                    return
+                cur_cls = bases[0]
+                if not cur_cls._meta.abstract:
+                    yield cur_cls
         
-        node = conn.node()
-        node['app_label'] = app_label
-        node['model_name'] = model_name
-        
-        parents = [c for c in cls.__bases__
-                        if issubclass(c, NodeModel) and c is not NodeModel]
+        type_hier_props = [{'app_label':t._meta.app_label,'model_name':t.__name__}
+                           for t in itertools.chain([cls], model_parents(cls))]
+        type_hier_props = list(reversed(type_hier_props))
 
-        if len(parents)>1:
-            #XXX: only supports single inheritance right now
-            raise ValueError('Multiple inheritance of NodeModels is not currently'
-                             'supported.')
-        elif len(parents)==1:
-            parent_node = parents[0]._type_node(using)
-            parent_node.relationships.create("<<TYPE>>", node)
-            pass
-        else:
-            conn.reference_node.relationships.create("<<TYPE>>", node)
+        script = \
+        """
+        g.setMaxBufferSize(0)
+        g.startTransaction()
+        lockManager = g.getRawGraph().getConfig().getLockManager()
 
-        node['name'] = '[{0}]'.format(cls._type_name())
+        cur_vertex = g.v(0)
+        for (def type_props : types) {
+            lockManager.getReadLock(cur_vertex)
+            candidate = cur_vertex.outE('<<TYPE>>').inV.find{
+                it.map.subMap(type_props.keySet()) == type_props
+            }
+            if (candidate == null) {
+                new_type_node = g.addVertex(type_props)
+                name = type_props['app_label'] + ":" + type_props['model_name']
+                new_type_node.name = name
+                g.addEdge(cur_vertex, new_type_node, "<<TYPE>>")
+                cur_vertex = new_type_node
+            }
+            else {
+                cur_vertex = candidate
+            }
+        }
+
+        g.stopTransaction(TransactionalGraph.Conclusion.SUCCESS)
+
+        result = cur_vertex
+        """
+
+        try:
+            node = conn.extensions.GremlinPlugin.\
+                   execute_script(script, params={'types':type_hier_props})
+        except Exception, e:
+            raise RuntimeError('The type node for class %s could not be created'
+                               ' in the database.' % name, e)
+        #nodes = list(nodes)
+        #if len(nodes) != 1:
+        #    raise RuntimeError('Expected to retrieve a type node for class %s '
+        #                       'from the databse, and got %d.' % (name, len(nodes)))
         return node
 
     @classmethod

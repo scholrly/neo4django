@@ -58,4 +58,20 @@ def alters_data(func):
     func.alters_data=True
     return func
 
+@decorator
+def memoized(func, *args, **kwargs):
+    from operator import itemgetter
+    if not hasattr(func, 'cache'):
+        func.cache = {}
+    key = args + tuple(sorted(kwargs.items(), key=itemgetter(0)))
+    if key in func.cache:
+        return func.cache[key]
+    else:
+        new_val = func(*args, **kwargs)
+        try:
+            func.cache[key] = new_val
+        except TypeError:
+            #uncacheable
+            pass
+        return new_val
 
