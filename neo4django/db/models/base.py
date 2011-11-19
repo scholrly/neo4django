@@ -332,27 +332,34 @@ class NodeModel(NeoModel):
         g.startTransaction()
         lockManager = g.getRawGraph().getConfig().getLockManager()
 
-        cur_vertex = g.v(0)
-        for (def type_props : types) {
-            lockManager.getReadLock(cur_vertex)
-            candidate = cur_vertex.outE('<<TYPE>>').inV.find{
-                it.map.subMap(type_props.keySet()) == type_props
+        locked = []
+        curVertex = g.v(0)
+        for (def typeProps : types) {
+            rawVertex = curVertex.getRawVertex()
+            lockManager.getReadLock(rawVertex)
+            locked << rawVertex
+
+            candidate = curVertex.outE('<<TYPE>>').inV.find{
+                it.map.subMap(typeProps.keySet()) == typeProps
             }
             if (candidate == null) {
-                new_type_node = g.addVertex(type_props)
-                name = type_props['app_label'] + ":" + type_props['model_name']
-                new_type_node.name = name
-                g.addEdge(cur_vertex, new_type_node, "<<TYPE>>")
-                cur_vertex = new_type_node
+                newTypeNode = g.addVertex(typeProps)
+                name = typeProps['app_label'] + ":" + typeProps['model_name']
+                newTypeNode.name = name
+                g.addEdge(curVertex, newTypeNode, "<<TYPE>>")
+                curVertex = newTypeNode
             }
             else {
-                cur_vertex = candidate
+                curVertex = candidate
             }
         }
-
+        for (def lockedRes : locked) {
+            lockManager.releaseReadLock(lockedRes, null)
+        }
         g.stopTransaction(TransactionalGraph.Conclusion.SUCCESS)
 
-        result = cur_vertex
+
+        result = curVertex
         """
 
         try:
