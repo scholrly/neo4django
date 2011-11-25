@@ -110,6 +110,10 @@ def test_all():
     clone2 = Person.objects.all()
     assert clone1 is not clone2
 
+def test_queryset_str():
+    q = Person.objects.all()
+    str(q)
+
 @with_setup(setup_mice, teardown)
 def test_basic_indexed_query():
     """
