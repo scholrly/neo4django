@@ -160,6 +160,10 @@ class Query(object):
     def can_filter(self):
         return False #TODO not sure how we should handle this
 
+    def set_limits(self, start, stop):
+        #TODO will this ever be useful, given the tools the REST api gives us?
+        pass
+
     #TODO optimize query by using type info, instead of just returning the
     #proper type
     #TODO when does a returned index query of len 0 mean we're done?
