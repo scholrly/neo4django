@@ -357,6 +357,7 @@ class NodeQuerySet(QuerySet):
     def create(self, **kwargs):
         return super(NodeQuerySet, self).create(**kwargs)
 
+    #TODO would be awesome if this were transactional
     def get_or_create(self, **kwargs):
         try:
             return self.get(**kwargs)
@@ -367,9 +368,10 @@ class NodeQuerySet(QuerySet):
     def latest(self, field_name=None):
         pass
 
-    @not_implemented
+    @transactional
     def in_bulk(self, id_list):
-        pass
+        return dict((o.id, o) for o in self.model.objects.filter(id__in=id_list))
+
     
     @alters_data
     def delete(self):
