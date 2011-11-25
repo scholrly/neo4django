@@ -206,7 +206,6 @@ def test_get_by_id():
         raise AssertionError('Interesting man was returned, though has has the '
                              'wrong name.')
 
-
 @with_setup(None, teardown)
 def test_filter_exact():
     #TODO docstring
@@ -238,7 +237,7 @@ def test_filter_iexact():
 @with_setup(setup_people, teardown)
 def test_in_id():
     """
-    Tests Queryset.get() with and without filter parameters.
+    Tests Queryset.filter() with an id__in field lookup.
     """
     name = "The world's most interesting man"
     age = 150
@@ -339,4 +338,25 @@ def test_filter_date_range():
 def test_exclude_exact():
     pass
 
-#other test excludes
+#TODO other test excludes
+
+@with_setup(setup_people, teardown)
+def test_in_bulk():
+    """
+    Tests Queryset.in_bulk().
+    """
+    name = "The world's most interesting man"
+    age = 150
+    interesting_man = Person.objects.create(name=name, age=age)
+
+    boring_name = 'uninteresting man'
+    boring_age = age - 1
+    uninteresting_man = Person.objects.create(name=boring_name, age=boring_age)
+
+    Person.objects.create(age=boring_age)
+
+    people = Person.objects.in_bulk((interesting_man.id, uninteresting_man.id))
+    eq_(len(people), 2)
+    eq_(people[interesting_man.id].name, name)
+    eq_([boring_age, age], sorted(p.age for p in people.values()))
+
