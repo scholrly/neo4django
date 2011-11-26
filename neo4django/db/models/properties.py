@@ -301,17 +301,31 @@ class BoundProperty(AttrRouter):
         for key, prop in properties.items():
             index = None
             if prop.auto and values.get(key, None) is None:
-                index = prop.index(using=instance.using)
-                last_auto_nodes = list(index[prop.attname][AUTO_PROP_INDEX_VALUE])
-                if len(last_auto_nodes) > 0:
-                    last_auto_val = last_auto_nodes[0][prop.attname]
-                    #generate new value
+                type_node = prop.target._type_node(instance.using)
+                #TODO this needs to be ensured transactional (serious race here)
+                last_auto_attname = '%s.%s' % (prop.attname, AUTO_PROP_INDEX_VALUE)
+                last_auto_val = type_node.get(last_auto_attname, None)
+                if last_auto_val is not None:
                     value = prop.next_value(last_auto_val)
-                    #remove old one from index
-                    index.delete(prop.attname, AUTO_PROP_INDEX_VALUE, last_auto_nodes[0])
                 else:
                     value = prop.auto_default
-                index.add(prop.attname, AUTO_PROP_INDEX_VALUE, node)
+                #XXX if the code is interrupted between here and setting
+                #the value, there might be a problem... worst case, lost
+                #id space?
+                type_node[last_auto_attname] = value
+                    
+
+                #index = prop.index(using=instance.using)
+                #last_auto_nodes = list(index[prop.attname][AUTO_PROP_INDEX_VALUE])
+                #if len(last_auto_nodes) > 0:s
+                #    last_auto_val = last_auto_nodes[0][prop.attname]
+                #    #generate new value
+                #    value = prop.next_value(last_auto_val)
+                #    #remove old one from index
+                #    index.delete(prop.attname, AUTO_PROP_INDEX_VALUE, last_auto_nodes[0])
+                #else:
+                #    value = prop.auto_default
+                #index.add(prop.attname, AUTO_PROP_INDEX_VALUE, node)
                 values[key] = value
             if key in values:
                 value = values[key]

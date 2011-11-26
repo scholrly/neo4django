@@ -265,5 +265,5 @@ def test_auto_property():
         pass
 
     nodes = [ConcreteAutoNode.objects.create() for i in xrange(5)]
-    eq_([n.some_id for n in nodes], range(6, 11))
+    eq_([n.some_id for n in nodes], range(1, 6))
 
