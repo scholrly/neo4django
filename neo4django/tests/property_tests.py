@@ -1,6 +1,7 @@
-from nose.tools import eq_
+from nose.tools import eq_, with_setup
 
 import datetime
+import itertools
 
 def setup():
     global Person, neo4django, gdb, neo4jrestclient, neo_constants, settings, models
@@ -20,10 +21,6 @@ def test_prop():
     assert pete.name == 'Peter'
     pete.save()
     assert pete.name == 'Peter'
-
-def test_prop_defaults():
-    """Test that defaults on properly set on properties."""
-    pass
 
 def test_none_prop():
     """Confirm that `None` and null verification work properly."""
@@ -251,6 +248,7 @@ def test_prop_metadata():
     assert 'test' in meta_fields[0].meta
     eq_(meta_fields[0].meta['test'], 123)
 
+@with_setup(None, teardown)
 def test_auto_property():
     class AutoNode(models.NodeModel):
         some_id = models.AutoProperty()
@@ -267,4 +265,4 @@ def test_auto_property():
         pass
 
     nodes = [ConcreteAutoNode.objects.create() for i in xrange(5)]
-    eq_([n.some_id for n in nodes], range(1, 6))
+    eq_([n.some_id for n in nodes], range(6, 11))

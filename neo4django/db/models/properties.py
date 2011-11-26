@@ -255,8 +255,8 @@ class BoundProperty(AttrRouter):
         try:
             values = instance.__values
             for key, prop in BoundProperty._all_properties_for(instance).items(): #XXX: Might be a faster/more elegant way
-                if hasattr(prop._property, 'auto_now'):
-                    if prop._property.auto_now and prop.__attname not in values:
+                if prop.attname not in values:
+                    if getattr(prop._property, 'auto_now', False):
                         values[prop.__attname] = datetime.datetime.now() #XXX:Setting to None here sets the node's datetime to None
                         if type(prop._property) == DateProperty: #XXX:Kinda gross way to handle it :\
                             values[prop.__attname] = datetime.datetime.date(values[prop.__attname])
@@ -296,26 +296,25 @@ class BoundProperty(AttrRouter):
 
     def _save_(instance, node, node_is_new): #TODO this entire method could be transactional
         values = BoundProperty.__values_of(instance)
-        if values:
-            properties = BoundProperty._all_properties_for(instance)
-            for key, value in values.items():
-                prop = properties[key]
-                if prop.auto and value is None:
-                    index = prop.index(using=instance.using)
-                    last_auto_nodes = list(index[prop.attname][AUTO_PROP_INDEX_VALUE])
-                    if len(last_auto_nodes) > 0:
-                        last_auto_val = last_auto_nodes[0][prop.attname]
-                        #generate new value
-                        value = prop.next_value(last_auto_val)
-                        #remove old one from index
-                        index.delete(prop.attname, AUTO_PROP_INDEX_VALUE, last_auto_nodes[0])
-                    else:
-                        value = prop.auto_default
-                    old, value = prop.__set_value(instance, value)
-                    prop.index(using=instance.using).add(prop.attname, AUTO_PROP_INDEX_VALUE, node)
+        properties = BoundProperty._all_properties_for(instance)
+        for key, prop in properties.items():
+            if prop.auto and values.get(key, None) is None:
+                index = prop.index(using=instance.using)
+                last_auto_nodes = list(index[prop.attname][AUTO_PROP_INDEX_VALUE])
+                if len(last_auto_nodes) > 0:
+                    last_auto_val = last_auto_nodes[0][prop.attname]
+                    #generate new value
+                    value = prop.next_value(last_auto_val)
+                    #remove old one from index
+                    index.delete(prop.attname, AUTO_PROP_INDEX_VALUE, last_auto_nodes[0])
                 else:
-                    value = prop.pre_save(node, node_is_new, prop.name) or value
-                    old, value = prop.__set_value(instance, value)
+                    value = prop.auto_default
+                prop.index(using=instance.using).add(prop.attname, AUTO_PROP_INDEX_VALUE, node)
+                values[key] = value
+            if key in values:
+                value = values[key]
+                value = prop.pre_save(node, node_is_new, prop.name) or value
+                old, value = prop.__set_value(instance, value)
                 if prop.indexed:
                     if prop.unique:#TODO empty values? in validators.empty? # and value is not None:
                         try:
@@ -332,7 +331,7 @@ class BoundProperty(AttrRouter):
                         index.delete(prop.attname, old, node)
                     if value is not None:
                         index.add(prop.attname, prop.to_neo_index(value), node)
-            values.clear()
+        values.clear()
     NodeModel._save_properties = staticmethod(_save_) #TODO this needs to be revised. I hope there's a better way.
     del _save_
 
