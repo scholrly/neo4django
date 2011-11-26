@@ -1,3 +1,5 @@
+from nose.tools import with_setup
+
 def setup():
     global Person, neo4django, settings, gdb, models
 
@@ -90,3 +92,12 @@ def test_indexed_types():
 
     assert old_pk not in get_indexed_type_ids(SomeType), "Subtype not removed from parent index."
     assert old_pk not in get_indexed_type_ids(SomeOtherType), "Subtype not removed from parent index.."
+
+@with_setup(None, teardown)
+def test_auto_property_indexing():
+    class IndexedAutoNode(models.NodeModel):
+        some_id = models.AutoProperty(indexed=True)
+
+    nodes = [IndexedAutoNode.objects.create() for i in xrange(5)]
+    #assert all(IndexedAutoNode.index()['some_id'][IndexedAutoNode.some_id.to_neo_index(nodes[i]).id].id == nodes[i].id for i in xrange(5))
+

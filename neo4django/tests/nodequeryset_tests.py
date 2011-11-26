@@ -332,6 +332,27 @@ def test_filter_date_range():
     query = Lifetime.objects.filter(tod__gt=the_singularity)
     eq_(len(query), 2)
 
+@with_setup(None, teardown)
+def test_filter_array_member():
+    """
+    Tests the new `field__member` array membership field lookup.
+    """
+    class TooManyAccounts(Person):
+        emails = models.StringArrayProperty(indexed=True)
+
+    emails = ['test1@example.com','test2@example.com','test3@example.com']
+    p1 = TooManyAccounts.objects.create(emails=emails[:2])
+    p2 = TooManyAccounts.objects.create(emails=emails[1:])
+
+    q_1only = TooManyAccounts.objects.filter(emails__member=emails[0])
+    q_both = TooManyAccounts.objects.filter(emails__member=emails[1])
+
+    eq_(len(q_1only), 1)
+    eq_(list(q_1only)[0].id, p1)
+
+    eq_(set(p.id for p in q_1only), set((p1.id, p2.id)))
+
+
 #test isnull
 
 @with_setup(None, teardown)
@@ -359,4 +380,5 @@ def test_in_bulk():
     eq_(len(people), 2)
     eq_(people[interesting_man.id].name, name)
     eq_([boring_age, age], sorted(p.age for p in people.values()))
+
 

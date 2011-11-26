@@ -243,6 +243,7 @@ class BoundProperty(AttrRouter):
         properties[self.name] = self # XXX: weakref
 
     attname = name = property(lambda self: self.__attname)
+    target = property(lambda self: self.__class)
 
     def _property_type(self):
         return type(self._property)
@@ -298,6 +299,7 @@ class BoundProperty(AttrRouter):
         values = BoundProperty.__values_of(instance)
         properties = BoundProperty._all_properties_for(instance)
         for key, prop in properties.items():
+            index = None
             if prop.auto and values.get(key, None) is None:
                 index = prop.index(using=instance.using)
                 last_auto_nodes = list(index[prop.attname][AUTO_PROP_INDEX_VALUE])
@@ -309,16 +311,17 @@ class BoundProperty(AttrRouter):
                     index.delete(prop.attname, AUTO_PROP_INDEX_VALUE, last_auto_nodes[0])
                 else:
                     value = prop.auto_default
-                prop.index(using=instance.using).add(prop.attname, AUTO_PROP_INDEX_VALUE, node)
+                index.add(prop.attname, AUTO_PROP_INDEX_VALUE, node)
                 values[key] = value
             if key in values:
                 value = values[key]
                 value = prop.pre_save(node, node_is_new, prop.name) or value
                 old, value = prop.__set_value(instance, value)
                 if prop.indexed:
+                    index = index if index else prop.index(using=instance.using)
                     if prop.unique:#TODO empty values? in validators.empty? # and value is not None:
                         try:
-                            old_node = prop.index(using=instance.using)[prop.attname][value]
+                            old_node = index[prop.attname][value]
                         except NotFoundError, e:
                             old_node = None
                         if old_node and old_node != node:
@@ -326,7 +329,6 @@ class BoundProperty(AttrRouter):
                                 "Duplicate index entries for <%s>.%s" %
                                 (instance.__class__.__name__,
                                     prop.name))
-                    index = prop.index(using=instance.using)
                     if old is not None:
                         index.delete(prop.attname, old, node)
                     if value is not None:
