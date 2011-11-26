@@ -21,6 +21,10 @@ def test_prop():
     pete.save()
     assert pete.name == 'Peter'
 
+def test_prop_defaults():
+    """Test that defaults on properly set on properties."""
+    pass
+
 def test_none_prop():
     """Confirm that `None` and null verification work properly."""
     pete = Person()
@@ -251,4 +255,16 @@ def test_auto_property():
     class AutoNode(models.NodeModel):
         some_id = models.AutoProperty()
     nodes = [AutoNode.objects.create() for i in xrange(5)]
+    eq_([n.some_id for n in nodes], range(1, 6))
+
+    #test with an abstract parent
+    class AbstractAutoNode(models.NodeModel):
+        class Meta:
+            abstract = True
+        some_id = models.AutoProperty()
+
+    class ConcreteAutoNode(AbstractAutoNode):
+        pass
+
+    nodes = [ConcreteAutoNode.objects.create() for i in xrange(5)]
     eq_([n.some_id for n in nodes], range(1, 6))
