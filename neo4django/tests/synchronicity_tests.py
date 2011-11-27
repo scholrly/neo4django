@@ -79,4 +79,4 @@ def test_autoproperty_transactionality():
             queue.put(True)
     
     race(autorace, 3)
-    eq_(sorted(m.some_id for m in AutoRaceModel.objects.all()), range(1, 4))
+    eq_(len(set(m.some_id for m in AutoRaceModel.objects.all())), 3)
