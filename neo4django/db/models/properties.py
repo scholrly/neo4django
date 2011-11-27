@@ -339,7 +339,6 @@ class BoundProperty(AttrRouter):
                 value = conn.gremlin_tx_deadlock_proof(script, 0,
                       defaultAutoVal=prop.auto_default, lastAutoProp=last_auto_attname,
                       typeNodeID=type_node.id)
-                print value
                 #XXX if the code is interrupted between here and setting
                 #the value, there might be a problem... worst case, lost
                 #id space?
