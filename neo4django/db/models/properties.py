@@ -36,11 +36,12 @@ class Property(object):
     }
 
     def __init__(self, indexed=False, indexed_fulltext=False,
-                 indexed_range=False, has_own_index = False, unique=False,
-                 name=None, editable=True, null=True, blank=True, validators=[],
-                 choices=None, error_messages=None, required=False,
-                 serialize=True, auto=False, metadata={},
-                 auto_default=NOT_PROVIDED, default=NOT_PROVIDED, **kwargs):
+                 indexed_range=False, indexed_by_member=False,
+                 has_own_index=False, unique=False, name=None, editable=True,
+                 null=True, blank=True, validators=[], choices=None,
+                 error_messages=None, required=False, serialize=True,
+                 auto=False, metadata={}, auto_default=NOT_PROVIDED, 
+                 default=NOT_PROVIDED, **kwargs):
         if unique and not indexed:
             raise ValueError('A unique property must be indexed.')
         if auto and auto_default == NOT_PROVIDED:
@@ -49,6 +50,7 @@ class Property(object):
         self.indexed = self.db_index = indexed
         self.indexed_fulltext = indexed_fulltext
         self.indexed_range = indexed_range
+        self.indexed_by_member = indexed_by_member
         self.has_own_index = has_own_index
         self.unique = unique
         self.editable = editable
@@ -214,9 +216,11 @@ class BoundProperty(AttrRouter):
                      'db_index',
                      'indexed_fulltext',
                      'indexed_range',
+                     'indexed_by_member',
                      'unique',
                      'to_neo',
                      'to_neo_index',
+                     'member_to_neo_index',
                      'from_python',
                      'from_neo',
                      'to_python',
@@ -313,19 +317,7 @@ class BoundProperty(AttrRouter):
                 #the value, there might be a problem... worst case, lost
                 #id space?
                 type_node[last_auto_attname] = value
-                    
 
-                #index = prop.index(using=instance.using)
-                #last_auto_nodes = list(index[prop.attname][AUTO_PROP_INDEX_VALUE])
-                #if len(last_auto_nodes) > 0:s
-                #    last_auto_val = last_auto_nodes[0][prop.attname]
-                #    #generate new value
-                #    value = prop.next_value(last_auto_val)
-                #    #remove old one from index
-                #    index.delete(prop.attname, AUTO_PROP_INDEX_VALUE, last_auto_nodes[0])
-                #else:
-                #    value = prop.auto_default
-                #index.add(prop.attname, AUTO_PROP_INDEX_VALUE, node)
                 values[key] = value
             if key in values:
                 value = values[key]
@@ -344,9 +336,12 @@ class BoundProperty(AttrRouter):
                                 (instance.__class__.__name__,
                                     prop.name))
                     if old is not None:
-                        index.delete(prop.attname, old, node)
+                        index.delete(prop.attname, None, node)
                     if value is not None:
                         index.add(prop.attname, prop.to_neo_index(value), node)
+                        if prop.indexed_by_member:
+                            for m in value:
+                                index.add(prop.attname, prop.member_to_neo_index(m), node)
         values.clear()
     NodeModel._save_properties = staticmethod(_save_) #TODO this needs to be revised. I hope there's a better way.
     del _save_
@@ -639,6 +634,8 @@ class ArrayProperty(Property):
 
     default_validators = [validate_array]
 
+    member_to_neo_index = Property.to_neo_index
+
     def __init__(self, *args, **kwargs):
         """
         Keyword arguments:
@@ -646,6 +643,9 @@ class ArrayProperty(Property):
             of the sequence, or a tuple containing a list of validators and an
             error message, in that order.
         """
+        if kwargs.get('indexed', False):
+            if 'indexed_by_member' not in kwargs:
+                kwargs['indexed_by_member'] = True
         super(ArrayProperty, self).__init__(*args, **kwargs)
         per_key = 'per_element_validators'
         if per_key in kwargs:
@@ -681,3 +681,5 @@ class URLArrayProperty(StringArrayProperty):
 
 class IntArrayProperty(ArrayProperty):
     default_validators = [validate_int_array]
+
+    member_to_neo_index = IntegerProperty.to_neo_index

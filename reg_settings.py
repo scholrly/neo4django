@@ -70,7 +70,7 @@ tests=[
 	'test_queryset_str',
 	'test_in_bulk',
 	'test_auto_property_indexing',
-    'test_filter_array_member']
+	'test_filter_array_member']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
@@ -79,5 +79,4 @@ should_fail=[
 	'test_nodemodel_independence',
 	'test_url_array_property_validator',
 	'test_type_query',
-	'test_model_casting_validation',
-    'test_filter_array_member']
+	'test_model_casting_validation']

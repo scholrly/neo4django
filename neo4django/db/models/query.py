@@ -19,7 +19,7 @@ import re
 
 #python needs a bijective map... grumble... but a reg enum is fine I guess
 #only including those operators currently being implemented
-OPERATORS = Enum('EXACT', 'LT','LTE','GT','GTE','IN','RANGE')
+OPERATORS = Enum('EXACT', 'LT','LTE','GT','GTE','IN','RANGE','MEMBER')
 
 Condition = namedtuple('Condition', ['field','value','operator','negate'])
 
@@ -61,8 +61,10 @@ def q_from_condition(condition):
     q = None
     field = condition.field
     attname = field.attname
-    if condition.operator is OPERATORS.EXACT:
+    if condition.operator in (OPERATORS.EXACT, OPERATORS.MEMBER):
         q = Q(attname, field.to_neo_index(condition.value))
+    elif condition.operator is OPERATORS.MEMBER:
+        q = Q(attname, field.member_to_neo_index(condition.value))
     #FIXME OBOE with field.MAX + exrange, not sure it's easy to fix though...
     elif condition.operator in (OPERATORS.GT, OPERATORS.GTE, OPERATORS.LT,
                                 OPERATORS.LTE, OPERATORS.RANGE): 
@@ -115,6 +117,8 @@ def filter_expression_from_condition(condition):
     get_prop = end_node.getProperty(name)
     if op == OPERATORS.EXACT:
         correct_val = get_prop == val
+    elif op == OPERATORS.MEMBER:
+        correct_val = get_prop.find(J('function(m){return %s;}' % str(J('m') == val))) == 1
     elif op == OPERATORS.LT:
         correct_val = get_prop < val
     elif op == OPERATORS.LTE:
@@ -371,7 +375,6 @@ class NodeQuerySet(QuerySet):
     @transactional
     def in_bulk(self, id_list):
         return dict((o.id, o) for o in self.model.objects.filter(id__in=id_list))
-
     
     @alters_data
     def delete(self):
@@ -459,7 +462,7 @@ class NodeQuerySet(QuerySet):
         pass
 
     #TODO can defer or only do anything useful? I think so...
-    #using gremlin and some other magin in query, we might be able to swing
+    #using gremlin and some other magic in query, we might be able to swing
     #retrieving only particular fields.
 
     @not_implemented
@@ -469,7 +472,6 @@ class NodeQuerySet(QuerySet):
     @not_implemented
     def only(self, *fields):
         pass
-   
 
     ###################################
     # PUBLIC INTROSPECTION ATTRIBUTES #

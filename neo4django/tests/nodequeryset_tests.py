@@ -348,10 +348,9 @@ def test_filter_array_member():
     q_both = TooManyAccounts.objects.filter(emails__member=emails[1])
 
     eq_(len(q_1only), 1)
-    eq_(list(q_1only)[0].id, p1)
+    eq_(list(q_1only)[0].id, p1.id)
 
-    eq_(set(p.id for p in q_1only), set((p1.id, p2.id)))
-
+    eq_(set(p.id for p in q_both), set((p1.id, p2.id)))
 
 #test isnull
 
