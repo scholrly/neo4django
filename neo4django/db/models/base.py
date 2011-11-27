@@ -328,15 +328,11 @@ class NodeModel(NeoModel):
 
         script = \
         """
-        g.setMaxBufferSize(0)
-        g.startTransaction()
-        lockManager = g.getRawGraph().getConfig().getLockManager()
-
         locked = []
         curVertex = g.v(0)
         for (def typeProps : types) {
             rawVertex = curVertex.getRawVertex()
-            lockManager.getReadLock(rawVertex)
+            lockManager.getWriteLock(rawVertex)
             locked << rawVertex
 
             candidate = curVertex.outE('<<TYPE>>').inV.find{
@@ -354,17 +350,14 @@ class NodeModel(NeoModel):
             }
         }
         for (def lockedRes : locked) {
-            lockManager.releaseReadLock(lockedRes, null)
+            lockManager.releaseWriteLock(lockedRes, null)
         }
-        g.stopTransaction(TransactionalGraph.Conclusion.SUCCESS)
 
-
-        result = curVertex
+        results = curVertex
         """
 
         try:
-            node = conn.extensions.GremlinPlugin.\
-                   execute_script(script, params={'types':type_hier_props})
+            node = conn.gremlin_tx_deadlock_proof(script, 0, types=type_hier_props)
         except Exception, e:
             raise RuntimeError('The type node for class %s could not be created'
                                ' in the database.' % name, e)

@@ -29,7 +29,7 @@ def test_typenode_transactionality():
         else:
             exc_queue.put(True)
 
-    num_threads = 3
+    num_threads = 5
     for i in xrange(num_threads):
         thread = Thread(target=race)
         thread.start()
@@ -61,7 +61,7 @@ def race(func, num_threads):
     for i in xrange(num_threads):
         val = exc_queue.get()
         if val is not True:
-            raise AssertionError('There was an error running race (#%d) - "%s"' 
+            raise AssertionError('There was an error running race (#%d) - "%s"'
                                  % (i, val))
 
 @with_setup(None, teardown)

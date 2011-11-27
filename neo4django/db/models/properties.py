@@ -12,8 +12,9 @@ from django.utils.encoding import force_unicode
 from neo4jrestclient.client import NotFoundError
 
 from neo4django.decorators import transactional
-from base import NodeModel
-from relationships import Relationship
+from .base import NodeModel
+from .relationships import Relationship
+from .. import connections
 from neo4django.validators import validate_array, validate_str_array,\
         validate_int_array, ElementValidator
 from neo4django.utils import AttrRouter, write_through
@@ -235,6 +236,7 @@ class BoundProperty(AttrRouter):
                      'auto',
                      'auto_default',
                      'next_value',
+                     'next_value_gremlin',
                      'meta',
                      'MAX',
                      'MIN',
@@ -307,16 +309,40 @@ class BoundProperty(AttrRouter):
             if prop.auto and values.get(key, None) is None:
                 type_node = prop.target._type_node(instance.using)
                 #TODO this needs to be ensured transactional (serious race here)
+
+
+                
                 last_auto_attname = '%s.%s' % (prop.attname, AUTO_PROP_INDEX_VALUE)
-                last_auto_val = type_node.get(last_auto_attname, None)
-                if last_auto_val is not None:
-                    value = prop.next_value(last_auto_val)
-                else:
-                    value = prop.auto_default
+
+                script = prop.next_value_gremlin
+                script += \
+                """
+                typeNode = g.v(typeNodeID)
+                rawTypeNode = typeNode.getRawVertex()
+
+                lockManager.getWriteLock(rawTypeNode)
+
+                if (lastAutoProp in typeNode.map) {
+                    value = typeNode[lastAutoProp]
+                    value = nextValue(value)
+                }
+                else {
+                    value = defaultAutoVal
+                }
+                typeNode[lastAutoProp] = value
+
+                lockManager.releaseWriteLock(rawTypeNode, null)
+                
+                results = value
+                """
+                conn = connections[instance.using]
+                value = conn.gremlin_tx_deadlock_proof(script, 0,
+                      defaultAutoVal=prop.auto_default, lastAutoProp=last_auto_attname,
+                      typeNodeID=type_node.id)
+                print value
                 #XXX if the code is interrupted between here and setting
                 #the value, there might be a problem... worst case, lost
                 #id space?
-                type_node[last_auto_attname] = value
 
                 values[key] = value
             if key in values:
@@ -477,6 +503,19 @@ class AutoProperty(IntegerProperty):
 
     def next_value(self, old_value):
         return old_value + 1
+
+    @property
+    def next_value_gremlin(self):
+        """
+        Return a Gremlin/Groovy closure that can compute next_value()
+        server-side. The function should be named 'nextValue', and take a
+        single value as an argument to increment.
+        """
+        script = \
+        """
+        def nextValue = { i -> i + 1}
+        """
+        return script
 
 class DateProperty(Property):
     __format = '%Y-%m-%d'
