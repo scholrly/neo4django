@@ -1,4 +1,4 @@
-from nose.tools import eq_
+from nose.tools import eq_, with_setup
 
 def setup():
     global Person, neo4django, settings, gdb, models
@@ -268,3 +268,17 @@ def test_rel_string_type():
     #test proper direction
     for r in childs:
         eq_(r.start, child.node)
+
+@with_setup(None, teardown)
+def test_abstract_rel_inheritance():
+    """
+    Test that inheriting abstract relationships doesn't throw an error.
+    """
+    class ZenNode(models.NodeModel):
+        class Meta:
+            abstract = True
+        rel = models.Relationship('self',rel_type='knows')
+
+    class Pupil(ZenNode):
+        pass
+
