@@ -220,8 +220,11 @@ class NodeModel(NeoModel):
 
     @classmethod
     def index(cls, using=DEFAULT_DB_ALIAS):
-        if using in cls._indexes:
-            return cls._indexes[using]
+        if cls in cls._indexes:
+            if using in cls._indexes:
+                return cls._indexes[cls][using]
+        else:
+            cls._indexes[cls] = {}
         
         model_parents = [t for t in cls.mro() \
                             if issubclass(t, NodeModel) and t is not NodeModel]
@@ -237,11 +240,19 @@ class NodeModel(NeoModel):
         index_name = "{0}-{1}".format(
             cls._meta.app_label,
             cls.__name__,)
-        try:
-            cls._indexes[using] = index = conn.nodes.indexes.get(index_name)
-        except:
-            cls._indexes[using] = index = conn.nodes.indexes \
-                    .create(index_name, type='fulltext')
+        def get_index(name):
+            #XXX this is a hack bc of bad equality tests for indexes in
+            #neo4jrestclient
+            def _hash_(self):
+                return hash(self.url)
+            try:
+                index = conn.nodes.indexes.get(index_name)
+            except:
+                index = conn.nodes.indexes.create(index_name, type='fulltext')
+            index.__hash__ = _hash_.__get__(index, neo_client.Index)
+            return index
+        
+        cls._indexes[cls][using] = index = get_index(index_name)
         return index
 
     @property

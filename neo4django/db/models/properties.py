@@ -672,7 +672,7 @@ class ArrayProperty(Property):
 
     default_validators = [validate_array]
 
-    member_to_neo_index = Property.to_neo_index
+    member_to_neo_index = Property.to_neo_index.im_func
 
     def __init__(self, *args, **kwargs):
         """
@@ -720,4 +720,4 @@ class URLArrayProperty(StringArrayProperty):
 class IntArrayProperty(ArrayProperty):
     default_validators = [validate_int_array]
 
-    member_to_neo_index = IntegerProperty.to_neo_index
+    member_to_neo_index = IntegerProperty.to_neo_index.im_func

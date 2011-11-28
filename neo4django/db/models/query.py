@@ -40,6 +40,7 @@ def matches_condition(node, condition):
         att = None
 
     passed = (op is OPERATORS.EXACT and att == val) or \
+             (op is OPERATORS.MEMBER and val in att) or \
              (op is OPERATORS.RANGE and val[0] < att < val[1]) or \
              (op is OPERATORS.LT and att < val) or \
              (op is OPERATORS.LTE and att <= val) or \
@@ -61,7 +62,7 @@ def q_from_condition(condition):
     q = None
     field = condition.field
     attname = field.attname
-    if condition.operator in (OPERATORS.EXACT, OPERATORS.MEMBER):
+    if condition.operator is OPERATORS.EXACT:
         q = Q(attname, field.to_neo_index(condition.value))
     elif condition.operator is OPERATORS.MEMBER:
         q = Q(attname, field.member_to_neo_index(condition.value))
@@ -228,8 +229,13 @@ class Query(object):
         results = {} #TODO this could perhaps be cached - think2 about it
         filtered_results = set()
 
-        cond_by_ind = itertools.groupby(indexed, lambda c:c.field.index(using))
-        for index, group in cond_by_ind:
+        #XXX: annoying workaround bc neo4jrestclient.client.Index doesn't tell equality
+        #well/properly
+        index_by_url = dict((i.url,i) for i in (c.field.index(using) for c in indexed))
+
+        cond_by_ind = itertools.groupby(indexed, lambda c:c.field.index(using).url)
+        for index_url, group in cond_by_ind:
+            index = index_by_url[index_url]
             q = None
             for condition in group:
                 new_q = q_from_condition(condition)
@@ -245,7 +251,7 @@ class Query(object):
             #TODO also needs to match at least one type, if any have been provided
             #filter for unindexed conditions, as well
             filtered_result = set(n for n in result_set \
-                               if all(matches_condition(n, c) for c in unindexed)\
+                               if all(matches_condition(n, c) for c in conditions)\
                                   and n not in filtered_results)
             filtered_results |= filtered_result
             for r in filtered_result:
