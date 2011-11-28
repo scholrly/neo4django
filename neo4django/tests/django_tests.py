@@ -1,7 +1,10 @@
-def setup():
-    global Person, gdb
+import copy
+from nose.tools import with_setup
 
-    from neo4django.tests import Person, neo4django, gdb
+def setup():
+    global Person, gdb, models
+
+    from neo4django.tests import Person, gdb, models
 
 def teardown():
     gdb.cleandb()
@@ -18,3 +21,17 @@ def test_json_serialize():
     dave = Person()
     dave.save()
     assert json_serializer.serialize(Person.objects.all())
+
+@with_setup(None, teardown)
+def test_rel_deepcopy():
+    """
+    Test that `Relationship` instances can be copied (used elsewhere in Django).
+    """
+    class ZenNode(models.NodeModel):
+        rel = models.Relationship('self',rel_type='knows')
+
+    try:
+        [copy.deepcopy(f) for f in ZenNode._meta.fields]
+    except Exception, e:
+        raise AssertionError('Error deepcopying property.', e)
+

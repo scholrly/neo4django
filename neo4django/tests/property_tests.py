@@ -22,6 +22,9 @@ def test_prop():
     pete.save()
     assert pete.name == 'Peter'
 
+def test_prop_deepcopy():
+    pass
+
 def test_none_prop():
     """Confirm that `None` and null verification work properly."""
     pete = Person()
