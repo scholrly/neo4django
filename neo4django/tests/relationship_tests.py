@@ -272,7 +272,8 @@ def test_rel_string_type():
 @with_setup(None, teardown)
 def test_abstract_rel_inheritance():
     """
-    Test that inheriting abstract relationships doesn't throw an error.
+    Test that inheriting abstract relationships doesn't throw an error. Stems
+    from GitHub issue #37.
     """
     class ZenNode(models.NodeModel):
         class Meta:
@@ -281,4 +282,8 @@ def test_abstract_rel_inheritance():
 
     class Pupil(ZenNode):
         pass
+
+    p = Pupil.objects.create()
+    p.rel.add(p)
+    p.save()
 

@@ -20,14 +20,19 @@ class LazyModel(object):
         actors = Relationship('Actor', ...)
     """
     def __init__(self, cls, field, name, setup_reversed):
+        self.__cls = cls
+        self.__field = field
+        self.__name = name
         self.__setup_reversed = setup_reversed
         add_lazy_relation(cls, field, name, self.__setup)
+
     def __setup(self, field, target, source):
         if not issubclass(target, NodeModel):
             raise TypeError("Relationships may only extend from Nodes.")
         self.__target = target
         self.__setup_reversed(target)
     __target = None
+
     @property
     def __model(self):
         model = self.__target
@@ -35,13 +40,15 @@ class LazyModel(object):
             raise ValueError("Lazy model not initialized!")
         else:
             return model
-    def __getstate__(self):
-        try:
-            return self.__model
-        except:
-            return None
+
+    def __getinitargs__(self):
+        return (self.__cls, self.__field, self.__name, self.__setup_reversed)
+
     def __getattr__(self, attr):
+        if attr in ('__deepcopy__',) and self.__target is None:
+            raise AttributeError
         return getattr(self.__model, attr)
+
     def __call__(self, *args, **kwargs):
         return self.__model(*args, **kwargs)
 
@@ -69,17 +76,19 @@ class RelationshipBase(type):
                 'Model': Model,
             })
 
-    def __getattr__(cls, key):
-        if hasattr(cls, 'Model'):
-            return getattr(cls.Model, key)
-        else:
-            raise AttributeError(key)
-    def __setattr__(cls, key, value):
-        if hasattr(cls, 'Model'):
-            setattr(cls.Model, key, value)
-        else:
-            raise TypeError(
-                "Cannot assign attributes to base Relationship")
+    #TODO not necessary until we have relationship models, and leads to
+    #recursion bug
+    #def __getattr__(cls, key):
+    #    if hasattr(cls, 'Model'):
+    #        return getattr(cls.Model, key)
+    #    else:
+    #        raise AttributeError(key)
+    #def __setattr__(cls, key, value):
+    #    if hasattr(cls, 'Model'):
+    #        setattr(cls.Model, key, value)
+    #    else:
+    #        raise TypeError(
+    #            "Cannot assign attributes to base Relationship")
 
 class RelationshipModel(object):
     """
@@ -148,11 +157,13 @@ class Relationship(object):
         self.__ordered = preserve_ordering
         self.__meta = metadata
         self.__related_meta = rel_metadata
+
     target_model = property(lambda self: self.__target)
     ordered = property(lambda self: self.__ordered)
     meta = property(lambda self: self.__meta)
 
     __is_reversed = False
+
     def reverse(self, target, name):
         if self.direction is RELATIONSHIPS_IN:
             direction = RELATIONSHIPS_OUT
@@ -194,6 +205,15 @@ class Relationship(object):
         if not self.__is_reversed:
             bound._setup_reversed(target)
 
+    ###################
+    # SPECIAL METHODS #
+    ###################
+
+    def __getinitargs__(self):
+        return (self.__target, self.__name, self.direction, True, self.__single,
+                self.__related_single, self.reversed_name, self.__ordered,
+                self.__meta, self.__related_meta)
+
 class BoundRelationship(AttrRouter):
     indexed = False
     rel = None
@@ -222,10 +242,14 @@ class BoundRelationship(AttrRouter):
             self.__rel.reverse(self.__source,
                                 self.__attname).contribute_to_class(
                 target, self.reversed_name)
+
     attname = name = property(lambda self: self.__attname)
 
     def get_default(self):
         return None
+
+    def contribute_to_class(self, source, name):
+        return self.__rel.contribute_to_class(source, name)
 
     def _get_val_from_obj(self, obj):
         return self.__get__(obj)
@@ -298,19 +322,6 @@ class BoundRelationship(AttrRouter):
 
     creation_counter = property(lambda self:self.__rel.creation_counter)
 
-    def __cmp__(self, other):
-        return cmp(self.creation_counter, other.creation_counter)
-
-    def __get__(self, obj, cls=None):
-        if obj is None: return self
-        return self._get_relationship(obj, self._state_for(obj))
-
-    def __set__(self, obj, value):
-        self._set_relationship(obj, self._state_for(obj), value)
-
-    def __delete__(self, obj):
-        self._del_relationship(obj, self._state_for(obj))
-
     def _set_relationship(self, obj, state, value):
         if value is None: # assume initialization - ignore
             return # TODO: verify that obj is unsaved!
@@ -355,6 +366,30 @@ class BoundRelationship(AttrRouter):
     @classmethod
     def from_neo(cls, value):
         return value
+
+    ###################
+    # SPECIAL METHODS #
+    ###################
+
+    def __getinitargs__(self):
+        return (self.__rel, self.__source, self.__type, self.__attname, self.serialize)
+
+    def __cmp__(self, other):
+        return cmp(self.creation_counter, other.creation_counter)
+
+    ######################
+    # DESCRIPTOR METHODS #
+    ######################
+
+    def __get__(self, obj, cls=None):
+        if obj is None: return self
+        return self._get_relationship(obj, self._state_for(obj))
+
+    def __set__(self, obj, value):
+        self._set_relationship(obj, self._state_for(obj), value)
+
+    def __delete__(self, obj):
+        self._del_relationship(obj, self._state_for(obj))
 
 class SingleNode(BoundRelationship):
     #BoundRelationship subclass for a single node relationship without an
