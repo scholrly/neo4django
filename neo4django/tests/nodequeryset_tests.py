@@ -110,6 +110,10 @@ def test_all():
     clone2 = Person.objects.all()
     assert clone1 is not clone2
 
+    for i in xrange(50):
+        Person.objects.create()
+    eq_(len(Person.objects.all()), setup_people.num_people + 50)
+
 def test_queryset_str():
     q = Person.objects.all()
     str(q)
