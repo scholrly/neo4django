@@ -245,6 +245,8 @@ def test_rel_string_target():
         parents = models.Relationship('neo4django.Person',
                                       neo4django.Outgoing.CHILD_OF)
 
+    assert 'child_set' in (f.name for f in Person._meta.fields)
+
     child = Child()
     child.parents.add(Person.objects.create(name='Han'))
     child.parents.add(Person.objects.create(name='Leia'))
