@@ -127,14 +127,6 @@ class Relationship(object):
                  single=False, related_single=False, related_name=None,
                  preserve_ordering=False, metadata={}, rel_metadata={},
                 ):
-        if related_name is None:
-            if related_single:
-                related_name = '%ss'
-            else:
-                related_name = '%s_set'
-            related_name = related_name %\
-                    (target if isinstance(target, basestring)\
-                     else target.__name__.lower())
         if direction is Outgoing:
             direction = RELATIONSHIPS_OUT
         elif direction is Incoming:
@@ -153,7 +145,7 @@ class Relationship(object):
         self.__single = single
         self.direction = direction
         self.__related_single = related_single
-        self.reversed_name = related_name
+        self._related_name = related_name
         self.__ordered = preserve_ordering
         self.__meta = metadata
         self.__related_meta = rel_metadata
@@ -177,6 +169,24 @@ class Relationship(object):
             metadata=self.__related_meta, preserve_ordering=self.__ordered)
         relationship.__is_reversed = True
         return relationship
+
+    def reversed_name(self, target=None):
+        if self._related_name:
+            return self._related_name
+        else:
+            return self.get_name(target, self.__single)
+
+    @staticmethod
+    def get_name(target, single=False):
+        if single:
+            suffix = '%ss'
+        else:
+            suffix = '%s_set'
+        if isinstance(target, basestring):
+            name = target.rsplit('.',1)[-1]
+        else:
+            name = target.__name__
+        return suffix % name.lower()
 
     def contribute_to_class(self, source, name):
         if not issubclass(source, NodeModel):
@@ -241,7 +251,7 @@ class BoundRelationship(AttrRouter):
         if not isinstance(target, LazyModel):
             self.__rel.reverse(self.__source,
                                 self.__attname).contribute_to_class(
-                target, self.reversed_name)
+                target, self.reversed_name(self.__source))
 
     attname = name = property(lambda self: self.__attname)
 
