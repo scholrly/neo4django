@@ -19,7 +19,8 @@ import re
 
 #python needs a bijective map... grumble... but a reg enum is fine I guess
 #only including those operators currently being implemented
-OPERATORS = Enum('EXACT', 'LT','LTE','GT','GTE','IN','RANGE','MEMBER')
+OPERATORS = Enum('EXACT', 'LT','LTE','GT','GTE','IN','RANGE','MEMBER','CONTAINS',
+                 'STARTSWITH')
 
 Condition = namedtuple('Condition', ['field','value','operator','negate'])
 
@@ -46,7 +47,9 @@ def matches_condition(node, condition):
              (op is OPERATORS.LTE and att <= val) or \
              (op is OPERATORS.GT and att > val) or \
              (op is OPERATORS.GTE and att >= val) or \
-             (op is OPERATORS.IN and att in val)
+             (op is OPERATORS.IN and att in val) or \
+             (op is OPERATORS.CONTAINS and val in att) or \
+             (op is OPERATORS.STARTSWITH and att.startswith(val))
     if neg:
         passed = not passed
     return passed
@@ -64,6 +67,10 @@ def q_from_condition(condition):
     attname = field.attname
     if condition.operator is OPERATORS.EXACT:
         q = Q(attname, field.to_neo_index(condition.value))
+    elif condition.operator is OPERATORS.STARTSWITH:
+        def escape_wilds(s):
+            return str(s).replace('*','\*').replace('?','\?')
+        q = Q(attname, '*%s*' % escape_wilds(condition.value), wildcard=True)
     elif condition.operator is OPERATORS.MEMBER:
         q = Q(attname, field.member_to_neo_index(condition.value))
     #FIXME OBOE with field.MAX + exrange, not sure it's easy to fix though...
@@ -113,11 +120,15 @@ def filter_expression_from_condition(condition):
     field, val, op, neg = condition
     name = field.attname
     end_node = J('position').endNode()
-    #XXX assumption that attname is how the prop is stored
+    #XXX assumption that attname is how the prop is stored (will change with
+    #issue #30
     has_prop = end_node.hasProperty(name)
     get_prop = end_node.getProperty(name)
     if op == OPERATORS.EXACT:
         correct_val = get_prop == val
+    elif op == OPERATORS.CONTAINS:
+        correct_val = get_prop.indexOf(val) > -1
+        pass
     elif op == OPERATORS.IN:
         correct_val = J('false')
         for v in val:
@@ -134,6 +145,9 @@ def filter_expression_from_condition(condition):
         correct_val = get_prop >= val
     elif op == OPERATORS.RANGE:
         correct_val = (get_prop <= val[0]) & (get_prop >= val[1])
+    elif op == OPERATORS.STARTSWITH:
+        correct_val = get_prop.lastIndexOf(val, 0) == 0
+        pass
     else:
         raise NotImplementedError('Other operators are not yet implemented.')
     filter_exp = has_prop & correct_val

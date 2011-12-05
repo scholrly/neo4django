@@ -93,6 +93,10 @@ def setup_people():
 
 setup_people.num_people=5
 
+def setup_mice_and_people():
+    setup_mice()
+    setup_people()
+
 @with_setup(setup_people, teardown)
 def test_all():
     """
@@ -391,9 +395,22 @@ def test_in_bulk():
     eq_(people[interesting_man.id].name, name)
     eq_([boring_age, age], sorted(p.age for p in people.values()))
 
-@with_setup(setup_people, teardown)
+@with_setup(setup_mice_and_people, teardown)
 def test_contains():
-    q = Person.objects.filter(name__contains='a')
+    q1 = Person.objects.filter(name__contains='a')
 
-    eq_(len(q), 3)
-    assert all('a' in p.name for p in q)
+    eq_(len(q1), 3)
+    assert all('a' in p.name for p in q1)
+
+    q2 = IndexedMouse.objects.filter(name__contains='y')
+    eq_(len(q2), 2)
+
+@with_setup(setup_mice_and_people, teardown)
+def test_startswith():
+    q1 = Person.objects.filter(name__startswith='J')
+
+    eq_(len(q1), 2)
+    assert all(p.name.startswith('J') for p in q1)
+
+    q2 = IndexedMouse.objects.filter(name__startswith='P')
+    eq_(len(q2), 1)

@@ -73,7 +73,9 @@ tests=[
 	'test_filter_array_member',
 	'test_autoproperty_transactionality',
 	'test_abstract_rel_inheritance',
-    'test_filter_in']
+	'test_filter_in',
+	'test_contains',
+	'test_startswith']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
