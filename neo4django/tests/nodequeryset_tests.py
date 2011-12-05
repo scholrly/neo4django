@@ -391,4 +391,9 @@ def test_in_bulk():
     eq_(people[interesting_man.id].name, name)
     eq_([boring_age, age], sorted(p.age for p in people.values()))
 
+@with_setup(setup_people, teardown)
+def test_contains():
+    q = Person.objects.filter(name__contains='a')
 
+    eq_(len(q), 3)
+    assert all('a' in p.name for p in q)
