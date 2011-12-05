@@ -72,7 +72,8 @@ tests=[
 	'test_auto_property_indexing',
 	'test_filter_array_member',
 	'test_autoproperty_transactionality',
-	'test_abstract_rel_inheritance']
+	'test_abstract_rel_inheritance',
+    'test_filter_in']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
@@ -81,4 +82,5 @@ should_fail=[
 	'test_nodemodel_independence',
 	'test_url_array_property_validator',
 	'test_type_query',
-	'test_model_casting_validation']
+	'test_model_casting_validation',
+    'test_filter_in']
