@@ -135,7 +135,10 @@ They accept a slew of useful field lookups- namely
 - lt
 - gte
 - lte
-- and range
+- range
+- in
+- contains
+- and startswith
 More will be implemented soon - they're pretty easy, and a great place to contribute!
 
 QuerySets take advantage of indexed properties, typing, and REST paged traversals to get you what you want, faster.
