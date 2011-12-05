@@ -356,12 +356,12 @@ def test_filter_array_member():
 
     eq_(set(p.id for p in q_both), set((p1.id, p2.id)))
 
-@with_setup(None, teardown)
+@with_setup(setup_teens, teardown)
 def test_filter_in():
     q = Person.objects.filter(age__in=[15, 12])
-
+    
     eq_(len(q), 4)
-    assert all(lambda p:p.age in [15,12], q)
+    assert all(p.age in [15,12] for p in q)
 
 #test isnull
 

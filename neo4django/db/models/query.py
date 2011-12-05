@@ -118,6 +118,10 @@ def filter_expression_from_condition(condition):
     get_prop = end_node.getProperty(name)
     if op == OPERATORS.EXACT:
         correct_val = get_prop == val
+    elif op == OPERATORS.IN:
+        correct_val = J('false')
+        for v in val:
+            correct_val |= get_prop == v
     elif op == OPERATORS.MEMBER:
         correct_val = get_prop.find(J('function(m){return %s;}' % str(J('m') == val))) == 1
     elif op == OPERATORS.LT:
@@ -132,7 +136,6 @@ def filter_expression_from_condition(condition):
         correct_val = (get_prop <= val[0]) & (get_prop >= val[1])
     else:
         raise NotImplementedError('Other operators are not yet implemented.')
-        #TODO implement other operators
     filter_exp = has_prop & correct_val
     if neg:
         filter_exp = ~filter_exp
@@ -233,6 +236,7 @@ class Query(object):
         #well/properly
         index_by_url = dict((i.url,i) for i in (c.field.index(using) for c in indexed))
 
+        built_q = False
         cond_by_ind = itertools.groupby(indexed, lambda c:c.field.index(using).url)
         for index_url, group in cond_by_ind:
             index = index_by_url[index_url]
@@ -241,23 +245,26 @@ class Query(object):
                 new_q = q_from_condition(condition)
                 if not new_q:
                     break
+                else:
+                    built_q = True
                 if q:
                     q &= new_q
                 else:
                     q = new_q
-            result_set = set(index.query(q))
-            #TODO results is currently worthless
-            results[q] = result_set
-            #TODO also needs to match at least one type, if any have been provided
-            #filter for unindexed conditions, as well
-            filtered_result = set(n for n in result_set \
-                               if all(matches_condition(n, c) for c in conditions)\
-                                  and n not in filtered_results)
-            filtered_results |= filtered_result
-            for r in filtered_result:
-                yield r
+            if q is not None:
+                result_set = set(index.query(q))
+                #TODO results is currently worthless
+                results[q] = result_set
+                #TODO also needs to match at least one type, if any have been provided
+                #filter for unindexed conditions, as well
+                filtered_result = set(n for n in result_set \
+                                if all(matches_condition(n, c) for c in conditions)\
+                                    and n not in filtered_results)
+                filtered_results |= filtered_result
+                for r in filtered_result:
+                    yield r
 
-        if not indexed:
+        if not built_q:
             return_filter = return_filter_from_conditions(unindexed + indexed)
             rel_types = [neo4j.Outgoing.get('<<TYPE>>'),
                          neo4j.Outgoing.get('<<INSTANCE>>')]
