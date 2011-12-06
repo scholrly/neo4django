@@ -11,7 +11,7 @@ if getattr(_settings, 'NEO4DJANGO_PROFILE_REQUESTS', False):
         def _request(self, method, url, data={}, headers={}):
             from sys import stdout
             print "{0} {1}".format(method.upper(), url)
-            if isinstance(data, (dict, basestring)):
+            if isinstance(data, (dict, basestring, int)):
                 print data
             else:
                 print [d.items() for d in data]

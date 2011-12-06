@@ -367,7 +367,6 @@ class BoundProperty(AttrRouter):
                         if prop.indexed_by_member:
                             for m in value:
                                 index.add(prop.attname, prop.member_to_neo_index(m), node)
-        values.clear()
     NodeModel._save_properties = staticmethod(_save_) #TODO this needs to be revised. I hope there's a better way.
     del _save_
 
@@ -394,7 +393,9 @@ class BoundProperty(AttrRouter):
             pass
         else:
             try:
-                return self._property.from_neo(underlying[self.__propname])
+                values = BoundProperty.__values_of(instance)
+                values[self.__propname] = val = self._property.from_neo(underlying[self.__propname])
+                return val
             except: # no value set on node
                 pass
         return self.get_default() # fall through: default value
