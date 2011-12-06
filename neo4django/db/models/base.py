@@ -1,5 +1,6 @@
 from django.db import models as dj_models
 from django.core import exceptions
+from django.conf import settings
 
 import neo4jrestclient.client as neo_client
 import neo4jrestclient.constants as neo_constants
@@ -316,7 +317,7 @@ class NodeModel(NeoModel):
                 self.index(using=using).add(TYPE_ATTR, t._type_name(), node)
         return self.__node
 
-    @classmethod
+    #XXX: conditionally memoized classmethod
     def _type_node(cls, using):
         conn = connections[using]
         name = cls.__name__
@@ -377,6 +378,9 @@ class NodeModel(NeoModel):
         #    raise RuntimeError('Expected to retrieve a type node for class %s '
         #                       'from the databse, and got %d.' % (name, len(nodes)))
         return node
+    if not settings.DEBUG:
+        _type_node = memoized(_type_node)
+    _type_node = classmethod(_type_node)
 
     @classmethod
     def _all_instance_nodes(cls, using):

@@ -6,4 +6,6 @@ NEO4J_DATABASES = {
     }
 }
 
+NEO4DJANGO_PROFILE_REQUESTS = True
+
 NEO4J_DELETE_KEY = 'supersecretdebugkey!'

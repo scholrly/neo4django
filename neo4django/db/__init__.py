@@ -2,9 +2,25 @@ __all__ = ['connection', 'connections','DEFAULT_DB_ALIAS']
 
 from django.conf import settings as _settings
 from neo4jrestclient.client import GraphDatabase as _GraphDatabase
+from neo4jrestclient import client as _client
 from random import random as _random
 from time import sleep as _sleep
 
+if getattr(_settings, 'NEO4DJANGO_PROFILE_REQUESTS', False):
+    class ProfilingRequest(_client.Request):
+        def _request(self, method, url, data={}, headers={}):
+            from sys import stdout
+            print "{0} {1}".format(method.upper(), url)
+            if isinstance(data, (dict, basestring)):
+                print data
+            else:
+                print [d.items() for d in data]
+            stdout.flush()
+            return super(ProfilingRequest, self)._request(method, url,
+                                                          data=data,
+                                                          headers=headers)
+    _client.Request = ProfilingRequest
+ 
 class EnhancedGraphDatabase(_GraphDatabase):
     def gremlin(self, script, **params):
         """
