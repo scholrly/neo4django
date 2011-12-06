@@ -158,9 +158,13 @@ In you settings.py::
 Performance
 ===========
 
-We have a *long* way to go in the performance department. neo4django isn't currently taking advantage of a number of performance improvements that have recently become available in the REST client. There are a number of hotspots that could be improved by using the new batch/transactional support, and more gains could be made by abusing Javascript parameters in the REST API.
+neo4django comes with simple benchmarks that we are using to actively improve performance. Currently, query performance is fairly respectable, while creation performance is poor. In upcoming releases, performance will be improved by taking further advantage of the REST client's batch support and Cypher and Gremlin plugins.
 
-That said, we don't have benchmarks showing poor performance, either ;)
+Concurrency
+===========
+
+Because of the difficulty of transactionality over the REST API, using neo4django from multiple threads, or connecting to the same Neo4j instance from multiple servers, is not recommended. That said, we do, in fact, do this in testing environments. Hotspots like type hierarchy management are transactional, so as long as you can separate the entities being manipulated in the graph, concurrent use of neo4django is possible.
+
 
 Multiple Databases
 ==================
