@@ -564,28 +564,39 @@ class MultipleRelationships(BoundRelationshipModel): # WAIT!
         pass
 
 class RelationshipInstance(models.Manager):
+    """
+    A manager that keeps state for the many side (`MultipleNodes`) of relationships.
+    """
     def __init__(self, rel, obj):
         self.__rel = rel
         self.__obj = obj
         self._added = [] # contains domain objects
         self._removed = set() # contains relationships
+        #holds cached domain objects (that have been added or loaded by query)
+        self._cache = []
 
     ordered = property(lambda self: self.__rel.ordered)
 
     def __save__(self, node):
         #Deletes all relationships removed since last save and adds any new
         #relatonships to the database.
+
+        #TODO this should be batched
         for relationship in self._removed:
             relationship.delete()
         for obj in self._added:
-            self.__rel._create_neo_relationship(node, obj)
+            new_rel = self.__rel._create_neo_relationship(node, obj)
+            self._cache.append((new_rel, obj))
         self._removed.clear()
         self._added[:] = []
 
-    def _neo4j_relationships(self, node):
-        for rel in self.__rel._load_relationships(node, ordered=self.ordered):
-            if rel not in self._removed:
-                yield rel
+    def _neo4j_relationships_and_models(self, node):
+        if not self._cache:
+            self._cache = [(r, self.__rel._neo4j_instance(node, r)) for r in 
+                           self.__rel._load_relationships(node, ordered=self.ordered)]
+        for tup in self._cache:
+            if tup[0] not in self._removed:
+                yield tup
 
     @property
     def _new(self):
@@ -635,12 +646,13 @@ class RelationshipInstance(models.Manager):
                         raise rel.target_model.DoesNotExist("%r is not related to %r." % (obj, self.__obj))
         else:
             for obj in objs:
-                if obj in self._added:
-                    try:
+                try:
+                    if obj in self._added:
                         self._added.remove(obj)
-                    except ValueError:
-                        raise rel.target_model.DoesNotExist("%r is not related to %r." % (obj, self.__obj))
-
+                    else:
+                        self._cache.remove(obj)
+                except ValueError:
+                    raise rel.target_model.DoesNotExist("%r is not related to %r." % (obj, self.__obj))
 
     def clear(self):
         all_objs = list(self.all())
@@ -663,10 +675,10 @@ class RelationshipQuerySet(object):
         self.__rel = rel
         self.__obj = obj
 
-    def __relationships(self, node):
-        for rel in self.__inst._neo4j_relationships(node):
-            if self.__keep_relationship(rel):
-                yield rel
+    def __saved_instances(self, node):
+        for rel, item in self.__inst._neo4j_relationships_and_models(node):
+            if self.__keep_relationship(rel) and self.__keep_instance(item):
+                yield item
 
     def __iter__(self):
         removed = list(self.__inst._old)
@@ -676,12 +688,8 @@ class RelationshipQuerySet(object):
         except:
             pass
         else:
-            buffered = buffer_iterator(
-                lambda rel: (rel, self.__rel._neo4j_instance(node, rel)),
-                self.__relationships(node), size=10)
-            for rel, item in buffered:
-                if rel not in removed:
-                    yield item
+            for item in self.__saved_instances(node):
+                yield item
         for item in added:
             if self.__keep_instance(item):
                 yield item
