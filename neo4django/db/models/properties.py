@@ -260,7 +260,7 @@ class BoundProperty(AttrRouter):
     @staticmethod
     def __values_of(instance, create=True):
         try:
-            values = instance.__values
+            values = instance._prop_values
             for key, prop in BoundProperty._all_properties_for(instance).items(): #XXX: Might be a faster/more elegant way
                 if prop.attname not in values:
                     if getattr(prop._property, 'auto_now', False):
@@ -270,7 +270,7 @@ class BoundProperty(AttrRouter):
         except:
             values = {}
             if create:
-                instance.__values = values
+                instance._prop_values = values
         return values
 
     @staticmethod

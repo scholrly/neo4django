@@ -160,6 +160,28 @@ class NodeModel(NeoModel):
             raise NoSuchDatabaseError(url=neo_node.url)
 
         instance.__using = names[0]
+        
+        #TODO: this violates DRY (BoundProperty._all_properties_for...)
+        def get_props(cls):
+            meta = cls._meta
+            if hasattr(meta, '_properties'):
+                properties = meta._properties
+            else:
+                meta._properties = properties = {}
+            return properties
+
+        all_properties = {}
+        all_properties.update(get_props(cls))
+
+        for parent in cls.mro():
+            if hasattr(parent, '_meta'):
+                all_properties.update(get_props(parent))
+
+        #XXX assumes in-db name is the model attribute name, which will change after #30
+        for key in neo_node.properties:
+            if key in all_properties:
+                setattr(instance, key,
+                        all_properties[key].from_neo(neo_node.properties[key]))
 
         return instance
 
@@ -382,11 +404,6 @@ class NodeModel(NeoModel):
         _type_node = memoized(_type_node)
     _type_node = classmethod(_type_node)
 
-    @classmethod
-    def _all_instance_nodes(cls, using):
-        #return all traversed instance nodes, including subtype instances
-        #TODO!!
-        pass
 
     @classmethod
     def _type_name(cls):
