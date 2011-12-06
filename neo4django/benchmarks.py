@@ -62,12 +62,14 @@ def related_creation_benchmark():
 def get_names_benchmark():
     parents = Parent.objects.all()
     [p.name for p in parents]
+get_names_benchmark.number = 10
 
 def get_related_benchmark():
     employers = Employer.objects.all()
     for e in employers:
         for p in e.employees.all():
             p.name
+get_related_benchmark.number = 10
 
 ################
 # BENCHMARKING #
@@ -87,11 +89,13 @@ cleandb()
 benchmarks = (f for f in locals().items() 
               if isfunction(f[1]) and f[0].endswith('_benchmark'))
 for b in benchmarks:
+    num_runs = getattr(b[1], 'number', 1)
     #yes, we're using time() for now, since it's io-bound it makes sense
     start = time()
-    b[1]()
+    for i in xrange(num_runs):
+        b[1]()
     end = time()
 
-    print "'%s':%.3f" % (b[0][:-10],end-start)
+    print "'%s':%.3f" % (b[0][:-10],(end-start)/num_runs)
 
 cleandb()
