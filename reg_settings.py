@@ -75,12 +75,12 @@ tests=[
 	'test_abstract_rel_inheritance',
 	'test_filter_in',
 	'test_contains',
-	'test_startswith']
+	'test_startswith',
+	'test_datetime_auto_now_add']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
 	'test_relationship_model',
-	'test_datetime_auto_now_add',
 	'test_nodemodel_independence',
 	'test_url_array_property_validator',
 	'test_type_query',

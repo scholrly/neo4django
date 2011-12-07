@@ -261,12 +261,12 @@ class BoundProperty(AttrRouter):
     def __values_of(instance, create=True):
         try:
             values = instance._prop_values
-            for key, prop in BoundProperty._all_properties_for(instance).items(): #XXX: Might be a faster/more elegant way
-                if prop.attname not in values:
-                    if getattr(prop._property, 'auto_now', False):
-                        values[prop.__attname] = datetime.datetime.now() #XXX:Setting to None here sets the node's datetime to None
-                        if type(prop._property) == DateProperty: #XXX:Kinda gross way to handle it :\
-                            values[prop.__attname] = datetime.datetime.date(values[prop.__attname])
+            #for key, prop in BoundProperty._all_properties_for(instance).items(): #XXX: Might be a faster/more elegant way
+            #    if prop.attname not in values:
+            #        if getattr(prop._property, 'auto_now', False):
+            #            values[prop.__attname] = datetime.datetime.now() #XXX:Setting to None here sets the node's datetime to None
+            #            if type(prop._property) == DateProperty: #XXX:Kinda gross way to handle it :\
+            #                values[prop.__attname] = datetime.datetime.date(values[prop.__attname])
         except:
             values = {}
             if create:
@@ -308,9 +308,6 @@ class BoundProperty(AttrRouter):
             index = None
             if prop.auto and values.get(key, None) is None:
                 type_node = prop.target._type_node(instance.using)
-                #TODO this needs to be ensured transactional (serious race here)
-
-
                 
                 last_auto_attname = '%s.%s' % (prop.attname, AUTO_PROP_INDEX_VALUE)
 
@@ -339,7 +336,7 @@ class BoundProperty(AttrRouter):
                 value = conn.gremlin_tx_deadlock_proof(script, 0,
                       defaultAutoVal=prop.auto_default, lastAutoProp=last_auto_attname,
                       typeNodeID=type_node.id)
-                #XXX if the code is interrupted between here and setting
+                #if the code is interrupted between here and setting
                 #the value, there might be a problem... worst case, lost
                 #id space?
 
@@ -347,6 +344,7 @@ class BoundProperty(AttrRouter):
             if key in values:
                 value = values[key]
                 value = prop.pre_save(node, node_is_new, prop.name) or value
+                values[key] = value
                 old, value = prop.__set_value(instance, value)
                 if prop.indexed:
                     index = index if index else prop.index(using=instance.using)
@@ -409,7 +407,6 @@ class BoundProperty(AttrRouter):
 
     @transactional
     def __set_value(self, instance, value):
-
         underlying = getattr(instance, 'node', None) or \
                 getattr(instance, 'relationship', None)
         if not underlying:

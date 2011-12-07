@@ -105,13 +105,13 @@ def get_times(t1, t2):
     return rv
 
 def test_datetime_auto_now_add():
-    class BlogNode(models.NodeModel):
+    class BloggNode(models.NodeModel):
         title = models.Property()
         date_created = models.DateTimeProperty(auto_now_add = True)
     timediff = .6
     ##Confrim date auto sets upon creation
     time1 = datetime.datetime.now()
-    b = BlogNode(title = 'Angry birds attack buildings!')
+    b = BloggNode(title = 'Angry birds attack buildings!')
     b.save()
     test1, test2 = get_times(time1, b.date_created)
     assert abs(test1-test2) <= .6
