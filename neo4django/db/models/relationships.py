@@ -208,6 +208,9 @@ class Relationship(object):
                 Bound = MultipleNodes
             bound = Bound(self, source, self.__name or name, name)
         source._meta.add_field(bound)
+        if not hasattr(source._meta, '_relationships'):
+            source._meta._relationships = {}
+        source._meta._relationships[name] = bound
         setattr(source, name, bound)
         if isinstance(self.__target, basestring):
             self.__target = LazyModel(source, self, self.__target,
