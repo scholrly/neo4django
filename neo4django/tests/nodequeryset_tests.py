@@ -456,5 +456,5 @@ def test_select_related():
             for m in c.chases.all():
                 m.name
     t_op = time() - t_start
-    assert t_unop > t_op
+    assert (t_unop * .85) > t_op
 

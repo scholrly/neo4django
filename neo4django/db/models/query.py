@@ -460,9 +460,16 @@ class NodeQuerySet(QuerySet):
     def complex_filter(self, filter_obj):
         pass
 
-    @not_implemented
     def select_related(self, *fields, **kwargs):
-        pass
+        new_query = self.query.clone()
+        return self._clone(klass=NodeQuerySet, query=new_query)
+
+    def prefetch_related(self, *args, **kwargs):
+        """
+        Because of how Neo4j queries are built, this is just an alias for
+        select_related.
+        """
+        return self.select_related(*args, **kwargs)
 
     @not_implemented
     def dup_select_related(self, other):
