@@ -2,12 +2,15 @@ from nose.tools import with_setup, eq_
 
 from django.core import exceptions
 
+from time import time
 import sys, datetime
 stdout = sys.stdout
 
+
 def setup():
     global Person, neo4django, gdb, Query, OPERATORS, IndexedMouse, \
-            DEFAULT_DB_ALIAS, return_filter_from_conditions, Condition, models
+           DEFAULT_DB_ALIAS, return_filter_from_conditions, Condition, models,\
+           RelatedCat, RelatedDog 
 
     from neo4django.tests import Person, neo4django, gdb, models
     from neo4django.db import DEFAULT_DB_ALIAS
@@ -17,6 +20,14 @@ def setup():
     class IndexedMouse(models.NodeModel):
         name = models.StringProperty(indexed=True)
         age = models.IntegerProperty(indexed=True)
+
+    class RelatedCat(models.NodeModel):
+        name = models.StringProperty()
+        chases = models.Relationship(IndexedMouse, rel_type='chases')
+
+    class RelatedDog(models.NodeModel):
+        name = models.StringProperty()
+        chases = models.Relationship(RelatedCat, rel_type='chases')
 
 def teardown():
     gdb.cleandb()
@@ -76,10 +87,11 @@ def test_dates():
     assert other.name == 'other'
     assert paper.datetime < other.datetime
     
+mouse_names = ['jerry','Brain', 'Pinky']
+mouse_ages = [2,3,2]
 def setup_mice():
-    IndexedMouse.objects.create(name='jerry',age=2)
-    IndexedMouse.objects.create(name='Brain',age=3)
-    IndexedMouse.objects.create(name='Pinky',age=2)
+    for name, age in zip(mouse_names, mouse_ages):
+        IndexedMouse.objects.create(name=name,age=age)
 
 def make_people(names, ages):
     pairs = zip(names, ages)
@@ -414,3 +426,35 @@ def test_startswith():
 
     q2 = IndexedMouse.objects.filter(name__startswith='P')
     eq_(len(q2), 1)
+
+cat_names = ['Tom', 'Mr. Pussy-Wussy', 'Mr. Bigglesworth']
+dog_names = ['Spike','Lassie','Clifford']
+def setup_chase():
+    setup_mice()
+
+    cats = [RelatedCat.objects.create(name=n) for n in cat_names]
+    dogs = [RelatedDog.objects.create(name=n) for n in dog_names]
+
+    for c, m, d in zip( IndexedMouse.objects.all(), cats, dogs):
+        c.chases = m
+        d.chases = c
+        c.save()
+        d.save()
+
+@with_setup(setup_chase, teardown)
+def test_select_related():
+    t_start = time()
+    for d in RelatedDog.objects.all():
+        for c in d.chases.all():
+            for m in c.chases.all():
+                m.name
+    t_unop = time() - t_start
+
+    t_start = time()
+    for d in RelatedDog.objects.all().select_related(depth=2):
+        for c in d.chases.all():
+            for m in c.chases.all():
+                m.name
+    t_op = time() - t_start
+    assert t_unop > t_op
+
