@@ -15,11 +15,11 @@ The original Neo4j Django integration restricted database access to in-process. 
 Other improvements over the original integration include
 
 - A number of custom properties
-    * ``EmailProperty``
-    * ``IntegerProperty``
-    * ``DateTimeProperty``
-    * ``URLProperty``
-    * ``AutoProperty``
+   - ``EmailProperty``
+   - ``IntegerProperty``
+   - ``DateTimeProperty``
+   - ``URLProperty``
+   - ``AutoProperty``
 - Improved indexing support.
 - Index-based querying.
 - Fancier QuerySet usage.
@@ -65,7 +65,7 @@ Note that if you want to use Django auth or other packages built on the regular 
 Models
 ==========
 
-These look just like the Django models you're used to, but instead of inheriting from ``django.db.models.Model``, inherit from ``neo4django.db.models.NodeModel``::
+These look just like the Django models you're used to, but instead of inheriting from ``django.db.models.Model``, inherit from ``neo4django.db.models.NodeModel``, and use ``Property``s instead of typical fields::
 
     class Person(models.NodeModel):
         name = models.StringProperty()
@@ -88,6 +88,7 @@ Some property types can also be indexed by neo4django. This will speed up subseq
 All instances of ``EmployedPerson`` will have their ``job_title`` properties indexed.
 
 This might be a good time to mention a couple caveats.
+
 1. Properties of value ``None`` are not currently indexed. I know, I'm sorry - working on it.
 2. neo4django doesn't come with a migration tool! (Though if you're interested in writing one, talk to us!) If you flip a property to ``indexed=True``, make sure you update the graph manually, or re-index your models by resetting the property (per affected model instance) and saving.
 
@@ -126,7 +127,7 @@ You can also add a new option, ``preserve_ordering``, to the ``Relationship``. I
 QuerySets
 =========
 
-QuerySets now implement more of the `Django QuerySet API`_, like ``get_or_create``.
+QuerySets now implement more of the `Django QuerySet API`_, like ``get_or_create`` and ``in_bulk``.
 
 They accept a slew of useful field lookups- namely
 
@@ -135,7 +136,10 @@ They accept a slew of useful field lookups- namely
 - lt
 - gte
 - lte
-- and range
+- range
+- in
+- contains
+- and startswith
 More will be implemented soon - they're pretty easy, and a great place to contribute!
 
 QuerySets take advantage of indexed properties, typing, and REST paged traversals to get you what you want, faster.
@@ -154,9 +158,13 @@ In you settings.py::
 Performance
 ===========
 
-We have a *long* way to go in the performance department. neo4django isn't currently taking advantage of a number of performance improvements that have recently become available in the REST client. There are a number of hotspots that could be improved by using the new batch/transactional support, and more gains could be made by abusing Javascript parameters in the REST API.
+neo4django comes with simple benchmarks that we are using to actively improve performance. Currently, query performance is fairly respectable, while creation performance is poor. In upcoming releases, performance will be improved by taking further advantage of the REST client's batch support and Cypher and Gremlin plugins.
 
-That said, we don't have benchmarks showing poor performance, either ;)
+Concurrency
+===========
+
+Because of the difficulty of transactionality over the REST API, using neo4django from multiple threads, or connecting to the same Neo4j instance from multiple servers, is not recommended. That said, we do, in fact, do this in testing environments. Hotspots like type hierarchy management are transactional, so as long as you can separate the entities being manipulated in the graph, concurrent use of neo4django is possible.
+
 
 Multiple Databases
 ==================
