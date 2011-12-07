@@ -1,6 +1,7 @@
 
 from django.db import models
 from django.db.models.fields.related import add_lazy_relation
+from django.db.models.query_utils import DeferredAttribute
 
 from neo4django import Incoming, Outgoing
 from neo4django.db import DEFAULT_DB_ALIAS
@@ -224,7 +225,9 @@ class Relationship(object):
                 self.__related_single, self.reversed_name, self.__ordered,
                 self.__meta, self.__related_meta)
 
-class BoundRelationship(AttrRouter):
+#subclasses DeferredAttribute to avoid being set to None in
+#django.db.models.Model.__init__().
+class BoundRelationship(AttrRouter, DeferredAttribute):
     indexed = False
     rel = None
     primary_key = False
@@ -407,8 +410,7 @@ class SingleNode(BoundRelationship):
     def _get_relationship(self, obj, state):
         if self.name in state:
             changed, result = state[self.name]
-            if changed:
-                return result
+            return result
 
         if hasattr(obj, 'node'):
             this = obj.node
