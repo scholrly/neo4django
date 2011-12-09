@@ -443,6 +443,9 @@ def setup_chase():
 
 @with_setup(setup_chase, teardown)
 def test_select_related():
+    dogs = []
+    cats = []
+    mice = []
     t_start = time()
     for d in RelatedDog.objects.all():
         for c in d.chases.all():
@@ -450,11 +453,26 @@ def test_select_related():
                 m.name
     t_unop = time() - t_start
 
+    dogs = []
+    cats = []
+    mice = []
     t_start = time()
     for d in RelatedDog.objects.all().select_related(depth=2):
+        dogs.append(d)
         for c in d.chases.all():
+            cats.append(c)
             for m in c.chases.all():
+                mice.append(m)
                 m.name
     t_op = time() - t_start
+    
+    #first check correctness
+    spike = filter(lambda d: d.name == 'Spike', dogs)[0]
+    tom = filter(lambda c: c.name == 'Tom', cats)[0]
+    jerry = filter(lambda m: m.name == 'Jerry', mice)[0]
+    eq_(spike.chases, tom)
+    eq_(tom.chases, jerry)
+
+    #then check that it's faster
     assert (t_unop * .85) > t_op
 
