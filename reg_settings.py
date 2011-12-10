@@ -77,7 +77,8 @@ tests=[
 	'test_contains',
 	'test_startswith',
 	'test_datetime_auto_now_add',
-    'test_select_related']
+	'test_select_related',
+	'test_rel_query_direction']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
@@ -86,4 +87,5 @@ should_fail=[
 	'test_url_array_property_validator',
 	'test_type_query',
 	'test_model_casting_validation',
-    'test_select_related']
+	'test_select_related',
+	'test_rel_query_direction']

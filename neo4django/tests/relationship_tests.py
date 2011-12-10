@@ -289,3 +289,32 @@ def test_abstract_rel_inheritance():
     p.rel.add(p)
     p.save()
 
+@with_setup(None, teardown)
+def test_rel_query_direction():
+    """
+    Confirm GitHub issue #42, querying doesn't respect rel direction.
+    """
+    class LetterL(models.NodeModel):
+        name = models.StringProperty()
+
+    class LetterM(models.NodeModel):
+        name = models.StringProperty()
+        follows = models.Relationship(LetterL, rel_type='follows')
+
+    class LetterN(models.NodeModel):
+        name = models.StringProperty()
+        follows = models.Relationship(LetterM, rel_type='follows')
+
+    el = LetterL.objects.create(name='LLL')
+
+    m = LetterM.objects.create(name='MMM')
+    m.follows.add(el)
+    m.save()
+
+    n = LetterN.objects.create(name='NNN')
+    n.follows.add(m)
+    n.save()
+
+    eq_(len(list(m.follows.all())), 1)
+    eq_(len(list(m.lettern_set.all())), 1)
+    eq_(len(list(m.letterl_set.all())), 1)
