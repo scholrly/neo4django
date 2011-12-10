@@ -213,12 +213,13 @@ class LazyNode(neo4j.Node):
 def execute_select_related(models=None, query=None, index_name=None,
                            fields=None, max_depth=1, using=DEFAULT_DB_ALIAS):
     """
+    Retrieves select_related models and and adds them to model caches.
     """
     if models:
         model_dbs = [m.using for m in models if m.node]
         if len(set(model_dbs)) > 1:
-            #ERROR OUT
-            pass
+            raise ValueError("Models to select_related should all be from the "
+                             "same database.")
         else:
             using = model_dbs[0] if len(model_dbs) > 0 else using
 
@@ -226,21 +227,23 @@ def execute_select_related(models=None, query=None, index_name=None,
 
     if fields is None:
         if max_depth < 1:
-            "If no fields are provided for select_related, max_depth must be > 0."
-            #ERROR OUT
-            pass
+            raise ValueError("If no fields are provided for select_related, "
+                             "max_depth must be > 0.")
         if models:
             start_expr = 'node(%s)' % ','.join(str(m.id) for m in models)
+            start_depth = 1
         elif index_name and query:
-            pass
+            models = []
+            start_expr = 'node:`%s`("%s")' % (index_name, str(query).replace('"','\\"'))
+            start_depth = 0
         else:
-            #ERROR OUT
-            pass
+            raise ValueError("Either a model set or an index name and query "
+                             "need to be provided.")
         #the simple depth-only case
         cypher_query = 'START a = %s '\
-                       'MATCH p=(a-[g*1..%d]-b), pt=(t-[:`%s`]->b) '\
+                       'MATCH p=(a-[g*%d..%d]-b), pt=(t-[:`%s`]->b) '\
                        'RETURN p, b, t.name'
-        cypher_query %= (start_expr, max_depth, INSTANCE_REL)
+        cypher_query %= (start_expr, start_depth, max_depth, INSTANCE_REL)
         results = conn.cypher(cypher_query)
 
         #batch all relationships from paths (the nodes are returned as b)
@@ -260,11 +263,6 @@ def execute_select_related(models=None, query=None, index_name=None,
         #data ordered by shortest to longest path
         rows  = sorted(results['data'], key=lambda r:r[0]['length'])
         
-        if not models:
-            #INDEX CASE!!
-            #GET MODELS FROM ROWS AND SET models =
-            pass
-
         models_so_far = dict((m.id, m) for m in itertools.chain(models, rel_models))
         for r in rows:
             path = r[0]
@@ -277,12 +275,19 @@ def execute_select_related(models=None, query=None, index_name=None,
             for rel_id, node_id in itertools.izip(rel_it, node_it):
                 #make choice ab where it goes
                 rel = rels_by_id[rel_id]
+                rel.direction = neo_constants.RELATIONSHIPS_OUT if node_id == rel.end.id \
+                                else neo_constants.RELATIONSHIPS_IN
                 new_model = models_so_far[node_id]
                 field_candidates = [(k,v) for k,v in cur_m._meta._relationships.items()
-                                    if str(v.rel_type)==str(rel.type)]
-                if len(field_candidates) != 1:
-                    #ERROR OUT
-                    pass
+                                    if str(v.rel_type)==str(rel.type) and v.direction == rel.direction]
+                if len(field_candidates) < 1:
+                    raise ValueError("No model field candidate for returned "
+                                     "path - there's an error in the Cypher "
+                                     "query or your model definition.")
+                elif len(field_candidates) > 1:
+                    raise ValueError("Too many model field candidates for "
+                                     "returned path - there's an error in the "
+                                     "Cypher query or your model definition.")
                 field_name, field = field_candidates[0]
 
                 #if rel is many side
@@ -290,7 +295,8 @@ def execute_select_related(models=None, query=None, index_name=None,
                 if rel_on_model and hasattr(rel_on_model, '_cache'):
                     rel_on_model._cache.append((rel, new_model))
                     if field.ordered:
-                        rel_on_model._cache.sort(key=lambda r:r[0].properties.get(ORDER_ATTR, None))
+                        rel_on_model._cache.sort(
+                            key=lambda r:r[0].properties.get(ORDER_ATTR, None))
                 else:
                     #otherwise single side
                     field._set_cached_relationship(cur_m, new_model)
@@ -303,7 +309,8 @@ def execute_select_related(models=None, query=None, index_name=None,
         pass
 
 class Query(object):
-    def __init__(self, nodetype, conditions=tuple(), max_depth=None, select_related_fields = []):
+    def __init__(self, nodetype, conditions=tuple(), max_depth=None, 
+                 select_related_fields=[]):
         self.conditions = conditions
         self.nodetype = nodetype
         self.max_depth = max_depth
@@ -429,7 +436,7 @@ class Query(object):
                 if self.select_related:
                     sel_fields = self.select_related_fields
                     if not sel_fields: sel_fields = None
-                    execute_select_related(models=model_results,
+                    execute_select_related(index_name=index.name, query=q,
                                            fields=sel_fields,
                                            max_depth=self.max_depth)
                 for r in model_results:
