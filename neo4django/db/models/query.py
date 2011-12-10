@@ -3,11 +3,13 @@ import neo4jrestclient.constants as neo_constants
 
 from neo4django.db import DEFAULT_DB_ALIAS, connections
 from neo4django.utils import Enum, uniqify
+from neo4django.constants import ORDER_ATTR
 from neo4django.decorators import transactional, not_supported, alters_data, \
         not_implemented
 
 from django.db.models.query import QuerySet
 from django.core import exceptions
+from django.db.models.loading import get_model
 
 from lucenequerybuilder import Q
 from jexp import J
@@ -25,6 +27,26 @@ OPERATORS = Enum('EXACT', 'LT','LTE','GT','GTE','IN','RANGE','MEMBER','CONTAINS'
 Condition = namedtuple('Condition', ['field','value','operator','negate'])
 
 QUERY_CHUNK_SIZE = 10
+
+#TODO these should be moved to constants
+TYPE_REL = '<<TYPE>>'
+INSTANCE_REL = '<<INSTANCE>>'
+INTERNAL_RELATIONSHIPS = (TYPE_REL, INSTANCE_REL)
+
+##################
+# UTIL FUNCTIONS #
+##################
+
+def id_from_url(url):
+    from urlparse import urlsplit
+    from posixpath import dirname, basename
+    path = urlsplit(url).path
+    b = basename(path)
+    return int(b if b else dirname(path))
+
+######################################
+# IN-PYTHON QUERY CONDITION CHECKING #
+######################################
 
 def matches_condition(node, condition):
     """
@@ -57,6 +79,10 @@ def matches_condition(node, condition):
 def is_of_types(node, ts):
     #TODO return true if the provided node is of type t, or of a subtype of t
     return True
+
+#########################
+# QUERY CODE GENERATION #
+#########################
 
 def q_from_condition(condition):
     """
@@ -165,10 +191,124 @@ def return_filter_from_conditions(conditions):
     exprs += [(length != 0) & (last_rel.getType().name() != "<<TYPE>>")]
     return (str(reduce(and_, exprs)) if exprs else 'true') + ';'
 
+###################
+# QUERY EXECUTION #
+###################
+
+class LazyNode(neo4j.Node):
+    """
+    A version of the REST client node that doesn't update on init.
+    """
+    def __init__(self, url, dic):
+        self._dont_update = True
+        super(LazyNode, self).__init__(url, create=False)
+        self._dic = dic.copy()
+        self._dont_update = False
+
+    def update(self, *args, **kwargs):
+        if not self._dont_update:
+            super(LazyNode, self).update(*args, **kwargs)
+
+#XXX this will have to change significantly when issue #1 is worked on
+def execute_select_related(models=None, query=None, index_name=None,
+                           fields=None, max_depth=1, using=DEFAULT_DB_ALIAS):
+    """
+    """
+    if models:
+        model_dbs = [m.using for m in models if m.node]
+        if len(set(model_dbs)) > 1:
+            #ERROR OUT
+            pass
+        else:
+            using = model_dbs[0] if len(model_dbs) > 0 else using
+
+    conn = connections[using]
+
+    if fields is None:
+        if max_depth < 1:
+            "If no fields are provided for select_related, max_depth must be > 0."
+            #ERROR OUT
+            pass
+        if models:
+            start_expr = 'node(%s)' % ','.join(str(m.id) for m in models)
+        elif index_name and query:
+            pass
+        else:
+            #ERROR OUT
+            pass
+        #the simple depth-only case
+        cypher_query = 'START a = %s '\
+                       'MATCH p=(a-[g*1..%d]-b), pt=(t-[:`%s`]->b) '\
+                       'RETURN p, b, t.name'
+        cypher_query %= (start_expr, max_depth, INSTANCE_REL)
+        results = conn.cypher(cypher_query)
+
+        #batch all relationships from paths (the nodes are returned as b)
+        rels_by_id = {}
+        with conn.transaction():
+            for r in results['data']:
+                for rel_url in r[0]['relationships']:
+                    rel_id = id_from_url(rel_url)
+                    if rel_id not in rels_by_id:
+                        rels_by_id[rel_id] = conn.relationships[rel_id]
+
+        #build all the models
+        rel_models = (get_model(*t.split(':'))._neo4j_instance(n) for n, t in
+                      ((LazyNode(r[1]['self'], r[1]), r[2])
+                       for r in results['data']))
+
+        #data ordered by shortest to longest path
+        rows  = sorted(results['data'], key=lambda r:r[0]['length'])
+        
+        if not models:
+            #INDEX CASE!!
+            #GET MODELS FROM ROWS AND SET models =
+            pass
+
+        models_so_far = dict((m.id, m) for m in itertools.chain(models, rel_models))
+        for r in rows:
+            path = r[0]
+            m = models_so_far[id_from_url(path['start'])]
+
+            node_it = (id_from_url(url) for url in path['nodes'][1:])
+            rel_it = (id_from_url(url) for url in path['relationships'])
+
+            cur_m = m
+            for rel_id, node_id in itertools.izip(rel_it, node_it):
+                #make choice ab where it goes
+                rel = rels_by_id[rel_id]
+                new_model = models_so_far[node_id]
+                field_candidates = [(k,v) for k,v in cur_m._meta._relationships.items()
+                                    if str(v.rel_type)==str(rel.type)]
+                if len(field_candidates) != 1:
+                    #ERROR OUT
+                    pass
+                field_name, field = field_candidates[0]
+
+                #if rel is many side
+                rel_on_model = getattr(cur_m, field_name, None)
+                if rel_on_model and hasattr(rel_on_model, '_cache'):
+                    rel_on_model._cache.append((rel, new_model))
+                    if field.ordered:
+                        rel_on_model._cache.sort(key=lambda r:r[0].properties.get(ORDER_ATTR, None))
+                else:
+                    #otherwise single side
+                    field._set_cached_relationship(cur_m, new_model)
+                cur_m = new_model
+
+    elif fields:
+        pass
+    else:
+        #ERROR OUT
+        pass
+
 class Query(object):
-    def __init__(self, nodetype, conditions=tuple()):
+    def __init__(self, nodetype, conditions=tuple(), max_depth=None, select_related_fields = []):
         self.conditions = conditions
         self.nodetype = nodetype
+        self.max_depth = max_depth
+        self.select_related_fields = []
+        self.select_related = bool(select_related_fields) or max_depth
     
     def add(self, prop, value, operator=OPERATORS.EXACT, negate=False):
         #TODO validate, based on prop type, etc
@@ -179,12 +319,19 @@ class Query(object):
         return type(self)(self.nodetype, conditions = self.conditions +\
                           tuple([cond]))
 
+    def add_selected_related(fields):
+        self.select_related = True
+        self.select_related_fields.append(fields)
+
     def can_filter(self):
         return False #TODO not sure how we should handle this
 
     def set_limits(self, start, stop):
         #TODO will this ever be useful, given the tools the REST api gives us?
         pass
+
+    def model_from_node(self, node):
+        return self.nodetype._neo4j_instance(node)
 
     #TODO optimize query by using type info, instead of just returning the
     #proper type
@@ -214,7 +361,7 @@ class Query(object):
                 node = connections[using].nodes[int(id_val)]
                 #TODO also check type!!
                 if all(matches_condition(node, c) for c in itertools.chain(indexed, unindexed)):
-                    yield node
+                    yield self.model_from_node(node)
             except:
                 pass
             return
@@ -233,7 +380,7 @@ class Query(object):
                 #TODO also check type!!
                 for node in nodes:
                     if all(matches_condition(node, c) for c in itertools.chain(indexed, unindexed)):
-                        yield node
+                        yield self.model_from_node(node)
                 return
             else:
                 raise ValueError('Conflicting id__in lookups - the intersection'
@@ -275,7 +422,17 @@ class Query(object):
                                 if all(matches_condition(n, c) for c in conditions)\
                                     and n not in filtered_results)
                 filtered_results |= filtered_result
-                for r in filtered_result:
+                model_results = [self.model_from_node(n)
+                                 for n in filtered_result]
+                #TODO move this to the index-based select_related when it's written
+                #TODO DRY violation
+                if self.select_related:
+                    sel_fields = self.select_related_fields
+                    if not sel_fields: sel_fields = None
+                    execute_select_related(models=model_results,
+                                           fields=sel_fields,
+                                           max_depth=self.max_depth)
+                for r in model_results:
                     yield r
 
         if not built_q:
@@ -290,7 +447,16 @@ class Query(object):
                 filtered_result = set(n for n in result_set \
                                      if n not in filtered_results)
                 filtered_results |= filtered_result
-                for r in filtered_result:
+                model_results = [self.model_from_node(n)
+                                 for n in filtered_result]
+                #TODO DRY violation
+                if self.select_related:
+                    sel_fields = self.select_related_fields
+                    if not sel_fields: sel_fields = None
+                    execute_select_related(models=model_results,
+                                           fields=sel_fields,
+                                           max_depth=self.max_depth)
+                for r in model_results:
                     yield r
 
         #if there are any unindexed
@@ -319,7 +485,11 @@ class Query(object):
         #return set.intersection(*results)
 
     def clone(self):
-        return type(self)(self.nodetype, self.conditions)
+         return type(self)(self.nodetype, self.conditions, self.max_depth, self.select_related_fields)
+
+#############
+# QUERYSETS #
+#############
 
 def condition_from_kw(nodetype, keyval):
     pattern = re.compile('__+')
@@ -372,8 +542,8 @@ class NodeQuerySet(QuerySet):
 
     def iterator(self):
         using = self.db
-        for node in self.query.execute(using):
-            yield self.model._neo4j_instance(node)
+        for model in self.query.execute(using):
+            yield model
 
     @not_implemented
     def aggegrate(self, *args, **kwargs):
@@ -461,8 +631,20 @@ class NodeQuerySet(QuerySet):
         pass
 
     def select_related(self, *fields, **kwargs):
-        new_query = self.query.clone()
-        return self._clone(klass=NodeQuerySet, query=new_query)
+        """
+        Used the same way as in Django's ORM- select_related will load models
+        from the graph up-front to minimize hitting the database.
+
+        Some differences:
+            - because we're dealing with a graph database, data will typically
+            be highly connected. For this reason, depth defaults to 1.
+            - we can't offer the same single-query transactional promises that
+            Django's select_related offers, which means related objects might
+            not be consistent. As usual, doing our best with what we have.
+        """
+        if 'depth' not in kwargs and not fields:
+            kwargs['depth'] = 1
+        return super(NodeQuerySet, self).select_related(*fields, **kwargs)
 
     def prefetch_related(self, *args, **kwargs):
         """

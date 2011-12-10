@@ -143,13 +143,13 @@ def test_basic_indexed_query():
     age_query = Query(IndexedMouse).add(IndexedMouse.age, 2)
     results = list(age_query.execute(DEFAULT_DB_ALIAS))
     eq_(len(results), 2)
-    assert len([m for m in results if m['name'] == 'Brain']) == 0, "The query"\
+    assert len([m for m in results if m.name == 'Brain']) == 0, "The query"\
             " returned Brain - even though he's too old."
 
     results = list(age_query.add(IndexedMouse.name, 'jerry')\
                    .execute(DEFAULT_DB_ALIAS))
     eq_(len(results), 1)
-    assert len([m for m in results if m['name'] == 'jerry']) > 0, "The query"\
+    assert len([m for m in results if m.name == 'jerry']) > 0, "The query"\
             " didn't return jerry - wrong mouse."
 
 @with_setup(setup_mice, teardown)
@@ -161,7 +161,7 @@ def test_negated_query():
             .add(IndexedMouse.name, 'jerry', negate=True)
     results = list(query.execute(DEFAULT_DB_ALIAS))
     eq_(len(results), 1)
-    assert len([m for m in results if m['name'] == 'jerry']) == 0, "The query"\
+    assert len([m for m in results if m.name == 'jerry']) == 0, "The query"\
             " returned jerry, even though he was excluded."
 
 @with_setup(setup_people, teardown)
@@ -173,7 +173,7 @@ def test_unindexed_query():
     results = list(query.execute(DEFAULT_DB_ALIAS))
 
     eq_(len(results), 1)
-    eq_(results[0]['name'], 'Peter Pan')
+    eq_(results[0].name, 'Peter Pan')
 
 @with_setup(setup_people, teardown)
 def test_complex_query():
@@ -184,7 +184,7 @@ def test_complex_query():
     results = list(query.execute(DEFAULT_DB_ALIAS))
 
     eq_(len(results), 1)
-    eq_(results[0]['name'], 'Tinker Bell')
+    eq_(results[0].name, 'Tinker Bell')
 
 @with_setup(None, teardown)
 def test_type_query():
@@ -430,12 +430,11 @@ def test_startswith():
 cat_names = ['Tom', 'Mr. Pussy-Wussy', 'Mr. Bigglesworth']
 dog_names = ['Spike','Lassie','Clifford']
 def setup_chase():
-    setup_mice()
-
     cats = [RelatedCat.objects.create(name=n) for n in cat_names]
     dogs = [RelatedDog.objects.create(name=n) for n in dog_names]
+    mice = [IndexedMouse.objects.create(name=n) for n in mouse_names]
 
-    for c, m, d in zip( IndexedMouse.objects.all(), cats, dogs):
+    for m, c, d in zip(mice, cats, dogs):
         c.chases = m
         d.chases = c
         c.save()
@@ -443,16 +442,6 @@ def setup_chase():
 
 @with_setup(setup_chase, teardown)
 def test_select_related():
-    dogs = []
-    cats = []
-    mice = []
-    t_start = time()
-    for d in RelatedDog.objects.all():
-        for c in d.chases.all():
-            for m in c.chases.all():
-                m.name
-    t_unop = time() - t_start
-
     dogs = []
     cats = []
     mice = []
@@ -466,13 +455,10 @@ def test_select_related():
                 m.name
     t_op = time() - t_start
     
-    #first check correctness
+    #check correctness, leave performance for benchmarking
     spike = filter(lambda d: d.name == 'Spike', dogs)[0]
     tom = filter(lambda c: c.name == 'Tom', cats)[0]
-    jerry = filter(lambda m: m.name == 'Jerry', mice)[0]
-    eq_(spike.chases, tom)
-    eq_(tom.chases, jerry)
-
-    #then check that it's faster
-    assert (t_unop * .85) > t_op
+    jerry = filter(lambda m: m.name == 'jerry', mice)[0]
+    eq_(list(spike.chases.all())[0], tom)
+    eq_(list(tom.chases.all())[0], jerry)
 

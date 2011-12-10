@@ -90,6 +90,10 @@ class EnhancedGraphDatabase(_GraphDatabase):
                 raise RuntimeError('Server-side deadlock detected!')
         return ret
 
+    def cypher(self, query, **params):
+        ext = self.extensions.CypherPlugin
+        return ext.execute_query(query=query, params=params)
+
 DEFAULT_DB_ALIAS = 'default'
 
 if not _settings.NEO4J_DATABASES:

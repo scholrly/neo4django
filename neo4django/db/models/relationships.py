@@ -261,6 +261,10 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
 
     attname = name = property(lambda self: self.__attname)
 
+    @property
+    def rel_type(self):
+        return self._type
+
     def get_default(self):
         return None
 
@@ -460,18 +464,23 @@ class SingleNode(BoundRelationship):
         if not changed: return
         rels = self._load_relationships(node)
 
-
         #delete old relationship
         #create new relationship
 
         if other is None:
             #delete old relationship if it exists
             if hasattr(rels, 'single') and rels.single:
-                rels.single.delete()
+                rels.single.delete() #TODO this deletion should be transactional w creation
             rels.single = None
         else:
             rels.single = self._create_neo_relationship(node, other)
             #other._save_neo4j_node(DEFAULT_DB_ALIAS)
+
+    def _set_cached_relationship(self, obj, other):
+        state = BoundRelationship._state_for(obj)
+        if self.name in state and state[self.name]:
+            raise ValueError("Can't set the cache on an already initialized relationship!")
+        state[self.name] = False, other
 
 class BoundRelationshipModel(BoundRelationship):
     def __init__(self, rel, cls, relname, attname, Model):
@@ -580,7 +589,7 @@ class RelationshipInstance(models.Manager):
         self.__rel = rel
         self.__obj = obj
         self._added = [] # contains domain objects
-        self._removed = set() # contains relationships
+        self._removed = [] # contains relationships
         #holds cached domain objects (that have been added or loaded by query)
         self._cache = []
 
@@ -596,7 +605,7 @@ class RelationshipInstance(models.Manager):
         for obj in self._added:
             new_rel = self.__rel._create_neo_relationship(node, obj)
             self._cache.append((new_rel, obj))
-        self._removed.clear()
+        self._removed[:] = []
         self._added[:] = []
 
     def _neo4j_relationships_and_models(self, node):
@@ -647,7 +656,7 @@ class RelationshipInstance(models.Manager):
                 candidate_rels = rels_by_node[obj.node]\
                         if hasattr(o, 'node') else []
                 if candidate_rels:
-                    self._removed.add(candidate_rels.pop(0))
+                    self._removed.append(candidate_rels.pop(0))
                 else:
                     try:
                         self._added.remove(obj)
