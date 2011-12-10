@@ -442,27 +442,32 @@ def setup_chase():
 
 @with_setup(setup_chase, teardown)
 def test_select_related():
-    dogs = []
-    cats = []
-    mice = []
-    for d in RelatedDog.objects.all().select_related(depth=2):
-        dogs.append(d)
-        for c in d.chases.all():
-            cats.append(c)
-            for m in c.chases.all():
-                mice.append(m)
-                m.name
+    def check_dog_hier_from_q(queryset):
+        dogs = []
+        cats = []
+        mice = []
+        for d in queryset:
+            dogs.append(d)
+            for c in d.chases.all():
+                cats.append(c)
+                for m in c.chases.all():
+                    mice.append(m)
+                    m.name
+        
+        #check correctness, leave performance for benchmarking
+        spike = filter(lambda d: d.name == 'Spike', dogs)[0]
+        tom = filter(lambda c: c.name == 'Tom', cats)[0]
+        jerry = filter(lambda m: m.name == 'jerry', mice)[0]
+        eq_(list(spike.chases.all())[0], tom)
+        eq_(list(tom.chases.all())[0], jerry)
     
-    #check correctness, leave performance for benchmarking
-    spike = filter(lambda d: d.name == 'Spike', dogs)[0]
-    tom = filter(lambda c: c.name == 'Tom', cats)[0]
-    jerry = filter(lambda m: m.name == 'jerry', mice)[0]
-    eq_(list(spike.chases.all())[0], tom)
-    eq_(list(tom.chases.all())[0], jerry)
-    
+    check_dog_hier_from_q(RelatedDog.objects.all().select_related(depth=2))
+
     #test reverse relation with an index-based query
     jerry = IndexedMouse.objects.all().select_related().get(name='jerry')
     jerry_chasers = list(jerry.relatedcat_set.all())
     eq_(len(jerry_chasers), 1)
-    eq_(jerry_chasers[0], tom)
+    eq_(jerry_chasers[0].name, 'Tom')
     
+    #try the hierarchy with a field-based select_related
+    check_dog_hier_from_q(RelatedDog.objects.all().select_related('chases','chases__chases'))
