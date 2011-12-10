@@ -445,7 +445,6 @@ def test_select_related():
     dogs = []
     cats = []
     mice = []
-    t_start = time()
     for d in RelatedDog.objects.all().select_related(depth=2):
         dogs.append(d)
         for c in d.chases.all():
@@ -453,7 +452,6 @@ def test_select_related():
             for m in c.chases.all():
                 mice.append(m)
                 m.name
-    t_op = time() - t_start
     
     #check correctness, leave performance for benchmarking
     spike = filter(lambda d: d.name == 'Spike', dogs)[0]
@@ -461,4 +459,10 @@ def test_select_related():
     jerry = filter(lambda m: m.name == 'jerry', mice)[0]
     eq_(list(spike.chases.all())[0], tom)
     eq_(list(tom.chases.all())[0], jerry)
-
+    
+    #test reverse relation with an index-based query
+    jerry = IndexedMouse.objects.all().select_related().get(name='jerry')
+    jerry_chasers = list(jerry.relatedcat_set.all())
+    eq_(len(jerry_chasers), 1)
+    eq_(jerry_chasers[0], tom)
+    
