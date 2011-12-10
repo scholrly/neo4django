@@ -325,7 +325,11 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
     def _load_relationships(self, node):
         #Returns all neo4j relationships attached to the provided neo4j node.
         #TODO TODO we can probably trash this function with the new backend, refs 174
-        rels = node.relationships.all([self._type])
+        if self.direction is RELATIONSHIPS_OUT:
+            rel_func = node.relationships.outgoing
+        else:
+            rel_func = node.relationships.incoming
+        rels = rel_func([self._type])
         if not hasattr(self, '_relationships'):
             attrs = {}
         else:

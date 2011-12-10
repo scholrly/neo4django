@@ -317,4 +317,3 @@ def test_rel_query_direction():
 
     eq_(len(list(m.follows.all())), 1)
     eq_(len(list(m.lettern_set.all())), 1)
-    eq_(len(list(m.letterl_set.all())), 1)
