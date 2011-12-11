@@ -15,7 +15,7 @@ from lucenequerybuilder import Q
 from jexp import J
 
 from collections import namedtuple
-from operator import itemgetter as getter, and_
+from operator import and_, itemgetter
 import itertools
 import re
 
@@ -209,104 +209,167 @@ class LazyNode(neo4j.Node):
         if not self._dont_update:
             super(LazyNode, self).update(*args, **kwargs)
 
+def score_model_rel(field_name, bound_rel):
+    """
+    Scores a model's bound relationship on how likely it is to be the referrent
+    of a user's select_related field.
+    """
+    score = 0
+    if bound_rel.attname == field_name:
+        score += 1
+    if bound_rel.rel_type == field_name:
+        score += .5
+    return score
+
+def cypher_rel_str(rel_type, rel_dir):
+    dir_strings = ('<-%s-','-%s->')
+    out = neo_constants.RELATIONSHIPS_OUT
+    return dir_strings[rel_dir==out]%('[:`%s`]' % rel_type)
+
+def cypher_match_from_fields(nodetype, fields):
+    #TODO docstring
+    matches = []
+    for i, f in enumerate(fields):
+        rel_matches = []
+        cur_m = nodetype
+        for step in f.split('__'):
+            candidates_on_models = list(
+                reversed(sorted(s for s in 
+                                ((score_model_rel(step,r),r) for _,r in 
+                                 nodetype._meta._relationships.items()) if s > 0)))
+            choice = candidates_on_models[0]
+            rel_matches.append(cypher_rel_str(choice[1].rel_type, choice[1].direction))
+        matches.append('p%d=(s%d%sr%d)'  %(i, i, '()'.join(rel_matches), i))
+        matches.append('pt%d=(t%d-[:`%s`]->r%d)' % (i, i, INSTANCE_REL, i))
+    return matches
+
 #XXX this will have to change significantly when issue #1 is worked on
+#TODO this can be broken into retrieval and rebuilding functions
 def execute_select_related(models=None, query=None, index_name=None,
-                           fields=None, max_depth=1, using=DEFAULT_DB_ALIAS):
+                           fields=None, max_depth=1, model_type=None,
+                           using=DEFAULT_DB_ALIAS):
     """
     Retrieves select_related models and and adds them to model caches.
     """
     if models:
+        #infer the database we're using
         model_dbs = [m.using for m in models if m.node]
         if len(set(model_dbs)) > 1:
             raise ValueError("Models to select_related should all be from the "
                              "same database.")
         else:
             using = model_dbs[0] if len(model_dbs) > 0 else using
+        #infer the model type
+        if model_type is None:
+            model_type = type(models[0])
+
+        start_expr = 'node(%s)' % ','.join(str(m.id) for m in models)
+        start_depth = 1
+    elif index_name and query:
+        if model_type is None:
+            raise ValueError("Must provide a model_type if using select_related"
+                             " with an index query.")
+        models = []
+        start_expr = 'node:`%s`("%s")' % (index_name, str(query).replace('"','\\"'))
+        start_depth = 0
+    else:
+        raise ValueError("Either a model set or an index name and query "
+                            "need to be provided.")
 
     conn = connections[using]
 
     if fields is None:
         if max_depth < 1:
             raise ValueError("If no fields are provided for select_related, "
-                             "max_depth must be > 0.")
-        if models:
-            start_expr = 'node(%s)' % ','.join(str(m.id) for m in models)
-            start_depth = 1
-        elif index_name and query:
-            models = []
-            start_expr = 'node:`%s`("%s")' % (index_name, str(query).replace('"','\\"'))
-            start_depth = 0
-        else:
-            raise ValueError("Either a model set or an index name and query "
-                             "need to be provided.")
+                                "max_depth must be > 0.")
         #the simple depth-only case
-        cypher_query = 'START a = %s '\
-                       'MATCH p=(a-[g*%d..%d]-b), pt=(t-[:`%s`]->b) '\
-                       'RETURN p, b, t.name'
+        cypher_query = 'START s1 = %s '\
+                       'MATCH p1=(s1-[g*%d..%d]-r1), pt1=(t1-[:`%s`]->r1) '\
+                       'RETURN p1, r1, t1.name'
         cypher_query %= (start_expr, start_depth, max_depth, INSTANCE_REL)
         results = conn.cypher(cypher_query)
-
-        #batch all relationships from paths (the nodes are returned as b)
-        rels_by_id = {}
-        with conn.transaction():
-            for r in results['data']:
-                for rel_url in r[0]['relationships']:
-                    rel_id = id_from_url(rel_url)
-                    if rel_id not in rels_by_id:
-                        rels_by_id[rel_id] = conn.relationships[rel_id]
-
-        #build all the models
-        rel_models = (get_model(*t.split(':'))._neo4j_instance(n) for n, t in
-                      ((LazyNode(r[1]['self'], r[1]), r[2])
-                       for r in results['data']))
-
-        #data ordered by shortest to longest path
-        rows  = sorted(results['data'], key=lambda r:r[0]['length'])
-        
-        models_so_far = dict((m.id, m) for m in itertools.chain(models, rel_models))
-        for r in rows:
-            path = r[0]
-            m = models_so_far[id_from_url(path['start'])]
-
-            node_it = (id_from_url(url) for url in path['nodes'][1:])
-            rel_it = (id_from_url(url) for url in path['relationships'])
-
-            cur_m = m
-            for rel_id, node_id in itertools.izip(rel_it, node_it):
-                #make choice ab where it goes
-                rel = rels_by_id[rel_id]
-                rel.direction = neo_constants.RELATIONSHIPS_OUT if node_id == rel.end.id \
-                                else neo_constants.RELATIONSHIPS_IN
-                new_model = models_so_far[node_id]
-                field_candidates = [(k,v) for k,v in cur_m._meta._relationships.items()
-                                    if str(v.rel_type)==str(rel.type) and v.direction == rel.direction]
-                if len(field_candidates) < 1:
-                    raise ValueError("No model field candidate for returned "
-                                     "path - there's an error in the Cypher "
-                                     "query or your model definition.")
-                elif len(field_candidates) > 1:
-                    raise ValueError("Too many model field candidates for "
-                                     "returned path - there's an error in the "
-                                     "Cypher query or your model definition.")
-                field_name, field = field_candidates[0]
-
-                #if rel is many side
-                rel_on_model = getattr(cur_m, field_name, None)
-                if rel_on_model and hasattr(rel_on_model, '_cache'):
-                    rel_on_model._cache.append((rel, new_model))
-                    if field.ordered:
-                        rel_on_model._cache.sort(
-                            key=lambda r:r[0].properties.get(ORDER_ATTR, None))
-                else:
-                    #otherwise single side
-                    field._set_cached_relationship(cur_m, new_model)
-                cur_m = new_model
-
     elif fields:
-        pass
+        #get a new start point for each field
+        starts = ['s%d=%s' % (i, start_expr) for i in xrange(len(fields))]
+        #build a match pattern + type check for each field
+        match_expr = ', '.join(cypher_match_from_fields(model_type, fields))
+        return_expr = ', '.join('p%d, r%d, t%d.name' % (i,i,i)
+                                for i in xrange(len(fields)))
+        cypher_query = 'START %s '\
+                       'MATCH %s '\
+                       'RETURN %s'
+        cypher_query %= (', '.join(starts), match_expr, return_expr)
+        results = conn.cypher(cypher_query)
+
     else:
-        #ERROR OUT
-        pass
+        raise ValueError("Either a fielf list of max_depth must be provided "
+                         "for select_related.") #TODO
+
+    def get_columns(column_name_pred, table):
+        columns = [i for i,c in enumerate(table['columns']) if column_name_pred(c)]
+        col_getter = itemgetter(*columns)
+        return itertools.chain(*(rc if isinstance(rc, tuple) else (rc,)
+                                 for rc in (col_getter(r)
+                                            for r in table['data'])))
+    paths = sorted(get_columns(lambda c:c.startswith('p'), results), key=lambda p:p['length'])
+    nodes = get_columns(lambda c:c.startswith('r'), results)
+    types = get_columns(lambda c:c.startswith('t'), results)
+
+    #batch all relationships from paths
+    rels_by_id = {}
+    with conn.transaction():
+        for p in paths:
+            for rel_url in p['relationships']:
+                rel_id = id_from_url(rel_url)
+                if rel_id not in rels_by_id:
+                    rels_by_id[rel_id] = conn.relationships[rel_id]
+
+    #build all the models
+    rel_models = (get_model(*t.split(':'))._neo4j_instance(n) for n, t in
+                    ((LazyNode(r[0]['self'], r[0]), r[1])
+                    for r in itertools.izip(nodes, types)))
+
+    models_so_far = dict((m.id, m) for m in itertools.chain(models, rel_models))
+
+    #paths ordered by shortest to longest
+    paths = sorted(paths, key=lambda v:v['length'])
+    
+    for path in paths:
+        m = models_so_far[id_from_url(path['start'])]
+
+        node_it = (id_from_url(url) for url in path['nodes'][1:])
+        rel_it = (id_from_url(url) for url in path['relationships'])
+
+        cur_m = m
+        for rel_id, node_id in itertools.izip(rel_it, node_it):
+            #make choice ab where it goes
+            rel = rels_by_id[rel_id]
+            rel.direction = neo_constants.RELATIONSHIPS_OUT if node_id == rel.end.id \
+                            else neo_constants.RELATIONSHIPS_IN
+            new_model = models_so_far[node_id]
+            field_candidates = [(k,v) for k,v in cur_m._meta._relationships.items()
+                                if str(v.rel_type)==str(rel.type) and v.direction == rel.direction]
+            if len(field_candidates) < 1:
+                raise ValueError("No model field candidate for returned "
+                                    "path - there's an error in the Cypher "
+                                    "query or your model definition.")
+            elif len(field_candidates) > 1:
+                raise ValueError("Too many model field candidates for "
+                                    "returned path - there's an error in the "
+                                    "Cypher query or your model definition.")
+            field_name, field = field_candidates[0]
+
+            #if rel is many side
+            rel_on_model = getattr(cur_m, field_name, None)
+            if rel_on_model and hasattr(rel_on_model, '_cache'):
+                rel_on_model._cache.append((rel, new_model))
+                if field.ordered:
+                    rel_on_model._cache.sort(
+                        key=lambda r:r[0].properties.get(ORDER_ATTR, None))
+            else:
+                #otherwise single side
+                field._set_cached_relationship(cur_m, new_model)
+            cur_m = new_model
 
 class Query(object):
     def __init__(self, nodetype, conditions=tuple(), max_depth=None, 
@@ -326,9 +389,9 @@ class Query(object):
         return type(self)(self.nodetype, conditions = self.conditions +\
                           tuple([cond]))
 
-    def add_selected_related(fields):
+    def add_select_related(self, fields):
         self.select_related = True
-        self.select_related_fields.append(fields)
+        self.select_related_fields.extend(fields)
 
     def can_filter(self):
         return False #TODO not sure how we should handle this
@@ -431,14 +494,15 @@ class Query(object):
                 filtered_results |= filtered_result
                 model_results = [self.model_from_node(n)
                                  for n in filtered_result]
-                #TODO move this to the index-based select_related when it's written
                 #TODO DRY violation
                 if self.select_related:
                     sel_fields = self.select_related_fields
                     if not sel_fields: sel_fields = None
                     execute_select_related(index_name=index.name, query=q,
                                            fields=sel_fields,
-                                           max_depth=self.max_depth)
+                                           max_depth=self.max_depth,
+                                           model_type=self.nodetype
+                                          )
                 for r in model_results:
                     yield r
 
