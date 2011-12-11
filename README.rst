@@ -127,7 +127,7 @@ You can also add a new option, ``preserve_ordering``, to the ``Relationship``. I
 QuerySets
 =========
 
-QuerySets now implement more of the `Django QuerySet API`_, like ``get_or_create`` and ``in_bulk``.
+QuerySets now implement more of the `Django QuerySet API`_, like ``get_or_create``, ``in_bulk``, and ``select_related``.
 
 They accept a slew of useful field lookups- namely
 
@@ -140,6 +140,7 @@ They accept a slew of useful field lookups- namely
 - in
 - contains
 - and startswith
+
 More will be implemented soon - they're pretty easy, and a great place to contribute!
 
 QuerySets take advantage of indexed properties, typing, and REST paged traversals to get you what you want, faster.
@@ -160,6 +161,18 @@ Performance
 
 neo4django comes with simple benchmarks that we are using to actively improve performance. Currently, query performance is fairly respectable, while creation performance is poor. In upcoming releases, performance will be improved by taking further advantage of the REST client's batch support and Cypher and Gremlin plugins.
 
+To make querying even more performant, we've implemented `select_related`_. The implementation works just like Django's, without the restrictions on relationship types, and with the additional default of ``depth=1``- this is a graph database, after all, and an infinite select_related could very well include the whole graph!
+
+To use ``select_related``, call it on a ``NodeQuerySet`` with either a max depth or a brand of field lookups described in the docs_::
+
+    Person.objects.all(name='Jack').select_related(depth=5)
+    #OR
+    Person.objects.get(name='Jack').select_related('spouse__mother__sister__son__stepdad')
+
+...either of which will pre-load Jack's extended family so he can go about recalling names :)
+
+.. _select_related: https://docs.djangoproject.com/en/dev/ref/models/querysets/#select-related
+.. _docs: https://docs.djangoproject.com/en/dev/ref/models/querysets/#select-related
 Concurrency
 ===========
 
