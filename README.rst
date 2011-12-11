@@ -14,7 +14,7 @@ The original Neo4j Django integration restricted database access to in-process. 
 
 Other improvements over the original integration include
 
-- A number of custom properties
+- A number of custom properties.
    - ``EmailProperty``
    - ``IntegerProperty``
    - ``DateTimeProperty``
@@ -140,6 +140,8 @@ They accept a slew of useful field lookups- namely
 - in
 - contains
 - and startswith
+
+We've also added a new field lookup - "member" - to allow exact queries against elements inside an array.
 
 More will be implemented soon - they're pretty easy, and a great place to contribute!
 
