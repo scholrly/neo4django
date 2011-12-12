@@ -15,7 +15,7 @@ from lucenequerybuilder import Q
 from jexp import J
 
 from collections import namedtuple
-from operator import and_, itemgetter
+from operator import and_, itemgetter, or_
 import itertools
 import re
 
@@ -24,7 +24,19 @@ import re
 OPERATORS = Enum('EXACT', 'LT','LTE','GT','GTE','IN','RANGE','MEMBER','CONTAINS',
                  'STARTSWITH', 'MEMBER_IN')
 
-Condition = namedtuple('Condition', ['field','value','operator','negate'])
+ConditionTuple = namedtuple('ConditionTuple', ['field','value','operator','negate'])
+class Condition(ConditionTuple):
+    def __init__(self, *args, **kwargs):
+        if 'value' in kwargs:
+            if isinstance(kwargs['value'], list):
+                kwargs['value'] = tuple(kwargs['value'])
+        else:
+            if len(args) > 1:
+                if isinstance(args[1], list):
+                    args[1] = tuple(args[1])
+            pass
+        super(Condition, self).__init__( *args, **kwargs)
+
 
 QUERY_CHUNK_SIZE = 10
 
@@ -101,13 +113,9 @@ def q_from_condition(condition):
     elif condition.operator is OPERATORS.MEMBER:
         q = Q(attname, field.member_to_neo_index(condition.value))
     elif condition.operator is OPERATORS.IN:
-        q = Q(attname, field.to_neo_index(condition.value[0]))
-        for v in condition.value[1:]:
-            q |= Q(attname, field.to_neo_index(v))
+        q = reduce(or_, (Q(attname, field.to_neo_index(v)) for v in condition.value))
     elif condition.operator is OPERATORS.MEMBER_IN:
-        q = Q(attname, field.to_neo_index(condition.value[0]))
-        for v in condition.value[1:]:
-            q |= Q(attname, field.member_to_neo_index(v))
+        q = reduce(or_, (Q(attname, field.member_to_neo_index(v)) for v in condition.value))
     #FIXME OBOE with field.MAX + exrange, not sure it's easy to fix though...
     elif condition.operator in (OPERATORS.GT, OPERATORS.GTE, OPERATORS.LT,
                                 OPERATORS.LTE, OPERATORS.RANGE): 
@@ -316,7 +324,7 @@ def execute_select_related(models=None, query=None, index_name=None,
         results = conn.cypher(cypher_query)
 
     else:
-        raise ValueError("Either a fielf list of max_depth must be provided "
+        raise ValueError("Either a field list of max_depth must be provided "
                          "for select_related.") #TODO
 
     def get_columns(column_name_pred, table):
@@ -394,7 +402,12 @@ class Query(object):
         self.max_depth = max_depth
         self.select_related_fields = []
         self.select_related = bool(select_related_fields) or max_depth
-    
+
+    def add(self, prop, value, operator=OPERATORS.EXACT, negate=False):
+    #TODO validate, based on prop type, etc
+        return type(self)(self.nodetype, conditions = self.conditions +\
+                          (Condition(prop, value, operator, negate),))
+
     def add_cond(self, cond):
         return type(self)(self.nodetype, conditions = self.conditions +\
                           tuple([cond]))
