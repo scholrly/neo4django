@@ -379,6 +379,26 @@ def test_filter_in():
     eq_(len(q), 4)
     assert all(p.age in [15,12] for p in q)
 
+@with_setup(None, teardown)
+def test_filter_array_member_in():
+    """
+    Tests the `field__member_in` array membership field lookup.
+    """
+    class TooManyAccounts(Person):
+        emails = models.StringArrayProperty(indexed=True)
+
+    emails = ['test1@example.com','test2@example.com','test3@example.com']
+    p1 = TooManyAccounts.objects.create(emails=emails[:2])
+    p2 = TooManyAccounts.objects.create(emails=emails[1:])
+
+    q_1only = TooManyAccounts.objects.filter(emails__member_in=[emails[0]])
+    q_both = TooManyAccounts.objects.filter(emails__member_in=emails)
+
+    eq_(len(q_1only), 1)
+    eq_(list(q_1only)[0].id, p1.id)
+
+    eq_(set(p.id for p in q_both), set((p1.id, p2.id)))
+
 #test isnull
 
 @with_setup(None, teardown)

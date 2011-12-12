@@ -78,7 +78,8 @@ tests=[
 	'test_startswith',
 	'test_datetime_auto_now_add',
 	'test_select_related',
-	'test_rel_query_direction']
+	'test_rel_query_direction',
+	'test_filter_array_member_in']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',

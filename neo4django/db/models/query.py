@@ -22,7 +22,7 @@ import re
 #python needs a bijective map... grumble... but a reg enum is fine I guess
 #only including those operators currently being implemented
 OPERATORS = Enum('EXACT', 'LT','LTE','GT','GTE','IN','RANGE','MEMBER','CONTAINS',
-                 'STARTSWITH')
+                 'STARTSWITH', 'MEMBER_IN')
 
 Condition = namedtuple('Condition', ['field','value','operator','negate'])
 
@@ -70,6 +70,7 @@ def matches_condition(node, condition):
              (op is OPERATORS.GT and att > val) or \
              (op is OPERATORS.GTE and att >= val) or \
              (op is OPERATORS.IN and att in val) or \
+             (op is OPERATORS.MEMBER_IN and any(a in val for a in att)) or \
              (op is OPERATORS.CONTAINS and val in att) or \
              (op is OPERATORS.STARTSWITH and att.startswith(val))
     if neg:
@@ -99,6 +100,14 @@ def q_from_condition(condition):
         q = Q(attname, '*%s*' % escape_wilds(condition.value), wildcard=True)
     elif condition.operator is OPERATORS.MEMBER:
         q = Q(attname, field.member_to_neo_index(condition.value))
+    elif condition.operator is OPERATORS.IN:
+        q = Q(attname, field.to_neo_index(condition.value[0]))
+        for v in condition.value[1:]:
+            q |= Q(attname, field.to_neo_index(v))
+    elif condition.operator is OPERATORS.MEMBER_IN:
+        q = Q(attname, field.to_neo_index(condition.value[0]))
+        for v in condition.value[1:]:
+            q |= Q(attname, field.member_to_neo_index(v))
     #FIXME OBOE with field.MAX + exrange, not sure it's easy to fix though...
     elif condition.operator in (OPERATORS.GT, OPERATORS.GTE, OPERATORS.LT,
                                 OPERATORS.LTE, OPERATORS.RANGE): 
@@ -161,6 +170,11 @@ def filter_expression_from_condition(condition):
             correct_val |= get_prop == v
     elif op == OPERATORS.MEMBER:
         correct_val = get_prop.find(J('function(m){return %s;}' % str(J('m') == val))) == 1
+    elif op == OPERATORS.MEMBER_IN:
+        member_in = J('false')
+        for v in val:
+            member_in |= J('m') == v
+        correct_val = get_prop.find(J('function(m){return %s;}' % str(member_in))) == 1
     elif op == OPERATORS.LT:
         correct_val = get_prop < val
     elif op == OPERATORS.LTE:
@@ -380,11 +394,6 @@ class Query(object):
         self.select_related_fields = []
         self.select_related = bool(select_related_fields) or max_depth
     
-    def add(self, prop, value, operator=OPERATORS.EXACT, negate=False):
-        #TODO validate, based on prop type, etc
-        return type(self)(self.nodetype, conditions = self.conditions +\
-                          (Condition(prop, value, operator, negate),))
-
     def add_cond(self, cond):
         return type(self)(self.nodetype, conditions = self.conditions +\
                           tuple([cond]))
@@ -578,7 +587,7 @@ def condition_from_kw(nodetype, keyval):
     attname = terms[0]
     field = getattr(nodetype, attname)
     
-    if op in (OPERATORS.RANGE, OPERATORS.IN):
+    if op in (OPERATORS.RANGE, OPERATORS.IN, OPERATORS.MEMBER_IN):
         return Condition(field, tuple([field.to_neo(v) for v in keyval[1]]), op, False)
     else:
         return Condition(field, field.to_neo(keyval[1]), op, False)
