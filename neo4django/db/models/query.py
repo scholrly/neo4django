@@ -338,10 +338,11 @@ def execute_select_related(models=None, query=None, index_name=None,
                 if rel_id not in rels_by_id:
                     rels_by_id[rel_id] = conn.relationships[rel_id]
 
-    #build all the models
-    rel_models = (get_model(*t.split(':'))._neo4j_instance(n) for n, t in
-                    ((LazyNode(r[0]['self'], r[0]), r[1])
-                    for r in itertools.izip(nodes, types)))
+    #build all the models, ignoring types that django hasn't loaded
+    rel_nodes_types= ((n, get_model(*t.split(':'))) for n, t in
+                      ((LazyNode(r[0]['self'], r[0]), r[1])
+                      for r in itertools.izip(nodes, types)))
+    rel_models = (t._neo4j_instance(n) for n, t in rel_nodes_types if t is not None)
 
     models_so_far = dict((m.id, m) for m in itertools.chain(models, rel_models))
 
