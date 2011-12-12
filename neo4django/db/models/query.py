@@ -33,8 +33,8 @@ class Condition(ConditionTuple):
         else:
             if len(args) > 1:
                 if isinstance(args[1], list):
+                    args = list(args)
                     args[1] = tuple(args[1])
-            pass
         super(Condition, self).__init__( *args, **kwargs)
 
 
