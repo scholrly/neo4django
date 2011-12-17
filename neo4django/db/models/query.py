@@ -69,7 +69,7 @@ def matches_condition(node, condition):
     #if this is an id field, the value should be the id
     if getattr(field, 'id', None):
         att = node.id
-    elif node.get(field.attname, None):
+    elif node.get(field.attname, None) is not None:
         att = node[field.attname]
     else:
         att = None
@@ -159,14 +159,14 @@ def q_from_condition(condition):
         q = ~q
     return q
 
-def filter_expression_from_condition(condition):
+def js_expression_from_condition(condition, js_node):
     field, val, op, neg = condition
     name = field.attname
-    end_node = J('position').endNode()
+
     #XXX assumption that attname is how the prop is stored (will change with
     #issue #30
-    has_prop = end_node.hasProperty(name)
-    get_prop = end_node.getProperty(name)
+    has_prop = js_node.hasProperty(name)
+    get_prop = js_node.getProperty(name)
     if op == OPERATORS.EXACT:
         correct_val = get_prop == val
     elif op == OPERATORS.CONTAINS:
@@ -203,6 +203,10 @@ def filter_expression_from_condition(condition):
         filter_exp = ~filter_exp
     return filter_exp
 
+def filter_expression_from_condition(condition):
+    end_node = J('position').endNode()
+    return js_expression_from_condition(condition, end_node)
+    
 def return_filter_from_conditions(conditions):
     exprs = [filter_expression_from_condition(c) for c in conditions]
     #construct an expr to exclude the first node and type nodes. consider
@@ -479,23 +483,21 @@ class Query(object):
                 raise ValueError('Conflicting id__in lookups - the intersection'
                                  ' of the queried id lists is empty.')
                                                       
-                                                      
         #TODO order by type - check against the global type first, so that if
-        #we get an empty result set, we can return none
+        #we get an empty result set, we can return none? this kind of impedes Q
+        #objects, though- revisit
 
-        results = {} #TODO this could perhaps be cached - think2 about it
+        results = {} #TODO this could perhaps be cached - think about it
         filtered_results = set()
 
-        #XXX: annoying workaround bc neo4jrestclient.client.Index doesn't tell equality
-        #well/properly
-        index_by_url = dict((i.url,i) for i in (c.field.index(using) for c in indexed))
+        index_by_name = dict((i.name, i) for i in (c.field.index(using) for c in indexed))
 
-
-        #TODO TODO do gremlin-based lookups instead of basic REST lookups
+        #TODO order by type
         built_q = False
-        cond_by_ind = itertools.groupby(indexed, lambda c:c.field.index(using).url)
-        for index_url, group in cond_by_ind:
-            index = index_by_url[index_url]
+        cond_by_ind = itertools.groupby(indexed, lambda c:c.field.index(using).name)
+        index_qs = []
+        for index_name, group in cond_by_ind:
+            index = index_by_name[index_name]
             q = None
             for condition in group:
                 new_q = q_from_condition(condition)
@@ -508,30 +510,63 @@ class Query(object):
                 else:
                     q = new_q
             if q is not None:
-                result_set = set(index.query(q))
-                #TODO results is currently worthless
-                results[q] = result_set
-                #TODO also needs to match at least one type, if any have been provided
-                #filter for unindexed conditions, as well
-                filtered_result = set(n for n in result_set \
-                                if all(matches_condition(n, c) for c in conditions)\
-                                    and n not in filtered_results)
-                filtered_results |= filtered_result
-                model_results = [self.model_from_node(n)
-                                 for n in filtered_result]
-                #TODO DRY violation
-                if self.select_related:
-                    sel_fields = self.select_related_fields
-                    if not sel_fields: sel_fields = None
-                    execute_select_related(index_name=index.name, query=q,
-                                           fields=sel_fields,
-                                           max_depth=self.max_depth,
-                                           model_type=self.nodetype
-                                          )
-                for r in model_results:
-                    yield r
+                index_qs.append((index_name, str(q)))
+        
+        if built_q:
+            #send in an ordered set of index names and query pairs
+            #TODO this will change when we attempt #35, since this assumes intersection
+            query_script = """
+            neo4j = g.getRawGraph()
+            indexManager = neo4j.index()
 
-        if not built_q:
+            //pull all nodes from indexes
+            nodes = [] as Set
+            for (def q : queries) {
+                index = indexManager.forNodes(q[0])
+                if (index != null) {
+                    newNodes = index.query(q[1])
+                    if (newNodes != null) {
+                        if (nodes.size() == 0) {
+                            for (def n: newNodes) {
+                                nodes.add(n)
+                            }
+                        }
+                        else {
+                            nodes = nodes.intersect(newNodes)
+                        }
+                    }
+                    if(nodes.size() == 0) {
+                        break
+                    }
+                }
+            }
+            results = nodes
+            //TODO run the javascript expression on each node, and only return if true
+            //TODO check all the types and make sure they match, or don't return
+            """
+            #type_name = self.nodetype._type_name()
+            #return_expr = reduce(and_,
+            #                     (js_expression_from_condition(c, J('testedNode')) 
+            #                      for c in unindexed))
+            result_set = connections[using].gremlin(query_script, queries=index_qs)
+
+            #filter for unindexed conditions, as well
+            filtered_result = set(n for n in result_set \
+                            if all(matches_condition(n, c) for c in conditions))
+            model_results = [self.model_from_node(n)
+                                for n in filtered_result]
+
+            #TODO DRY violation
+            if self.select_related:
+                sel_fields = self.select_related_fields
+                if not sel_fields: sel_fields = None
+                execute_select_related(models=model_results,
+                                        fields=sel_fields,
+                                        max_depth=self.max_depth)
+
+            for r in model_results:
+                yield r
+        else:
             return_filter = return_filter_from_conditions(unindexed + indexed)
             rel_types = [neo4j.Outgoing.get('<<TYPE>>'),
                          neo4j.Outgoing.get('<<INSTANCE>>')]

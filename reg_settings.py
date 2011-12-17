@@ -79,7 +79,9 @@ tests=[
 	'test_datetime_auto_now_add',
 	'test_select_related',
 	'test_rel_query_direction',
-	'test_filter_array_member_in']
+	'test_filter_array_member_in',
+	'test_large_query',
+	'test_zerovalued_lookup']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
