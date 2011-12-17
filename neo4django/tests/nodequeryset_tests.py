@@ -3,6 +3,7 @@ from nose.tools import with_setup, eq_
 from django.core import exceptions
 
 from time import time
+import itertools
 import sys, datetime
 stdout = sys.stdout
 
@@ -87,11 +88,14 @@ def test_dates():
     assert other.name == 'other'
     assert paper.datetime < other.datetime
     
+def make_mice(names, ages):
+    for name, age in zip(names, ages):
+        IndexedMouse.objects.create(name=name,age=age)
+
 mouse_names = ['jerry','Brain', 'Pinky']
 mouse_ages = [2,3,2]
 def setup_mice():
-    for name, age in zip(mouse_names, mouse_ages):
-        IndexedMouse.objects.create(name=name,age=age)
+    make_mice(mouse_names, mouse_ages)
 
 def make_people(names, ages):
     pairs = zip(names, ages)
@@ -491,3 +495,21 @@ def test_select_related():
     
     #try the hierarchy with a field-based select_related
     check_dog_hier_from_q(RelatedDog.objects.all().select_related('chases','chases__chases'))
+
+@with_setup(None, teardown)
+def test_large_query():
+    ages = range(1, 151)
+    names = ['a mouse'] * len(ages)
+    make_mice(names, ages)
+
+    mice =  list(IndexedMouse.objects.filter(age__in=ages))
+    eq_(len(mice), len(ages))
+
+@with_setup(None, teardown)
+def test_zerovalued_lookup():
+    ages = range(2)
+    make_mice(['a','a'], ages)
+
+    mice =  list(IndexedMouse.objects.filter(age__in=ages))
+    eq_(len(mice), len(ages))
+    pass

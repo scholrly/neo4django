@@ -37,7 +37,7 @@ class Condition(ConditionTuple):
                     args[1] = tuple(args[1])
         super(Condition, self).__init__( *args, **kwargs)
 
-
+#TODO move this to settings.py
 QUERY_CHUNK_SIZE = 10
 
 #TODO these should be moved to constants
@@ -490,6 +490,8 @@ class Query(object):
         #well/properly
         index_by_url = dict((i.url,i) for i in (c.field.index(using) for c in indexed))
 
+
+        #TODO TODO do gremlin-based lookups instead of basic REST lookups
         built_q = False
         cond_by_ind = itertools.groupby(indexed, lambda c:c.field.index(using).url)
         for index_url, group in cond_by_ind:
