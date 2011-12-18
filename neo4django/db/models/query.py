@@ -398,6 +398,49 @@ def execute_select_related(models=None, query=None, index_name=None,
                 field._set_cached_relationship(cur_m, new_model)
             cur_m = new_model
 
+def query_indices(name_and_query, using):
+    """
+    Takes a list of index name/query pairs and returns the resulting nodes.
+    """
+    #send in an ordered set of index names and query pairs
+    #TODO this will change when we attempt #35, since this assumes intersection
+    query_script = """
+    neo4j = g.getRawGraph()
+    indexManager = neo4j.index()
+
+    //pull all nodes from indexes
+    nodes = [] as Set
+    for (def q : queries) {
+        index = indexManager.forNodes(q[0])
+        if (index != null) {
+            newNodes = index.query(q[1])
+            if (newNodes != null) {
+                if (nodes.size() == 0) {
+                    for (def n: newNodes) {
+                        nodes.add(n)
+                    }
+                }
+                else {
+                    nodes = nodes.intersect(newNodes)
+                }
+            }
+            if(nodes.size() == 0) {
+                break
+            }
+        }
+    }
+    results = nodes
+    //TODO run the javascript expression on each node, and only return if true
+    //TODO check all the types and make sure they match, or don't return
+    """
+    #type_name = self.nodetype._type_name()
+    #return_expr = reduce(and_,
+    #                     (js_expression_from_condition(c, J('testedNode')) 
+    #                      for c in unindexed))
+    result_set = connections[using].gremlin(query_script, queries=name_and_query)
+
+    return result_set
+
 class Query(object):
     def __init__(self, nodetype, conditions=tuple(), max_depth=None, 
                  select_related_fields=[]):
@@ -513,49 +556,13 @@ class Query(object):
                 index_qs.append((index_name, str(q)))
         
         if built_q:
-            #send in an ordered set of index names and query pairs
-            #TODO this will change when we attempt #35, since this assumes intersection
-            query_script = """
-            neo4j = g.getRawGraph()
-            indexManager = neo4j.index()
-
-            //pull all nodes from indexes
-            nodes = [] as Set
-            for (def q : queries) {
-                index = indexManager.forNodes(q[0])
-                if (index != null) {
-                    newNodes = index.query(q[1])
-                    if (newNodes != null) {
-                        if (nodes.size() == 0) {
-                            for (def n: newNodes) {
-                                nodes.add(n)
-                            }
-                        }
-                        else {
-                            nodes = nodes.intersect(newNodes)
-                        }
-                    }
-                    if(nodes.size() == 0) {
-                        break
-                    }
-                }
-            }
-            results = nodes
-            //TODO run the javascript expression on each node, and only return if true
-            //TODO check all the types and make sure they match, or don't return
-            """
-            #type_name = self.nodetype._type_name()
-            #return_expr = reduce(and_,
-            #                     (js_expression_from_condition(c, J('testedNode')) 
-            #                      for c in unindexed))
-            result_set = connections[using].gremlin(query_script, queries=index_qs)
+            result_set = query_indices(index_qs, using)
 
             #filter for unindexed conditions, as well
             filtered_result = set(n for n in result_set \
                             if all(matches_condition(n, c) for c in conditions))
             model_results = [self.model_from_node(n)
                                 for n in filtered_result]
-
             #TODO DRY violation
             if self.select_related:
                 sel_fields = self.select_related_fields
