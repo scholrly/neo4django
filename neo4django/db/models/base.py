@@ -178,10 +178,13 @@ class NodeModel(NeoModel):
                 all_properties.update(get_props(parent))
 
         #XXX assumes in-db name is the model attribute name, which will change after #30
-        for key in neo_node.properties:
-            if key in all_properties:
-                setattr(instance, key,
-                        all_properties[key].from_neo(neo_node.properties[key]))
+        for key in all_properties:
+            val = None
+            if key in neo_node.properties:
+                val = all_properties[key].from_neo(neo_node.properties[key])
+            else:
+                val = all_properties[key].get_default()
+            setattr(instance, key, val)
 
         return instance
 
@@ -206,7 +209,6 @@ class NodeModel(NeoModel):
             return id(self) == id(other)
         return False
 
-
     @property
     def using(self):
         return self.__using
@@ -224,7 +226,6 @@ class NodeModel(NeoModel):
             return new_model
         else:
             return cls.copy_model(neo_model)
-
 
     @classmethod
     def copy_model(cls, neo_model):

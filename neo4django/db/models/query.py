@@ -69,8 +69,8 @@ def matches_condition(node, condition):
     #if this is an id field, the value should be the id
     if getattr(field, 'id', None):
         att = node.id
-    elif node.get(field.attname, None) is not None:
-        att = node[field.attname]
+    elif node.properties.get(field.attname, None) is not None:
+        att = node.properties[field.attname]
     else:
         att = None
 
@@ -221,19 +221,115 @@ def return_filter_from_conditions(conditions):
 # QUERY EXECUTION #
 ###################
 
-class LazyNode(neo4j.Node):
+class LazyBase(object):
     """
-    A version of the REST client node that doesn't update on init.
+    A mixin to make elements of the REST client lazy.
     """
     def __init__(self, url, dic):
         self._dont_update = True
-        super(LazyNode, self).__init__(url, create=False)
+        super(LazyBase, self).__init__(url, create=False)
         self._dic = dic.copy()
         self._dont_update = False
 
     def update(self, *args, **kwargs):
         if not self._dont_update:
-            super(LazyNode, self).update(*args, **kwargs)
+            super(LazyBase, self).update(*args, **kwargs)
+
+    @classmethod
+    def from_dict(cls, dic):
+        return cls(dic['self'], dic)
+
+class LazyNode(LazyBase, neo4j.Node):
+    id_url_template = 'node/%d'
+
+class LazyRelationship(LazyBase, neo4j.Relationship):
+    id_url_template = 'relationship/%d'
+
+    def __init__(self, *args, **kwargs):
+        self._custom_lookup = None
+        super(LazyRelationship, self).__init__(*args, **kwargs)
+
+    def set_custom_node_lookup(self, lookup):
+        """
+        Specify a dict-like lookup object from which nodes can be pulled. Keys
+        should be node urls.
+        """
+        #HACK solution for a lazy sub-graph
+        self._custom_lookup = lookup
+
+    @property
+    def start(self):
+        key = self._dic['start']
+        if self._custom_lookup is not None and key:
+            try:
+                return self._custom_lookup[id_from_url(key)]
+            except KeyError:
+                pass
+        return super(LazyRelationship, self).start
+
+    @property
+    def end(self):
+        key = self._dic['end']
+        if self._custom_lookup is not None and key:
+            try:
+                return self._custom_lookup[id_from_url(key)]
+            except KeyError:
+                pass
+        return super(LazyRelationship, self).end
+
+def batch_base(ids, cls, using):
+    """
+    A function to replace the REST client's non-lazy batching.
+    """
+    #HACK to get around REST client limitations
+    tx = connections[using].transaction(using_globals=False)
+    for i in ids:
+        tx.subscribe('GET', cls.id_url_template % i)
+    result_dict = tx._batch()
+    rv = [cls.from_dict(v['body']) for v in result_dict.values()]
+    del tx
+    return rv
+    
+def batch_rels(ids, using):
+    return batch_base(ids, LazyRelationship, using)
+
+def batch_nodes(ids, using):
+    return batch_base(ids, LazyNode, using)
+
+def batch_paths(paths, usings):
+    """
+    A function to replace the REST client's non-lazy batching of paths.
+    """
+    #TODO untested
+    batched = []
+
+    tx = connections[using].transaction(using_globals=False)
+    for p in paths:
+        for n_url in p['nodes']:
+            tx.subscribe('GET',n_url)
+        for r_url in p['relationships']:
+            tx.subscribe('GET', r_url)
+    result_dict = tx._batch()
+    rel_by_url = {}
+    node_by_url = {}
+    for v in result_dict.values():
+        d = v['body']
+        if "start" in d:
+            rel_by_url[d['self']] = LazyRelationship.from_dict(d)
+        else:
+            node_by_url[d['self']] = LazyNode.from_dict(d)
+    for p in paths:
+        node_it = (node_by_url[n_url] for n_url in iter(p['nodes']))
+        rel_it = (rel_by_url[r_url] for r_url in iter(p['relationships']))
+        p_list = []
+        while True:
+            try:
+                p_list.append(node_it.next())
+                p_list.append(rel_it.next())
+            except StopIteration:
+                break
+        batched.append(tuple(p_list))
+    return batched
 
 def score_model_rel(field_name, bound_rel):
     """
@@ -271,7 +367,7 @@ def cypher_match_from_fields(nodetype, fields):
 
 #XXX this will have to change significantly when issue #1 is worked on
 #TODO this can be broken into retrieval and rebuilding functions
-def execute_select_related(models=None, query=None, index_name=None,
+def execute_select_related(models=None, nodes=None, query=None, index_name=None,
                            fields=None, max_depth=1, model_type=None,
                            using=DEFAULT_DB_ALIAS):
     """
@@ -290,17 +386,16 @@ def execute_select_related(models=None, query=None, index_name=None,
             model_type = type(models[0])
 
         start_expr = 'node(%s)' % ','.join(str(m.id) for m in models)
-        start_depth = 1
     elif index_name and query:
         if model_type is None:
             raise ValueError("Must provide a model_type if using select_related"
                              " with an index query.")
         models = []
         start_expr = 'node:`%s`("%s")' % (index_name, str(query).replace('"','\\"'))
-        start_depth = 0
     else:
         raise ValueError("Either a model set or an index name and query "
                             "need to be provided.")
+    start_depth = 0
 
     conn = connections[using]
 
@@ -341,26 +436,31 @@ def execute_select_related(models=None, query=None, index_name=None,
     nodes = get_columns(lambda c:c.startswith('r'), results)
     types = get_columns(lambda c:c.startswith('t'), results)
 
-    #batch all relationships from paths
+    #put nodes in an id-lookup dict
+    nodes = [LazyNode.from_dict(d) for d in nodes]
+    nodes_by_id = dict((n.id, n) for n in nodes)
+
+    #batch all relationships from paths and put em in a dict
     rels_by_id = {}
-    with conn.transaction():
-        for p in paths:
-            for rel_url in p['relationships']:
-                rel_id = id_from_url(rel_url)
-                if rel_id not in rels_by_id:
-                    rels_by_id[rel_id] = conn.relationships[rel_id]
+    rel_ids = []
+    for p in paths:
+        for rel_url in p['relationships']:
+            rel_ids.append(id_from_url(rel_url))
+    rels = batch_rels(rel_ids, using)
+    for r in rels:
+        r.set_custom_node_lookup(nodes_by_id)
+        rels_by_id[r.id] = r
 
     #build all the models, ignoring types that django hasn't loaded
-    rel_nodes_types= ((n, get_model(*t.split(':'))) for n, t in
-                      ((LazyNode(r[0]['self'], r[0]), r[1])
-                      for r in itertools.izip(nodes, types)))
+    rel_nodes_types= ((n, get_model(*t.split(':')))
+                      for n, t in itertools.izip(nodes, types))
     rel_models = (t._neo4j_instance(n) for n, t in rel_nodes_types if t is not None)
 
     models_so_far = dict((m.id, m) for m in itertools.chain(models, rel_models))
 
     #paths ordered by shortest to longest
     paths = sorted(paths, key=lambda v:v['length'])
-    
+
     for path in paths:
         m = models_so_far[id_from_url(path['start'])]
 
@@ -436,8 +536,9 @@ def query_indices(name_and_query, using):
     #                     (js_expression_from_condition(c, J('testedNode')) 
     #                      for c in unindexed))
     result_set = connections[using].gremlin(query_script, queries=name_and_query)
-
-    return result_set
+    
+    #make the result_set not insane (properly lazy)
+    return [LazyNode.from_dict(dic) for dic in result_set._list]
 
 class Query(object):
     def __init__(self, nodetype, conditions=tuple(), max_depth=None, 
