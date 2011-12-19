@@ -377,9 +377,7 @@ def execute_select_related(models=None, query=None, index_name=None,
             field_candidates = [(k,v) for k,v in cur_m._meta._relationships.items()
                                 if str(v.rel_type)==str(rel.type) and v.direction == rel.direction]
             if len(field_candidates) < 1:
-                raise ValueError("No model field candidate for returned "
-                                    "path - there's an error in the Cypher "
-                                    "query or your model definition.")
+                continue
             elif len(field_candidates) > 1:
                 raise ValueError("Too many model field candidates for "
                                     "returned path - there's an error in the "
