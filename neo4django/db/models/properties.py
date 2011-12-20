@@ -261,12 +261,6 @@ class BoundProperty(AttrRouter):
     def __values_of(instance, create=True):
         try:
             values = instance._prop_values
-            #for key, prop in BoundProperty._all_properties_for(instance).items(): #XXX: Might be a faster/more elegant way
-            #    if prop.attname not in values:
-            #        if getattr(prop._property, 'auto_now', False):
-            #            values[prop.__attname] = datetime.datetime.now() #XXX:Setting to None here sets the node's datetime to None
-            #            if type(prop._property) == DateProperty: #XXX:Kinda gross way to handle it :\
-            #                values[prop.__attname] = datetime.datetime.date(values[prop.__attname])
         except:
             values = {}
             if create:

@@ -38,7 +38,7 @@ class Condition(ConditionTuple):
         super(Condition, self).__init__( *args, **kwargs)
 
 #TODO move this to settings.py
-QUERY_CHUNK_SIZE = 10
+QUERY_CHUNK_SIZE = 50
 
 #TODO these should be moved to constants
 TYPE_REL = '<<TYPE>>'
@@ -367,7 +367,7 @@ def cypher_match_from_fields(nodetype, fields):
 
 #XXX this will have to change significantly when issue #1 is worked on
 #TODO this can be broken into retrieval and rebuilding functions
-def execute_select_related(models=None, nodes=None, query=None, index_name=None,
+def execute_select_related(models=None, query=None, index_name=None,
                            fields=None, max_depth=1, model_type=None,
                            using=DEFAULT_DB_ALIAS):
     """
@@ -384,18 +384,18 @@ def execute_select_related(models=None, nodes=None, query=None, index_name=None,
         #infer the model type
         if model_type is None:
             model_type = type(models[0])
-
         start_expr = 'node(%s)' % ','.join(str(m.id) for m in models)
+        start_depth = 1
     elif index_name and query:
         if model_type is None:
             raise ValueError("Must provide a model_type if using select_related"
                              " with an index query.")
         models = []
         start_expr = 'node:`%s`("%s")' % (index_name, str(query).replace('"','\\"'))
+        start_depth = 0
     else:
         raise ValueError("Either a model set or an index name and query "
                             "need to be provided.")
-    start_depth = 0
 
     conn = connections[using]
 
