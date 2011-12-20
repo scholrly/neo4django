@@ -439,6 +439,9 @@ def execute_select_related(models=None, query=None, index_name=None,
     #put nodes in an id-lookup dict
     nodes = [LazyNode.from_dict(d) for d in nodes]
     nodes_by_id = dict((n.id, n) for n in nodes)
+    #add any nodes we've got from the models list
+    if models is not None:
+        nodes_by_id.update(dict((m.id, LazyNode.from_dict(m.node._dic)) for m in models))
 
     #batch all relationships from paths and put em in a dict
     rels_by_id = {}
