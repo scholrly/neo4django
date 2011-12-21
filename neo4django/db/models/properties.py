@@ -20,6 +20,95 @@ from neo4django.validators import validate_array, validate_str_array,\
 from neo4django.utils import AttrRouter, write_through
 from neo4django.constants import AUTO_PROP_INDEX_VALUE
 
+try:
+    from dateutil.tz import tzutc, tzoffset
+except ImportError:
+    # Redefine tzutc and tzoffset classes, borrowed from dateutil
+    # Copyright 2003-2007 Gustavo Niemeyer <gustavo@niemeyer.net>. All rights
+    # reserved.
+    #
+    # Redistribution and use in source and binary forms, with or without modi-
+    # fication, are permitted provided that the following conditions are met:
+    #
+    #    1. Redistributions of source code must retain the above copyright
+    #    notice, this list of conditions and the following disclaimer.
+    #
+    #    2. Redistributions in binary form must reproduce the above copyright
+    #    notice, this list of conditions and the following disclaimer in the
+    #    documentation and/or other materials provided with the distribution.
+    #
+    # THIS SOFTWARE IS PROVIDED BY GUSTAVO NIEMEYER ''AS IS'' AND ANY EXPRESS
+    # OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+    # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+    # DISCLAIMED. IN NO EVENT SHALL GUSTAVO NIEMEYER OR CONTRIBUTORS BE
+    # LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+    # CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+    # SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+    # INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+    # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+    # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+    # THE POSSIBILITY OF SUCH DAMAGE.
+    #
+    # The views and conclusions contained in the software and documentation are
+    # those of the authors and should not be interpreted as representing
+    # official policies, either expressed or implied, of Gustavo Niemeyer.
+
+    ZERO = datetime.timedelta(0)
+    EPOCHORDINAL = datetime.datetime.utcfromtimestamp(0).toordinal()
+
+    class tzutc(datetime.tzinfo):
+        def utcoffset(self, dt):
+            return ZERO
+
+        def dst(self, dt):
+            return ZERO
+
+        def tzname(self, dt):
+            return "UTC"
+
+        def __eq__(self, other):
+            return (isinstance(other, tzutc) or
+                    (isinstance(other, tzoffset) and other._offset == ZERO))
+
+        def __ne__(self, other):
+            return not self.__eq__(other)
+
+        def __repr__(self):
+            return "%s()" % self.__class__.__name__
+
+        __reduce__ = object.__reduce__
+
+
+    class tzoffset(datetime.tzinfo):
+        def __init__(self, name, offset):
+            self._name = name
+            self._offset = datetime.timedelta(seconds=offset)
+
+        def utcoffset(self, dt):
+            return self._offset
+
+        def dst(self, dt):
+            return ZERO
+
+        def tzname(self, dt):
+            return self._name
+
+        def __eq__(self, other):
+            return (isinstance(other, tzoffset) and
+                    self._offset == other._offset)
+
+        def __ne__(self, other):
+            return not self.__eq__(other)
+
+        def __repr__(self):
+            total_seconds = self._offset.days * 86400 + self._offset.seconds
+            return "%s(%s, %s)" % (self.__class__.__name__,
+                                   repr(self._name),
+                                   total_seconds)
+
+        __reduce__ = object.__reduce__
+
+
 MIN_INT = -9223372036854775808
 MAX_INT = 9223372036854775807
 
