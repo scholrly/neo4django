@@ -55,7 +55,6 @@ def test_integer():
         try_int(i)
     
 def test_date_constructor():
-    #TODO make more complete
     class DateNode(models.NodeModel):
         date = models.DateProperty()
 
