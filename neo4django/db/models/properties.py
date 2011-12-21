@@ -23,7 +23,10 @@ from neo4django.constants import AUTO_PROP_INDEX_VALUE
 try:
     from dateutil.tz import tzutc, tzoffset
 except ImportError:
-    # Redefine tzutc and tzoffset classes, borrowed from dateutil
+    # Time zone support requires dateutil.tz.tzutc and dateutil.tz.tzoffset, so
+    # redefining them here. Since the code is borrowed directly from dateutil
+    # (which is BSD-licensed), including the licensing block here too.
+
     # Copyright 2003-2007 Gustavo Niemeyer <gustavo@niemeyer.net>. All rights
     # reserved.
     #
