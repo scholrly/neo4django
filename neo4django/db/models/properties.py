@@ -130,7 +130,7 @@ class Property(object):
                  has_own_index=False, unique=False, name=None, editable=True,
                  null=True, blank=True, validators=[], choices=None,
                  error_messages=None, required=False, serialize=True,
-                 auto=False, metadata={}, auto_default=NOT_PROVIDED, 
+                 auto=False, metadata={}, auto_default=NOT_PROVIDED,
                  default=NOT_PROVIDED, **kwargs):
         if unique and not indexed:
             raise ValueError('A unique property must be indexed.')
@@ -391,7 +391,7 @@ class BoundProperty(AttrRouter):
             index = None
             if prop.auto and values.get(key, None) is None:
                 type_node = prop.target._type_node(instance.using)
-                
+
                 last_auto_attname = '%s.%s' % (prop.attname, AUTO_PROP_INDEX_VALUE)
 
                 script = prop.next_value_gremlin
@@ -412,7 +412,7 @@ class BoundProperty(AttrRouter):
                 typeNode[lastAutoProp] = value
 
                 lockManager.releaseWriteLock(rawTypeNode, null)
-                
+
                 results = value
                 """
                 conn = connections[instance.using]
@@ -680,7 +680,7 @@ class DateProperty(Property):
             return super(DateProperty, self).pre_save(model_instance, add, attname)
 
 class DateTimeProperty(DateProperty):
-    __format = '%Y-%m-%d-%H:%M:%S.%f'
+    __format = '%Y-%m-%d %H:%M:%S.%f'
 
     default_error_messages = {
         'invalid': _(u'Enter a valid date/time in YYYY-MM-DD HH:MM[:ss[.uuuuuu]] format.'),
