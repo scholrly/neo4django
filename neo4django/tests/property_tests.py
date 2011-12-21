@@ -8,6 +8,10 @@ def setup():
 
     from neo4django.tests import Person, neo4django, gdb, neo4jrestclient, \
             neo_constants, settings, models
+    try:
+        from dateutil.tz import tzutc, tzoffset
+    except ImportError:
+        from models.properties import tzutc, tzoffset
 
 def teardown():
     gdb.cleandb()
@@ -51,8 +55,14 @@ def test_integer():
         try_int(i)
     
 def test_date_constructor():
-    #TODO
-    pass
+    class DateNode(models.NodeModel):
+        date = models.DateProperty()
+
+    today = datetime.date.today()
+    d = DateNode(date=today)
+    assert d.date == today
+    d.save()
+    assert d.date == today
 
 def test_date_prop():
     #TODO
@@ -159,6 +169,44 @@ def test_date_auto_now_add():
     ##Confrim the date doesn't change when no other property changes
     b.save()
     assert b.date_made == date1
+
+def test_datetime_prop():
+    # TODO
+    pass
+
+def test_datetime_auto_now():
+    from time import sleep
+    class BlogNode(models.NodeModel):
+        title = models.Property()
+        date_modified = models.DateTimeProperty(auto_now = True)
+    timediff = .6 #can be this far apart
+    ##Confirm the date auto sets on creation
+
+def test_datetimetz_constructor():
+    class DateTimeTZNode(models.NodeModel):
+        datetime = models.DateTimeTZProperty()
+
+    time = datetime.datetime.now(tzinfo=tzoffset('LOCAL', 3600))
+    d = DateTimeTZNode(datetime=time)
+    assert d.datetime == time
+    d.save()
+    assert d.datetime == time
+    assert d.datetime.astimezone(tz=tzutc()) == time.astimezone(tz=tzutc())
+
+def test_datetimetz_prop():
+    class DateTimeTZNode(models.NodeModel):
+        datetime = models.DateTimeTZProperty()
+
+    time = datetime.datetime.now(tzinfo=tzoffset('DST', 3600))
+    d = DateTimeNode(datetime=time)
+    assert d.datetime == time
+    # Now some low-level attribute access stuff to make sure it's loading /
+    # storing correctly
+    dt_prop = DateTimeTZNode.dt._property
+    assert dt_prop.to_neo(d.datetime) == d.datetime.strftime(
+        models.DateTimeTZProperty._DateTimeTZProperty__format)
+    # Test roundtrip
+    assert d.datetime == dt_prop.from_neo(dt_prop.to_neo(d.datetime))
 
 def test_array_property_validator():
     """Tests that ArrayProperty validates properly."""

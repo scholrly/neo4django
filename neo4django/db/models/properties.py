@@ -20,6 +20,98 @@ from neo4django.validators import validate_array, validate_str_array,\
 from neo4django.utils import AttrRouter, write_through
 from neo4django.constants import AUTO_PROP_INDEX_VALUE
 
+try:
+    from dateutil.tz import tzutc, tzoffset
+except ImportError:
+    # Time zone support requires dateutil.tz.tzutc and dateutil.tz.tzoffset, so
+    # redefining them here. Since the code is borrowed directly from dateutil
+    # (which is BSD-licensed), including the licensing block here too.
+
+    # Copyright 2003-2007 Gustavo Niemeyer <gustavo@niemeyer.net>. All rights
+    # reserved.
+    #
+    # Redistribution and use in source and binary forms, with or without modi-
+    # fication, are permitted provided that the following conditions are met:
+    #
+    #    1. Redistributions of source code must retain the above copyright
+    #    notice, this list of conditions and the following disclaimer.
+    #
+    #    2. Redistributions in binary form must reproduce the above copyright
+    #    notice, this list of conditions and the following disclaimer in the
+    #    documentation and/or other materials provided with the distribution.
+    #
+    # THIS SOFTWARE IS PROVIDED BY GUSTAVO NIEMEYER ''AS IS'' AND ANY EXPRESS
+    # OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+    # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+    # DISCLAIMED. IN NO EVENT SHALL GUSTAVO NIEMEYER OR CONTRIBUTORS BE
+    # LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+    # CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+    # SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+    # INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+    # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+    # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+    # THE POSSIBILITY OF SUCH DAMAGE.
+    #
+    # The views and conclusions contained in the software and documentation are
+    # those of the authors and should not be interpreted as representing
+    # official policies, either expressed or implied, of Gustavo Niemeyer.
+
+    ZERO = datetime.timedelta(0)
+    EPOCHORDINAL = datetime.datetime.utcfromtimestamp(0).toordinal()
+
+    class tzutc(datetime.tzinfo):
+        def utcoffset(self, dt):
+            return ZERO
+
+        def dst(self, dt):
+            return ZERO
+
+        def tzname(self, dt):
+            return "UTC"
+
+        def __eq__(self, other):
+            return (isinstance(other, tzutc) or
+                    (isinstance(other, tzoffset) and other._offset == ZERO))
+
+        def __ne__(self, other):
+            return not self.__eq__(other)
+
+        def __repr__(self):
+            return "%s()" % self.__class__.__name__
+
+        __reduce__ = object.__reduce__
+
+
+    class tzoffset(datetime.tzinfo):
+        def __init__(self, name, offset):
+            self._name = name
+            self._offset = datetime.timedelta(seconds=offset)
+
+        def utcoffset(self, dt):
+            return self._offset
+
+        def dst(self, dt):
+            return ZERO
+
+        def tzname(self, dt):
+            return self._name
+
+        def __eq__(self, other):
+            return (isinstance(other, tzoffset) and
+                    self._offset == other._offset)
+
+        def __ne__(self, other):
+            return not self.__eq__(other)
+
+        def __repr__(self):
+            total_seconds = self._offset.days * 86400 + self._offset.seconds
+            return "%s(%s, %s)" % (self.__class__.__name__,
+                                   repr(self._name),
+                                   total_seconds)
+
+        __reduce__ = object.__reduce__
+
+
 MIN_INT = -9223372036854775808
 MAX_INT = 9223372036854775807
 
@@ -41,7 +133,7 @@ class Property(object):
                  has_own_index=False, unique=False, name=None, editable=True,
                  null=True, blank=True, validators=[], choices=None,
                  error_messages=None, required=False, serialize=True,
-                 auto=False, metadata={}, auto_default=NOT_PROVIDED, 
+                 auto=False, metadata={}, auto_default=NOT_PROVIDED,
                  default=NOT_PROVIDED, **kwargs):
         if unique and not indexed:
             raise ValueError('A unique property must be indexed.')
@@ -302,7 +394,7 @@ class BoundProperty(AttrRouter):
             index = None
             if prop.auto and values.get(key, None) is None:
                 type_node = prop.target._type_node(instance.using)
-                
+
                 last_auto_attname = '%s.%s' % (prop.attname, AUTO_PROP_INDEX_VALUE)
 
                 script = prop.next_value_gremlin
@@ -323,7 +415,7 @@ class BoundProperty(AttrRouter):
                 typeNode[lastAutoProp] = value
 
                 lockManager.releaseWriteLock(rawTypeNode, null)
-                
+
                 results = value
                 """
                 conn = connections[instance.using]
@@ -591,7 +683,7 @@ class DateProperty(Property):
             return super(DateProperty, self).pre_save(model_instance, add, attname)
 
 class DateTimeProperty(DateProperty):
-    __format = '%Y-%m-%d-%H:%M:%S.%f'
+    __format = '%Y-%m-%d %H:%M:%S.%f'
 
     default_error_messages = {
         'invalid': _(u'Enter a valid date/time in YYYY-MM-DD HH:MM[:ss[.uuuuuu]] format.'),
@@ -601,8 +693,10 @@ class DateTimeProperty(DateProperty):
     MIN=datetime.datetime.min
 
     @classmethod
-    def _format_datetime(cls, value):
-        time_string = cls._format_date(value, cls.__format)
+    def _format_datetime(cls, value, format_string=None):
+        if not format_string:
+            format_string = cls.__format
+        time_string = cls._format_date(value, format_string)
         return time_string.replace('%H', str(value.hour).zfill(2))\
                           .replace('%M', str(value.minute).zfill(2))\
                           .replace('%S', str(value.second).zfill(2))\
@@ -658,6 +752,110 @@ class DateTimeProperty(DateProperty):
             return value
         else:
             return super(DateTimeProperty, self).pre_save(model_instance, add, attname)
+
+
+class DateTimeTZProperty(DateTimeProperty):
+    '''
+    DateTimeProperty that can store and retrieve timezone-aware datetimes.
+    '''
+    __format = '%Y-%m-%d %H:%M:%S.%f %z'
+
+    @classmethod
+    def _format_offset(cls, offset_timedelta):
+        '''
+        Produce a timezone offset string (+/- HHMM) from a timedelta.
+        '''
+        try:
+            seconds = offset_timedelta.total_seconds()
+        except AttributeError:
+            # total_seconds method is only available from 2.7 up
+            td = offset_timedelta
+            days_to_secs = td.days * 24 * 3600.0
+            secs_to_micro = (td.seconds + days_to_secs) * (10 ** 6)
+            seconds = (td.microseconds + secs_to_micro) / (10 ** 6)
+        mins = seconds / 60
+        hrs = mins / 60
+        mins = mins % 60
+        return '%+03d%02d' % (hrs, mins)
+
+    @classmethod
+    def _parse_tz(cls, tz_str=None):
+        '''
+        Read a timezone string of the form '+0000' and return a timezone
+        object. If not given, just return UTC.
+        '''
+        tz_str = tz_str.strip() if tz_str else ''  # Ensure no whitespace
+        if (not tz_str) or (tz_str == '+0000') or (tz_str == '-0000'):
+            # Shortcut for the common case where it's UTC, or default
+            return tzutc()
+        # Otherwise, pull out the hours and minutes and construct a
+        # tzoffset(), which requires an offset in seconds
+        hrs = int(tz_str[1:3])
+        mins = int(tz_str[3:5])
+        mult = -1 if (tz_str[0] == '-') else 1
+        offset = mult * ((hrs * 3600) + (mins * 60))
+        return tzoffset('LOCAL', offset)
+
+    @classmethod
+    def _format_datetime_with_tz(cls, value):
+        '''
+        Format a datetime (e.g. for storage in Neo4j) with a timezone offset
+        appended as +/- HHMM.
+        '''
+        formatted = cls._format_datetime(value, cls.__format)
+        if value.utcoffset() is not None:
+            offset_string = " " + cls._format_offset(value.utcoffset())
+        else:
+            offset_string = ""
+        return formatted.replace("%z", offset_string).strip()
+
+    @classmethod
+    def __parse_datetime_string_with_tz(cls, value):
+        '''
+        Parse a stringified datetime into a datetime object, first trying to
+        read a timezone (if one is provided in our format). Uses the superclass
+        method to parse the actual string, and adds any timezone information
+        at the end.
+        '''
+        try:
+            # Try converting with timezone offset. Since strptime is decidedly
+            # inconsistent with support for '%z', this must be done manually:
+            # if a '+HHMM' is present, it'll form the last five characters of
+            # the string
+            dt_val, tz_str = value[:-5], value[-5:]
+            dt_val = dt_val.strip()  # ensure no trailing whitespace
+            tz_info = cls._parse_tz(tz_str)
+        except ValueError:
+            tz_info = None
+            dt_val = value
+        # HACK: Relies on CPython 2.x's double-underscore name-mangling!
+        dt = cls._DateTimeProperty__parse_datetime_string(dt_val)
+        return dt.replace(tzinfo=tz_info)
+
+    def from_neo(self, value):
+        if value is None or value == '':
+            return None
+        if isinstance(value, datetime.datetime):
+            return value
+        if isinstance(value, datetime.date):
+            return datetime.datetime(value.year, value.month, value.day)
+
+        return self.__parse_datetime_string_with_tz(value)
+
+    def to_neo(self, value):
+        result = None
+
+        if value is None:
+            return ''
+        if isinstance(value, datetime.datetime):
+            result = value
+        elif isinstance(value, datetime.date):
+            result = datetime.datetime(value.year, value.month, value.day)
+        else:
+            result = self.__parse_datetime_string_with_tz(value)
+
+        return self._format_datetime_with_tz(result)
+
 
 class ArrayProperty(Property):
     __metaclass__ = ABCMeta
