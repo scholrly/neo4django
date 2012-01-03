@@ -655,6 +655,9 @@ class DateTimeProperty(DateProperty):
 
         return self._format_datetime(result)
 
+    def to_neo_index(self, value):
+        return self.to_neo(value).replace(' ','-')
+
     def pre_save(self, model_instance, add, attname):
         if self.auto_now or (self.auto_now_add and add):
             value = datetime.datetime.now()
