@@ -4,7 +4,8 @@ import datetime
 import itertools
 
 def setup():
-    global Person, neo4django, gdb, neo4jrestclient, neo_constants, settings, models
+    global Person, neo4django, gdb, neo4jrestclient, neo_constants, settings,\
+           models, tzoffset, tzutc
 
     from neo4django.tests import Person, neo4django, gdb, neo4jrestclient, \
             neo_constants, settings, models
@@ -186,27 +187,27 @@ def test_datetimetz_constructor():
     class DateTimeTZNode(models.NodeModel):
         datetime = models.DateTimeTZProperty()
 
-    time = datetime.datetime.now(tzinfo=tzoffset('LOCAL', 3600))
+    time = datetime.datetime.now(tzoffset('LOCAL', 3600))
     d = DateTimeTZNode(datetime=time)
     assert d.datetime == time
     d.save()
-    assert d.datetime == time
-    assert d.datetime.astimezone(tz=tzutc()) == time.astimezone(tz=tzutc())
+    eq_(d.datetime, time)
+    eq_(d.datetime.astimezone(tz=tzutc()), time.astimezone(tz=tzutc()))
 
 def test_datetimetz_prop():
     class DateTimeTZNode(models.NodeModel):
         datetime = models.DateTimeTZProperty()
 
-    time = datetime.datetime.now(tzinfo=tzoffset('DST', 3600))
-    d = DateTimeNode(datetime=time)
+    time = datetime.datetime.now(tzoffset('DST', 3600))
+    d = DateTimeTZNode(datetime=time)
     assert d.datetime == time
     # Now some low-level attribute access stuff to make sure it's loading /
     # storing correctly
-    dt_prop = DateTimeTZNode.dt._property
-    assert dt_prop.to_neo(d.datetime) == d.datetime.strftime(
-        models.DateTimeTZProperty._DateTimeTZProperty__format)
+    dt_prop = DateTimeTZNode.datetime._property
+    eq_(dt_prop.to_neo(d.datetime), d.datetime.strftime(
+        models.DateTimeTZProperty._DateTimeTZProperty__format))
     # Test roundtrip
-    assert d.datetime == dt_prop.from_neo(dt_prop.to_neo(d.datetime))
+    eq_(d.datetime, dt_prop.from_neo(dt_prop.to_neo(d.datetime)))
 
 def test_array_property_validator():
     """Tests that ArrayProperty validates properly."""

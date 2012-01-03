@@ -81,7 +81,10 @@ tests=[
 	'test_rel_query_direction',
 	'test_filter_array_member_in',
 	'test_large_query',
-	'test_zerovalued_lookup']
+	'test_zerovalued_lookup',
+	'test_datetimetz_constructor',
+	'test_datetimetz_prop',
+]
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',

@@ -753,7 +753,6 @@ class DateTimeProperty(DateProperty):
         else:
             return super(DateTimeProperty, self).pre_save(model_instance, add, attname)
 
-
 class DateTimeTZProperty(DateTimeProperty):
     '''
     DateTimeProperty that can store and retrieve timezone-aware datetimes.
@@ -804,7 +803,7 @@ class DateTimeTZProperty(DateTimeProperty):
         '''
         formatted = cls._format_datetime(value, cls.__format)
         if value.utcoffset() is not None:
-            offset_string = " " + cls._format_offset(value.utcoffset())
+            offset_string = cls._format_offset(value.utcoffset())
         else:
             offset_string = ""
         return formatted.replace("%z", offset_string).strip()
@@ -855,7 +854,6 @@ class DateTimeTZProperty(DateTimeProperty):
             result = self.__parse_datetime_string_with_tz(value)
 
         return self._format_datetime_with_tz(result)
-
 
 class ArrayProperty(Property):
     __metaclass__ = ABCMeta
