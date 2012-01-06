@@ -282,13 +282,18 @@ def batch_base(ids, cls, using):
     A function to replace the REST client's non-lazy batching.
     """
     #HACK to get around REST client limitations
-    tx = connections[using].transaction(using_globals=False)
-    for i in ids:
-        tx.subscribe('GET', cls.id_url_template % i)
-    result_dict = tx._batch()
-    rv = [cls.from_dict(v['body']) for v in result_dict.values()]
-    del tx
-    return rv
+    gremlin_func = 'e' if issubclass(cls, neo4j.Relationship) else 'v'
+    script = \
+    """
+    t = new Table()
+    for (def id : ids) {
+        g.%s(id).as('elements').table(t,['elements']).iterate()
+    }
+    results = t
+    """
+    script %= gremlin_func
+    result_table = connections[using].gremlin(script, ids=ids)
+    return [cls.from_dict(v[0]) for v in result_table['data']]
     
 def batch_rels(ids, using):
     return batch_base(ids, LazyRelationship, using)
@@ -373,7 +378,9 @@ def execute_select_related(models=None, query=None, index_name=None,
     """
     Retrieves select_related models and and adds them to model caches.
     """
-    if models:
+    if models is not None:
+        if len(models) == 0:
+            return
         #infer the database we're using
         model_dbs = [m.using for m in models if m.node]
         if len(set(model_dbs)) > 1:
@@ -541,7 +548,7 @@ def query_indices(name_and_query, using):
     result_set = connections[using].gremlin(query_script, queries=name_and_query)
     
     #make the result_set not insane (properly lazy)
-    return [LazyNode.from_dict(dic) for dic in result_set._list]
+    return [LazyNode.from_dict(dic) for dic in result_set._list] if result_set else []
 
 class Query(object):
     def __init__(self, nodetype, conditions=tuple(), max_depth=None, 
