@@ -4,12 +4,16 @@ from django.conf import settings as _settings
 from neo4jrestclient.client import GraphDatabase as _GraphDatabase
 from neo4jrestclient import client as _client
 from random import random as _random
-from time import sleep as _sleep
+from time import sleep as _sleep, time as _time
 
 if getattr(_settings, 'NEO4DJANGO_PROFILE_REQUESTS', False):
     class ProfilingRequest(_client.Request):
+        last_profiling_print = _time()
         def _request(self, method, url, data={}, headers={}):
             from sys import stdout
+            new_time = _time()
+            print "after %0.3f seconds..." % (new_time - ProfilingRequest.last_profiling_print)
+            ProfilingRequest.last_profiling_print = new_time
             print "{0} {1}".format(method.upper(), url)
             if isinstance(data, (dict, basestring, int)):
                 print data
