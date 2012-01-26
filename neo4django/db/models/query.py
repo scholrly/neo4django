@@ -1,11 +1,12 @@
 import neo4jrestclient.client as neo4j
 import neo4jrestclient.constants as neo_constants
 
-from neo4django.db import DEFAULT_DB_ALIAS, connections
-from neo4django.utils import Enum, uniqify
-from neo4django.constants import ORDER_ATTR
-from neo4django.decorators import transactional, not_supported, alters_data, \
+from .. import DEFAULT_DB_ALIAS, connections
+from ...utils import Enum, uniqify
+from ...constants import ORDER_ATTR
+from ...decorators import transactional, not_supported, alters_data, \
         not_implemented
+from . import script_utils
 
 from django.db.models.query import QuerySet
 from django.core import exceptions
@@ -221,121 +222,6 @@ def return_filter_from_conditions(conditions):
 # QUERY EXECUTION #
 ###################
 
-class LazyBase(object):
-    """
-    A mixin to make elements of the REST client lazy.
-    """
-    def __init__(self, url, dic):
-        self._dont_update = True
-        super(LazyBase, self).__init__(url, create=False)
-        self._dic = dic.copy()
-        self._dont_update = False
-
-    def update(self, *args, **kwargs):
-        if not self._dont_update:
-            super(LazyBase, self).update(*args, **kwargs)
-
-    @classmethod
-    def from_dict(cls, dic):
-        return cls(dic['self'], dic)
-
-class LazyNode(LazyBase, neo4j.Node):
-    id_url_template = 'node/%d'
-
-class LazyRelationship(LazyBase, neo4j.Relationship):
-    id_url_template = 'relationship/%d'
-
-    def __init__(self, *args, **kwargs):
-        self._custom_lookup = None
-        super(LazyRelationship, self).__init__(*args, **kwargs)
-
-    def set_custom_node_lookup(self, lookup):
-        """
-        Specify a dict-like lookup object from which nodes can be pulled. Keys
-        should be node urls.
-        """
-        #HACK solution for a lazy sub-graph
-        self._custom_lookup = lookup
-
-    @property
-    def start(self):
-        key = self._dic['start']
-        if self._custom_lookup is not None and key:
-            try:
-                return self._custom_lookup[id_from_url(key)]
-            except KeyError:
-                pass
-        return super(LazyRelationship, self).start
-
-    @property
-    def end(self):
-        key = self._dic['end']
-        if self._custom_lookup is not None and key:
-            try:
-                return self._custom_lookup[id_from_url(key)]
-            except KeyError:
-                pass
-        return super(LazyRelationship, self).end
-
-def batch_base(ids, cls, using):
-    """
-    A function to replace the REST client's non-lazy batching.
-    """
-    #HACK to get around REST client limitations
-    gremlin_func = 'e' if issubclass(cls, neo4j.Relationship) else 'v'
-    script = \
-    """
-    t = new Table()
-    for (def id : ids) {
-        g.%s(id).as('elements').table(t,['elements']).iterate()
-    }
-    results = t
-    """
-    script %= gremlin_func
-    result_table = connections[using].gremlin(script, ids=ids)
-    return [cls.from_dict(v[0]) for v in result_table['data']]
-    
-def batch_rels(ids, using):
-    return batch_base(ids, LazyRelationship, using)
-
-def batch_nodes(ids, using):
-    return batch_base(ids, LazyNode, using)
-
-def batch_paths(paths, usings):
-    """
-    A function to replace the REST client's non-lazy batching of paths.
-    """
-    #TODO untested
-    batched = []
-
-    tx = connections[using].transaction(using_globals=False)
-    for p in paths:
-        for n_url in p['nodes']:
-            tx.subscribe('GET',n_url)
-        for r_url in p['relationships']:
-            tx.subscribe('GET', r_url)
-    result_dict = tx._batch()
-    rel_by_url = {}
-    node_by_url = {}
-    for v in result_dict.values():
-        d = v['body']
-        if "start" in d:
-            rel_by_url[d['self']] = LazyRelationship.from_dict(d)
-        else:
-            node_by_url[d['self']] = LazyNode.from_dict(d)
-    for p in paths:
-        node_it = (node_by_url[n_url] for n_url in iter(p['nodes']))
-        rel_it = (rel_by_url[r_url] for r_url in iter(p['relationships']))
-        p_list = []
-        while True:
-            try:
-                p_list.append(node_it.next())
-                p_list.append(rel_it.next())
-            except StopIteration:
-                break
-        batched.append(tuple(p_list))
-    return batched
-
 def score_model_rel(field_name, bound_rel):
     """
     Scores a model's bound relationship on how likely it is to be the referrent
@@ -354,6 +240,10 @@ def cypher_rel_str(rel_type, rel_dir):
     return dir_strings[rel_dir==out]%('[:`%s`]' % rel_type)
 
 def cypher_match_from_fields(nodetype, fields):
+    """
+    Generates Cypher MATCH expressions from `select_related()` style field
+    strings.
+    """
     #TODO docstring
     matches = []
     for i, f in enumerate(fields):
@@ -456,7 +346,7 @@ def execute_select_related(models=None, query=None, index_name=None,
     for p in paths:
         for rel_url in p['relationships']:
             rel_ids.append(id_from_url(rel_url))
-    rels = batch_rels(rel_ids, using)
+    rels = script_utils.batch_rels(rel_ids, using)
     for r in rels:
         r.set_custom_node_lookup(nodes_by_id)
         rels_by_id[r.id] = r
@@ -506,49 +396,6 @@ def execute_select_related(models=None, query=None, index_name=None,
                 field._set_cached_relationship(cur_m, new_model)
             cur_m = new_model
 
-def query_indices(name_and_query, using):
-    """
-    Takes a list of index name/query pairs and returns the resulting nodes.
-    """
-    #send in an ordered set of index names and query pairs
-    #TODO this will change when we attempt #35, since this assumes intersection
-    query_script = """
-    neo4j = g.getRawGraph()
-    indexManager = neo4j.index()
-
-    //pull all nodes from indexes
-    nodes = [] as Set
-    for (def q : queries) {
-        index = indexManager.forNodes(q[0])
-        if (index != null) {
-            newNodes = index.query(q[1])
-            if (newNodes != null) {
-                if (nodes.size() == 0) {
-                    for (def n: newNodes) {
-                        nodes.add(n)
-                    }
-                }
-                else {
-                    nodes = nodes.intersect(newNodes)
-                }
-            }
-            if(nodes.size() == 0) {
-                break
-            }
-        }
-    }
-    results = nodes
-    //TODO run the javascript expression on each node, and only return if true
-    //TODO check all the types and make sure they match, or don't return
-    """
-    #type_name = self.nodetype._type_name()
-    #return_expr = reduce(and_,
-    #                     (js_expression_from_condition(c, J('testedNode')) 
-    #                      for c in unindexed))
-    result_set = connections[using].gremlin(query_script, queries=name_and_query)
-    
-    #make the result_set not insane (properly lazy)
-    return [LazyNode.from_dict(dic) for dic in result_set._list] if result_set else []
 
 class Query(object):
     def __init__(self, nodetype, conditions=tuple(), max_depth=None, 
@@ -665,7 +512,7 @@ class Query(object):
                 index_qs.append((index_name, str(q)))
         
         if built_q:
-            result_set = query_indices(index_qs, using)
+            result_set = script_utils.query_indices(index_qs, using)
 
             #filter for unindexed conditions, as well
             filtered_result = set(n for n in result_set \
