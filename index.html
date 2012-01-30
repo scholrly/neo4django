@@ -16,7 +16,7 @@
       margin: 0 auto;
       width: 700px;
     }
-    h1 { font-size: 3.8em; color: #9502b6; margin-bottom: 3px; }
+    h1 { font-size: 3.8em; color: white; margin-bottom: 3px; }
     h1 .small { font-size: 0.4em; }
     h1 a { text-decoration: none }
     h2 { font-size: 1.5em; color: #9502b6; }
@@ -59,7 +59,7 @@
 
     <p>Other improvements over the original integration include</p>
 
-    <ol>
+    <ul>
       <li>A number of custom properties.</li>
       <li>Improved indexing support.</li>
       <li>Index-based querying.</li>
@@ -67,9 +67,9 @@
       <li>A significant test suite to empower future development.</li>
       <li>Developed to Django 1.3.</li>
       <li>Built to work alongside relational models.</li>
-    </ol>
+    </ul>
     
-    <h2>What It Doesn't Do (TODO)
+    <h2>What It Doesn't Do (TODO)</h2>
     <p>thobe's list of future features hasn't been impacted that much by our development. We're still working on</p>
     <ol>
       <li>Relationship models and querying</li>
@@ -87,7 +87,7 @@
     <code>pip install -e git+https://github.com/scholrly/neo4django/#egg=neo4django</code>
     <h3>Database Setup</h3>
     <p>An example settings.py:</p>
-    <code>
+    <pre>
     NEO4J_DATABASES = {
         'default' : {
             'HOST':'localhost',
@@ -95,7 +95,7 @@
             'ENDPOINT':'/db/data'
         }
     }
-    </code>
+    </pre>
     <p>Note that if you want to use Django auth or other packages built on the regular relational ORM, you'll still need a regular DATABASES setting and a supported database.</p>
 
     <h2>Download</h2>
