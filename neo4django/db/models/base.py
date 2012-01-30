@@ -371,7 +371,7 @@ class NodeModel(NeoModel):
             locked << rawVertex
 
             candidate = curVertex.outE('<<TYPE>>').inV.find{
-                it.map.subMap(typeProps.keySet()) == typeProps
+                it.map().subMap(typeProps.keySet()) == typeProps
             }
             if (candidate == null) {
                 newTypeNode = g.addVertex(typeProps)
