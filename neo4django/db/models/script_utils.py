@@ -1,4 +1,5 @@
 import neo4jrestclient.client as neo4j
+from .. import DEFAULT_DB_ALIAS, connections
 
 class LazyBase(object):
     """
@@ -121,48 +122,24 @@ def query_indices(name_and_query, using):
     """
     #send in an ordered set of index names and query pairs
     #TODO this will change when we attempt #35, since this assumes intersection
-    query_script = """
-    neo4j = g.getRawGraph()
-    indexManager = neo4j.index()
-
-    //pull all nodes from indexes
-    nodes = [] as Set
-    for (def q : queries) {
-        index = indexManager.forNodes(q[0])
-        if (index != null) {
-            newNodes = index.query(q[1])
-            if (newNodes != null) {
-                if (nodes.size() == 0) {
-                    for (def n: newNodes) {
-                        nodes.add(n)
-                    }
-                }
-                else {
-                    nodes = nodes.intersect(newNodes)
-                }
-            }
-            if(nodes.size() == 0) {
-                break
-            }
-        }
-    }
-    results = nodes
-    //TODO run the javascript expression on each node, and only return if true
-    //TODO check all the types and make sure they match, or don't return
-    """
     #type_name = self.nodetype._type_name()
     #return_expr = reduce(and_,
     #                     (js_expression_from_condition(c, J('testedNode')) 
     #                      for c in unindexed))
-    result_set = connections[using].gremlin(query_script, queries=name_and_query)
+    result_set = connections[using].gremlin('results = Neo4Django.queryNodeIndices(queries)', queries=name_and_query)
     
     #make the result_set not insane (properly lazy)
     return [LazyNode.from_dict(dic) for dic in result_set._list] if result_set else []
+
+def id_from_url(url):
+    from urlparse import urlsplit
+    from posixpath import dirname, basename
+    path = urlsplit(url).path
+    b = basename(path)
+    return int(b if b else dirname(path))
 
 class GremlinSnippet(object):
     def __init__(self, name, script, in_args=['results'], out_args=['results']):
         self.script = script
         self.in_args = in_args
         self.out_arg = out_arg
-
-

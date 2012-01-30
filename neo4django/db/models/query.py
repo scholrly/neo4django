@@ -7,6 +7,7 @@ from ...constants import ORDER_ATTR
 from ...decorators import transactional, not_supported, alters_data, \
         not_implemented
 from . import script_utils
+from .script_utils import id_from_url
 
 from django.db.models.query import QuerySet
 from django.core import exceptions
@@ -45,17 +46,6 @@ QUERY_CHUNK_SIZE = 50
 TYPE_REL = '<<TYPE>>'
 INSTANCE_REL = '<<INSTANCE>>'
 INTERNAL_RELATIONSHIPS = (TYPE_REL, INSTANCE_REL)
-
-##################
-# UTIL FUNCTIONS #
-##################
-
-def id_from_url(url):
-    from urlparse import urlsplit
-    from posixpath import dirname, basename
-    path = urlsplit(url).path
-    b = basename(path)
-    return int(b if b else dirname(path))
 
 ######################################
 # IN-PYTHON QUERY CONDITION CHECKING #
@@ -334,11 +324,11 @@ def execute_select_related(models=None, query=None, index_name=None,
     types = get_columns(lambda c:c.startswith('t'), results)
 
     #put nodes in an id-lookup dict
-    nodes = [LazyNode.from_dict(d) for d in nodes]
+    nodes = [script_utils.LazyNode.from_dict(d) for d in nodes]
     nodes_by_id = dict((n.id, n) for n in nodes)
     #add any nodes we've got from the models list
     if models is not None:
-        nodes_by_id.update(dict((m.id, LazyNode.from_dict(m.node._dic)) for m in models))
+        nodes_by_id.update(dict((m.id, script_utils.LazyNode.from_dict(m.node._dic)) for m in models))
 
     #batch all relationships from paths and put em in a dict
     rels_by_id = {}

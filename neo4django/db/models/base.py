@@ -330,21 +330,31 @@ class NodeModel(NeoModel):
         #if the node hasn't been created, do that
         if self.__node is None:
             #TODO #244, batch optimization
-            self.__node = node = connections[using].node()
-            #and attach it to the subreference nodes we're using to express
-            #node type in the graph
-            self._type_node(using).relationships.create('<<INSTANCE>>', node)
-            types_to_index = [t for t in type(self).mro() \
-                              if issubclass(t, NodeModel) and t is not NodeModel]
-            for t in types_to_index:
-                self.index(using=using).add(TYPE_ATTR, t._type_name(), node)
+            #get all the type props, in case a new type node needs to be created
+            type_hier_props = [{'app_label':t._meta.app_label,
+                                'model_name':t.__name__}
+                            for t in self._concrete_type_chain()]
+            type_hier_props = list(reversed(type_hier_props))
+            #get all the names of all types, including abstract, for indexing
+            type_names_to_index = [t._type_name() for t in type(self).mro()
+                                   if (issubclass(t, NodeModel) 
+                                       and t is not NodeModel)]
+            script = '''
+            node = Neo4Django.createNodeWithTypes(types)
+            Neo4Django.indexNodeAsTypes(node, types_to_index)
+            results = node
+            '''
+            conn = connections[using]
+            self.__node = node = conn.gremlin_tx_deadlock_proof(script, 0, 
+                    types=type_hier_props, types_to_index=type_names_to_index)
         return self.__node
 
-    #XXX: conditionally memoized classmethod
-    def _type_node(cls, using):
-        conn = connections[using]
-        name = cls.__name__
-
+    @classmethod
+    def _concrete_type_chain(cls):
+        """
+        Returns an iterable of this NodeModel's concrete model ancestors,
+        including itself, from newest (this class) to oldest ancestor.
+        """
         def model_parents(cls):
             cur_cls = cls
             while True:
@@ -356,46 +366,22 @@ class NodeModel(NeoModel):
                 cur_cls = bases[0]
                 if not cur_cls._meta.abstract:
                     yield cur_cls
+        return itertools.chain([cls], model_parents(cls))
+
+    #XXX: conditionally memoized classmethod
+    def _type_node(cls, using):
+        conn = connections[using]
+        name = cls.__name__
         
         type_hier_props = [{'app_label':t._meta.app_label,'model_name':t.__name__}
-                           for t in itertools.chain([cls], model_parents(cls))]
+                           for t in self._concrete_type_chain()]
         type_hier_props = list(reversed(type_hier_props))
-
-        script = \
-        """
-        locked = []
-        curVertex = g.v(0)
-        for (def typeProps : types) {
-            rawVertex = curVertex.getRawVertex()
-            lockManager.getWriteLock(rawVertex)
-            locked << rawVertex
-
-            candidate = curVertex.outE('<<TYPE>>').inV.find{
-                it.map.subMap(typeProps.keySet()) == typeProps
-            }
-            if (candidate == null) {
-                newTypeNode = g.addVertex(typeProps)
-                name = typeProps['app_label'] + ":" + typeProps['model_name']
-                newTypeNode.name = name
-                g.addEdge(curVertex, newTypeNode, "<<TYPE>>")
-                curVertex = newTypeNode
-            }
-            else {
-                curVertex = candidate
-            }
-        }
-        for (def lockedRes : locked) {
-            lockManager.releaseWriteLock(lockedRes, null)
-        }
-
-        results = curVertex
-        """
-
-        try:
-            node = conn.gremlin_tx_deadlock_proof(script, 0, types=type_hier_props)
-        except Exception, e:
-            raise RuntimeError('The type node for class %s could not be created'
-                               ' in the database.' % name, e)
+        script = "results = Neo4Django.getTypeNode(types)"
+        #try:
+        node = conn.gremlin_tx_deadlock_proof(script, 0, types=type_hier_props)
+        #except Exception, e:
+        #    raise RuntimeError('The type node for class %s could not be created'
+        #                      ' in the database.' % name, e)
         #nodes = list(nodes)
         #if len(nodes) != 1:
         #    raise RuntimeError('Expected to retrieve a type node for class %s '
