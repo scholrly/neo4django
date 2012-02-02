@@ -244,6 +244,25 @@ class NodeModel(NeoModel):
 
     @classmethod
     def index(cls, using=DEFAULT_DB_ALIAS):
+        index_name = cls.index_name(using)
+        conn = connections[using]
+        def get_index(name):
+            #XXX this is a hack bc of bad equality tests for indexes in
+            #neo4jrestclient
+            def _hash_(self):
+                return hash(self.url)
+            try:
+                index = conn.nodes.indexes.get(index_name)
+            except:
+                index = conn.nodes.indexes.create(index_name, type='fulltext')
+            index.__hash__ = _hash_.__get__(index, neo_client.Index)
+            return index
+        
+        cls._indexes[cls][using] = index = get_index(index_name)
+        return index
+
+    @classmethod
+    def index_name(cls, using=DEFAULT_DB_ALIAS):
         if cls in cls._indexes:
             if using in cls._indexes:
                 return cls._indexes[cls][using]
@@ -260,24 +279,7 @@ class NodeModel(NeoModel):
         elif len(model_parents) > 1:
             return model_parents[-1].index(using=using)
 
-        conn = connections[using]
-        index_name = "{0}-{1}".format(
-            cls._meta.app_label,
-            cls.__name__,)
-        def get_index(name):
-            #XXX this is a hack bc of bad equality tests for indexes in
-            #neo4jrestclient
-            def _hash_(self):
-                return hash(self.url)
-            try:
-                index = conn.nodes.indexes.get(index_name)
-            except:
-                index = conn.nodes.indexes.create(index_name, type='fulltext')
-            index.__hash__ = _hash_.__get__(index, neo_client.Index)
-            return index
-        
-        cls._indexes[cls][using] = index = get_index(index_name)
-        return index
+        return"{0}-{1}".format(cls._meta.app_label, cls.__name__,)
 
     @property
     def connection(self):
@@ -345,7 +347,7 @@ class NodeModel(NeoModel):
             results = node
             '''
             conn = connections[using]
-            self.__node = node = conn.gremlin_tx_deadlock_proof(script, 0, 
+            self.__node = node = conn.gremlin_tx(script, 
                     types=type_hier_props, types_to_index=type_names_to_index)
         return self.__node
 

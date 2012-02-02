@@ -1,5 +1,6 @@
 class Neo4Django {
     static public binding;
+    static final AUTO_PROP_INDEX_KEY = 'LAST_AUTO_VALUE';
     static queryNodeIndices(queries) {
         /**
         * Returns the intersection of multiple node index queries.
@@ -41,6 +42,8 @@ class Neo4Django {
     }
 
     static getTypeNode(types) {
+        //there still might be a problem here...
+        try{
         def g = binding.g
         def locked = []
         def curVertex = g.v(0)
@@ -48,28 +51,36 @@ class Neo4Django {
         def rawVertex, candidate, name, newTypeNode
         for (def typeProps : types) {
             rawVertex = curVertex.getRawVertex()
-            lockManager.getWriteLock(rawVertex)
-            locked << rawVertex
-
+            //lockManager.getWriteLock(rawVertex)
+            //locked << rawVertex
             candidate = curVertex.outE('<<TYPE>>').inV.find{
-                it.map.subMap(typeProps.keySet()) == typeProps
+                it.map().subMap(typeProps.keySet()) == typeProps
             }
             if (candidate == null) {
                 newTypeNode = g.addVertex(typeProps)
                 name = typeProps['app_label'] + ":" + typeProps['model_name']
                 newTypeNode.name = name
                 g.addEdge(curVertex, newTypeNode, "<<TYPE>>")
+                //return candidate
                 curVertex = newTypeNode
             }
             else {
                 curVertex = candidate
             }
+            //lockManager.releaseWriteLock(rawVertex, null)
         }
-        for (lockedRes in locked) {
-            lockManager.releaseWriteLock(lockedRes, null)
-        }
+        //for (lockedRes in locked) {
+        //    lockManager.releaseWriteLock(lockedRes, null)
+        //}
 
         curVertex
+        } catch(Exception e){e.toString()}
+    }
+
+    static getTypeNodeFromNode(node) {
+        def candidates = []
+        node.in('<<INSTANCE>>').aggregate(candidates)
+        candidates[0] //honestly if there's more there's a problem, but..
     }
 
     static createNodeWithTypes(types) {
@@ -80,8 +91,70 @@ class Neo4Django {
         newVertex
     }
 
+    static createIndex(indexName) {
+    }
+
     static indexNodeAsTypes(node, typeNames) {
         
+    }
+
+    static updateNodeProperties(node, propMap, indexName) {
+        def originalVal, closureString, value, lastAutoProp, autoDefault, index
+        def oldNode, valuesToIndex, oldValue
+        def typeNode = getTypeNodeFromNode(node)
+        propMap.each{prop, dict ->
+            if (dict.get('auto_increment')){
+                //get a write lock on the type node
+                //getLockManager.getWriteLock(typeNode.getRawVertex())
+
+                lastAutoProp = prop + '.' + AUTO_PROP_INDEX_KEY
+                closureString = dict.get('increment_func') ?: '{i -> i+1}'
+                
+                if (typeNode.map().containsKey(lastAutoProp)){
+                    value = getNextAutoValue(typeNode[lastAutoProp], closureString)
+                }
+                else {
+                    autoDefault = dict.get('auto_default')
+                    value = (autoDefault != null) ? autoDefault : 1
+                }
+                typeNode[lastAutoProp] = value
+                //release the lock
+                //getLockManager.releaseWriteLock(typeNode.getRawVertex(), null)
+            }
+            else {
+                value = dict.get('value')
+            }
+            oldValue = node[prop]
+            //set the value
+            if (value == null){
+                node.removeProperty(prop)
+            }
+            else {
+                node[prop] = value
+            }
+            if (dict.get('indexed')) {
+                index = binding.g.idx(indexName)
+                valuesToIndex = dict.get('values_to_index') ?: [null]
+                if (dict.get('unique')){
+                    //eventually the prop name and index key should be decoupled
+                    oldNode = index[[prop:valuesToIndex[0]]]
+                    if (oldNode != null && oldNode.id != node.id){
+                        //TODO HOUSTON WE HAVE A COLLISION
+                    }
+                }
+                //totally remove the node for a key
+                index.getRawIndex().remove(node, prop)
+                for(v in valuesToIndex) {
+                    if (v != null ){
+                        index.put(prop, v, node)
+                    }
+                }
+            }
+        }
+    }
+
+    static getNextAutoValue(original, closureString) {
+        Eval.x(original, closureString + "(x)")
     }
 }
 Neo4Django.binding = binding;

@@ -34,11 +34,12 @@ if getattr(_settings, 'NEO4DJANGO_PROFILE_REQUESTS', False):
     _client.Request = ProfilingRequest
  
 class EnhancedGraphDatabase(_GraphDatabase):
-    def gremlin(self, script, load_lib=False, **params):
+    def gremlin(self, script, tx=False, **params):
         """
         Execute a Gremlin script server-side and return the results.
         Transactions will be automatically managed, unless otherwise requested
-        in the script.
+        in the script, or the tx argument is set to True- in which case the
+        whole script will be wrapped in a transaction.
         """
         #import statements have to be at the top, so this global try won't
         #do without pulling them up- luckily imports aren't super complicated
@@ -47,24 +48,45 @@ class EnhancedGraphDatabase(_GraphDatabase):
         #would be better...
         import_regex = _re.compile('\w*import [^{}]*?\w*(;|$)', _re.MULTILINE)
         import_statements = [m.group() for m in import_regex.finditer(script)]
-        importless_script = import_regex.sub('',script)
+        importless_script = import_regex.sub('', script)
 
         lib_script = '''
-        %s
+        %(imports)s
+        %(tx_begin)s
         try{
-        %s
+        %(main_code)s
         } catch (MissingPropertyException mpe) {
+            %(tx_fail)s
             if (mpe.property == 'Neo4Django') {
-                '%s'
+                results ='%(load_error)s'
             }
             else { throw mpe }
         }
-        ''' % ('\n'.join(s.strip(';') for s in import_statements),
-                importless_script, LIBRARY_LOADING_ERROR)
-
+        catch (Exception otherE) {
+            %(tx_fail)s
+            throw otherE
+        }
+        %(tx_end)s
+        results
+        '''
+        repl_dict = {'imports':('\n'.join(s.strip(';') for s in import_statements)),
+                     'tx_begin':'',
+                     'main_code':importless_script,
+                     'tx_fail':'',
+                     'load_error':LIBRARY_LOADING_ERROR,
+                     'tx_end':''
+                    }
+        if tx:
+            repl_dict['tx_begin'] = 'g.setMaxBufferSize(0); g.startTransaction()'
+            repl_dict['tx_end'] = 'g.stopTransaction(TransactionalGraph.Conclusion.SUCCESS);' \
+                                  'g.setMaxBufferSize(1)'
+            repl_dict['tx_fail'] = 'g.stopTransaction(TransactionalGraph.Conclusion.FAILURE);' \
+                                  'g.setMaxBufferSize(1)'
+        lib_script %= repl_dict
         ext = self.extensions.GremlinPlugin
         for i in xrange(LIBRARY_LOADING_RETRIES + 1):
             script_rv = ext.execute_script(lib_script, params=params)
+            
             if not isinstance(script_rv, basestring) or script_rv != LIBRARY_LOADING_ERROR:
                 return script_rv
             if i == 0:
@@ -79,60 +101,46 @@ class EnhancedGraphDatabase(_GraphDatabase):
         """
         Execute a Gremlin script server-side and return the results. The script
         will be wrapped in a transaction.
-
-        In addition to standard Gremlin and Neo4j exposed variables,
-        `lockManager` provides the script a reference to Neo4j's lock manager.
         """
-        tx_script = \
-        """
-        g.setMaxBufferSize(0)
-        g.startTransaction()
-
-        %s
-        
-        g.stopTransaction(TransactionalGraph.Conclusion.SUCCESS)
-        g.setMaxBufferSize(1)
-
-        results
-        """ % script
-        return self.gremlin(tx_script, **params)
+        return self.gremlin(script, tx=True, **params)
 
     def gremlin_tx_deadlock_proof(self, script, retries, **params):
-        tx_script = \
-        """
-        import org.neo4j.kernel.DeadlockDetectedException
+        return "DEADLOCK PROOF MY ASS"
+        #tx_script = \
+        #"""
+        #import org.neo4j.kernel.DeadlockDetectedException
 
-        g.setMaxBufferSize(0)
+        #g.setMaxBufferSize(0)
 
-        for (deadlockRetry in 1..10) {
-            try {
-                g.startTransaction()
+        #for (deadlockRetry in 1..10) {
+        #    try {
+        #        g.startTransaction()
 
-                %s
+        #        %s
 
-                g.stopTransaction(TransactionalGraph.Conclusion.SUCCESS)
-                break
-            }
-            catch(DeadlockDetectedException e) {
-                results = "DEADLOCK"
-                g.stopTransaction(TransactionalGraph.Conclusion.FAILURE)
-            }
-        }
+        #        g.stopTransaction(TransactionalGraph.Conclusion.SUCCESS)
+        #        break
+        #    }
+        #    catch(DeadlockDetectedException e) {
+        #        results = "DEADLOCK"
+        #        g.stopTransaction(TransactionalGraph.Conclusion.FAILURE)
+        #    }
+        #}
 
-        g.setMaxBufferSize(1)
+        #g.setMaxBufferSize(1)
 
-        results
-        """ % script
-        
-        ret = self.gremlin(tx_script, **params)
-        
-        if isinstance(ret, basestring) and ret == 'DEADLOCK':
-            if retries > 0:
-                _sleep(_random()/100.0)
-                self.gremlin_tx_deadlock_proof(script, retries - 1, **params)
-            else:
-                raise RuntimeError('Server-side deadlock detected!')
-        return ret
+        #results
+        #""" % script
+        #
+        #ret = self.gremlin(tx_script, **params)
+        #
+        #if isinstance(ret, basestring) and ret == 'DEADLOCK':
+        #    if retries > 0:
+        #        _sleep(_random()/100.0)
+        #        self.gremlin_tx_deadlock_proof(script, retries - 1, **params)
+        #    else:
+        #        raise RuntimeError('Server-side deadlock detected!')
+        #return ret
 
     def cypher(self, query, **params):
         ext = self.extensions.CypherPlugin
