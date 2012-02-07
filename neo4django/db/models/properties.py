@@ -323,13 +323,13 @@ class BoundProperty(AttrRouter):
                                 indexed_values.append(prop.member_to_neo_index(m))
         script = '''
         node=g.v(nodeId);
-        results = Neo4Django.updateNodeProperties(node, propMap, indexName);
-        //results = node
+        Neo4Django.updateNodeProperties(node, propMap, indexName);
+        results = node
         '''
         conn = connections[instance.using]
         script_rv= conn.gremlin_tx(script, nodeId=instance.id,
                 propMap=gremlin_props, indexName=instance.index_name(instance.using))
-        from nose.tools import set_trace; set_trace()
+        #from nose.tools import set_trace; set_trace()
         
         if hasattr(script_rv, 'properties'):
             values.clear()

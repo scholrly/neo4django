@@ -277,7 +277,7 @@ class NodeModel(NeoModel):
             raise NotImplementedError('Indexing a base NodeModel is not '
                                       'implemented.')
         elif len(model_parents) > 1:
-            return model_parents[-1].index(using=using)
+            return model_parents[-1].index_name(using=using)
 
         return"{0}-{1}".format(cls._meta.app_label, cls.__name__,)
 
@@ -376,11 +376,11 @@ class NodeModel(NeoModel):
         name = cls.__name__
         
         type_hier_props = [{'app_label':t._meta.app_label,'model_name':t.__name__}
-                           for t in self._concrete_type_chain()]
+                           for t in cls._concrete_type_chain()]
         type_hier_props = list(reversed(type_hier_props))
         script = "results = Neo4Django.getTypeNode(types)"
         #try:
-        node = conn.gremlin_tx_deadlock_proof(script, 0, types=type_hier_props)
+        node = conn.gremlin_tx(script, types=type_hier_props)
         #except Exception, e:
         #    raise RuntimeError('The type node for class %s could not be created'
         #                      ' in the database.' % name, e)

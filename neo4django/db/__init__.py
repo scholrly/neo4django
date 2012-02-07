@@ -84,18 +84,18 @@ class EnhancedGraphDatabase(_GraphDatabase):
                                   'g.setMaxBufferSize(1)'
         lib_script %= repl_dict
         ext = self.extensions.GremlinPlugin
-        for i in xrange(LIBRARY_LOADING_RETRIES + 1):
-            script_rv = ext.execute_script(lib_script, params=params)
-            
-            if not isinstance(script_rv, basestring) or script_rv != LIBRARY_LOADING_ERROR:
-                return script_rv
-            if i == 0:
-                #get the library source
-                lib_source = _pkg_resource_stream(__package__.split('.',1)[0],
-                                            'gremlin/library.groovy').read()
-                lib_script = lib_source + '\n' + script
-        raise _LibraryCouldNotLoad
+        #TODO move this back to retying, changed for testing
+        #get the library source
+        lib_source = _pkg_resource_stream(__package__.split('.',1)[0],
+                                    'gremlin/library.groovy').read()
+        lib_script = lib_source + '\n' + script
 
+        script_rv = ext.execute_script(lib_script, params=params)
+        
+        if not isinstance(script_rv, basestring) or script_rv != LIBRARY_LOADING_ERROR:
+            return script_rv
+            
+        raise _LibraryCouldNotLoad
 
     def gremlin_tx(self, script, **params):
         """

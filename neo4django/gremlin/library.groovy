@@ -41,46 +41,48 @@ class Neo4Django {
         binding.g.getRawGraph().getConfig().getLockManager()
     }
 
+    static getGhettoWriteLock(element){
+        element.removeProperty('thisPropshouldxneverbeused')
+    }
+
     static getTypeNode(types) {
         //there still might be a problem here...
-        try{
         def g = binding.g
-        def locked = []
-        def curVertex = g.v(0)
-        def lockManager = getLockManager()
-        def rawVertex, candidate, name, newTypeNode
-        for (def typeProps : types) {
-            rawVertex = curVertex.getRawVertex()
-            //lockManager.getWriteLock(rawVertex)
-            //locked << rawVertex
-            candidate = curVertex.outE('<<TYPE>>').inV.find{
-                it.map().subMap(typeProps.keySet()) == typeProps
+        def originalBufferSize = g.getMaxBufferSize()
+        g.setMaxBufferSize(0); g.startTransaction()
+        try {
+            def curVertex = g.v(0)
+            def candidate, name, newTypeNode
+            for (def typeProps : types) {
+                getGhettoWriteLock(curVertex)
+                candidate = curVertex.outE('<<TYPE>>').inV.find{
+                    it.map().subMap(typeProps.keySet()) == typeProps
+                }
+                if (candidate == null) {
+                    newTypeNode = g.addVertex(typeProps)
+                    name = typeProps['app_label'] + ":" + typeProps['model_name']
+                    newTypeNode.name = name
+                    g.addEdge(curVertex, newTypeNode, "<<TYPE>>")
+                    curVertex = newTypeNode
+                }
+                else {
+                    curVertex = candidate
+                }
             }
-            if (candidate == null) {
-                newTypeNode = g.addVertex(typeProps)
-                name = typeProps['app_label'] + ":" + typeProps['model_name']
-                newTypeNode.name = name
-                g.addEdge(curVertex, newTypeNode, "<<TYPE>>")
-                //return candidate
-                curVertex = newTypeNode
-            }
-            else {
-                curVertex = candidate
-            }
-            //lockManager.releaseWriteLock(rawVertex, null)
+            g.stopTransaction(TransactionalGraph.Conclusion.SUCCESS);
+            return curVertex
         }
-        //for (lockedRes in locked) {
-        //    lockManager.releaseWriteLock(lockedRes, null)
-        //}
-
-        curVertex
-        } catch(Exception e){e.toString()}
+        catch (Exception e){
+            g.stopTransaction(TransactionalGraph.Conclusion.FAILURE);
+            throw e
+        }
+        finally {
+            g.setMaxBufferSize(originalBufferSize)
+        }
     }
 
     static getTypeNodeFromNode(node) {
-        def candidates = []
-        node.in('<<INSTANCE>>').aggregate(candidates)
-        candidates[0] //honestly if there's more there's a problem, but..
+        node.in('<<INSTANCE>>').next()
     }
 
     static createNodeWithTypes(types) {
@@ -104,8 +106,8 @@ class Neo4Django {
         def typeNode = getTypeNodeFromNode(node)
         propMap.each{prop, dict ->
             if (dict.get('auto_increment')){
-                //get a write lock on the type node
-                //getLockManager.getWriteLock(typeNode.getRawVertex())
+                //get a ghetto write lock on the type node
+                getGhettoWriteLock(typeNode)
 
                 lastAutoProp = prop + '.' + AUTO_PROP_INDEX_KEY
                 closureString = dict.get('increment_func') ?: '{i -> i+1}'
@@ -118,8 +120,6 @@ class Neo4Django {
                     value = (autoDefault != null) ? autoDefault : 1
                 }
                 typeNode[lastAutoProp] = value
-                //release the lock
-                //getLockManager.releaseWriteLock(typeNode.getRawVertex(), null)
             }
             else {
                 value = dict.get('value')
