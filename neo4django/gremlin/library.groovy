@@ -1,6 +1,13 @@
+import org.neo4j.helpers.collection.MapUtil
+import org.neo4j.graphdb.index.IndexManager
+import com.tinkerpop.blueprints.pgm.impls.neo4j.Neo4jIndex;
+
 class Neo4Django {
     static public binding;
+    static transactions = [];
+    static bufferSizes = [];
     static final AUTO_PROP_INDEX_KEY = 'LAST_AUTO_VALUE';
+    static final UNIQUENESS_ERROR_MESSAGE = 'neo4django: uniqueness error';
     static queryNodeIndices(queries) {
         /**
         * Returns the intersection of multiple node index queries.
@@ -45,11 +52,34 @@ class Neo4Django {
         element.removeProperty('thisPropshouldxneverbeused')
     }
 
+    static startTx() {
+        bufferSizes << binding.g.getMaxBufferSize()
+        binding.g.setMaxBufferSize(0)
+        def tx = binding.g.getRawGraph().beginTx()
+        transactions << tx
+        return tx
+    }
+
+    static finishTx(success) {
+        def oldBufferSize = bufferSizes.pop()
+        def tx = transactions.pop()
+        if (success) tx.success(); else tx.failure()
+        tx.finish()
+        binding.g.setMaxBufferSize(oldBufferSize)
+    }
+
+    static passTx() {
+        finishTx(true)
+    }
+
+    static failTx() {
+        finishTx(false)
+    }
+
     static getTypeNode(types) {
-        //there still might be a problem here...
         def g = binding.g
         def originalBufferSize = g.getMaxBufferSize()
-        g.setMaxBufferSize(0); g.startTransaction()
+        startTx()
         try {
             def curVertex = g.v(0)
             def candidate, name, newTypeNode
@@ -69,15 +99,12 @@ class Neo4Django {
                     curVertex = candidate
                 }
             }
-            g.stopTransaction(TransactionalGraph.Conclusion.SUCCESS);
+            passTx()
             return curVertex
         }
         catch (Exception e){
-            g.stopTransaction(TransactionalGraph.Conclusion.FAILURE);
+            failTx()
             throw e
-        }
-        finally {
-            g.setMaxBufferSize(originalBufferSize)
         }
     }
 
@@ -93,16 +120,35 @@ class Neo4Django {
         newVertex
     }
 
-    static createIndex(indexName) {
+    static getOrCreateIndex(indexName) {
+        def g = binding.g
+        def index = g.idx(indexName)
+        if (!index){
+            def opts = MapUtil.stringMap(IndexManager.PROVIDER, "lucene", "type", "fulltext")
+            g.getRawGraph().index().forNodes(indexName, opts)
+            //XXX can't use g.idx because gremlin doesn't get indices dynamically
+            index = new Neo4jIndex(indexName, Vertex.class, g)
+        }
+        return index
+    }
+
+    static getRawIndex(indexName) {
+        def indexManager = binding.g.getRawGraph().index()
+        return indexManager.existsForNodes(indexName)? indexManager.forNodes(indexName) : null
+    }
+
+    static removeFromIndex(indexName, node, prop) {
+        //TODO for some reason this throws a 'NotInTransactionException'
+        //getRawIndex(indexName).remove(node.getRawVertex(), prop)
     }
 
     static indexNodeAsTypes(node, typeNames) {
-        
+        //TODO
     }
 
     static updateNodeProperties(node, propMap, indexName) {
         def originalVal, closureString, value, lastAutoProp, autoDefault, index
-        def oldNode, valuesToIndex, oldValue
+        def oldNodes, valuesToIndex, rawIndex, error = null, g = binding.g
         def typeNode = getTypeNodeFromNode(node)
         propMap.each{prop, dict ->
             if (dict.get('auto_increment')){
@@ -124,7 +170,28 @@ class Neo4Django {
             else {
                 value = dict.get('value')
             }
-            oldValue = node[prop]
+            if (dict.containsKey('values_to_index')) {
+                index = getOrCreateIndex(indexName)
+                valuesToIndex = dict.get('values_to_index') ?: []
+                if (dict.get('unique')){
+                    //TODO take care of unique vs array membership indexing
+                    //eventually the prop name and index key should be decoupled
+                    oldNodes = index.get(prop, valuesToIndex[0])
+                    if (oldNodes.size() > 0 && !oldNodes*.id.contains(node.id)){
+                        error = UNIQUENESS_ERROR_MESSAGE
+                        return error
+                    }
+                }
+                //totally remove the node for a key
+                removeFromIndex(index.indexName, node, prop)
+                //and reindex it
+                for(v in valuesToIndex) {
+                    if (v != null ){
+                        index.put(prop, v, node)
+                    }
+                }
+            }
+
             //set the value
             if (value == null){
                 node.removeProperty(prop)
@@ -132,25 +199,11 @@ class Neo4Django {
             else {
                 node[prop] = value
             }
-            if (dict.get('indexed')) {
-                index = binding.g.idx(indexName)
-                valuesToIndex = dict.get('values_to_index') ?: [null]
-                if (dict.get('unique')){
-                    //eventually the prop name and index key should be decoupled
-                    oldNode = index[[prop:valuesToIndex[0]]]
-                    if (oldNode != null && oldNode.id != node.id){
-                        //TODO HOUSTON WE HAVE A COLLISION
-                    }
-                }
-                //totally remove the node for a key
-                index.getRawIndex().remove(node, prop)
-                for(v in valuesToIndex) {
-                    if (v != null ){
-                        index.put(prop, v, node)
-                    }
-                }
-            }
         }
+        if (error != null){
+            return error
+        }
+        return node
     }
 
     static getNextAutoValue(original, closureString) {

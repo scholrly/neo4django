@@ -77,24 +77,36 @@ class EnhancedGraphDatabase(_GraphDatabase):
                      'tx_end':''
                     }
         if tx:
-            repl_dict['tx_begin'] = 'g.setMaxBufferSize(0); g.startTransaction()'
-            repl_dict['tx_end'] = 'g.stopTransaction(TransactionalGraph.Conclusion.SUCCESS);' \
+            repl_dict['tx_begin'] = 'g.setMaxBufferSize(0); rootTx = g.getRawGraph().beginTx()'
+            repl_dict['tx_end'] = 'rootTx.success(); rootTx.finish();' \
                                   'g.setMaxBufferSize(1)'
-            repl_dict['tx_fail'] = 'g.stopTransaction(TransactionalGraph.Conclusion.FAILURE);' \
+            repl_dict['tx_fail'] = 'rootTx.failure(); rootTx.finish();' \
                                   'g.setMaxBufferSize(1)'
         lib_script %= repl_dict
         ext = self.extensions.GremlinPlugin
-        #TODO move this back to retying, changed for testing
-        #get the library source
-        lib_source = _pkg_resource_stream(__package__.split('.',1)[0],
-                                    'gremlin/library.groovy').read()
-        lib_script = lib_source + '\n' + script
 
-        script_rv = ext.execute_script(lib_script, params=params)
-        
-        if not isinstance(script_rv, basestring) or script_rv != LIBRARY_LOADING_ERROR:
-            return script_rv
-            
+        def include_library(s):
+            #get the library source
+            lib_source = _pkg_resource_stream(__package__.split('.',1)[0],
+                                        'gremlin/library.groovy').read()
+            return lib_source + '\n' + s
+
+        def send_script(s, params):
+            script_rv = ext.execute_script(s, params=params)
+
+            if not isinstance(script_rv, basestring) or script_rv != LIBRARY_LOADING_ERROR:
+                return script_rv
+            else:
+                raise _LibraryCouldNotLoad
+
+        if getattr(_settings, 'NEO4DJANGO_DEBUG_GREMLIN', False):
+            return send_script(include_library(lib_script), params)
+        for i in xrange(LIBRARY_LOADING_RETRIES + 1):
+            try:
+                return send_script(lib_script, params)
+            except _LibraryCouldNotLoad:
+                if i == 0:
+                    lib_script = include_library(lib_script)
         raise _LibraryCouldNotLoad
 
     def gremlin_tx(self, script, **params):
@@ -103,44 +115,6 @@ class EnhancedGraphDatabase(_GraphDatabase):
         will be wrapped in a transaction.
         """
         return self.gremlin(script, tx=True, **params)
-
-    def gremlin_tx_deadlock_proof(self, script, retries, **params):
-        return "DEADLOCK PROOF MY ASS"
-        #tx_script = \
-        #"""
-        #import org.neo4j.kernel.DeadlockDetectedException
-
-        #g.setMaxBufferSize(0)
-
-        #for (deadlockRetry in 1..10) {
-        #    try {
-        #        g.startTransaction()
-
-        #        %s
-
-        #        g.stopTransaction(TransactionalGraph.Conclusion.SUCCESS)
-        #        break
-        #    }
-        #    catch(DeadlockDetectedException e) {
-        #        results = "DEADLOCK"
-        #        g.stopTransaction(TransactionalGraph.Conclusion.FAILURE)
-        #    }
-        #}
-
-        #g.setMaxBufferSize(1)
-
-        #results
-        #""" % script
-        #
-        #ret = self.gremlin(tx_script, **params)
-        #
-        #if isinstance(ret, basestring) and ret == 'DEADLOCK':
-        #    if retries > 0:
-        #        _sleep(_random()/100.0)
-        #        self.gremlin_tx_deadlock_proof(script, retries - 1, **params)
-        #    else:
-        #        raise RuntimeError('Server-side deadlock detected!')
-        #return ret
 
     def cypher(self, query, **params):
         ext = self.extensions.CypherPlugin

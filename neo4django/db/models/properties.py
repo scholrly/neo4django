@@ -297,7 +297,7 @@ class BoundProperty(AttrRouter):
         else:
             return self.__class.index(using)
 
-    def _save_(instance, node, node_is_new): #TODO this entire method could be transactional
+    def _save_(instance, node, node_is_new):
         values = BoundProperty.__values_of(instance)
         properties = BoundProperty._all_properties_for(instance)
 
@@ -323,13 +323,11 @@ class BoundProperty(AttrRouter):
                                 indexed_values.append(prop.member_to_neo_index(m))
         script = '''
         node=g.v(nodeId);
-        Neo4Django.updateNodeProperties(node, propMap, indexName);
-        results = node
+        results = Neo4Django.updateNodeProperties(node, propMap, indexName);
         '''
         conn = connections[instance.using]
         script_rv= conn.gremlin_tx(script, nodeId=instance.id,
                 propMap=gremlin_props, indexName=instance.index_name(instance.using))
-        #from nose.tools import set_trace; set_trace()
         
         if hasattr(script_rv, 'properties'):
             values.clear()
@@ -340,8 +338,10 @@ class BoundProperty(AttrRouter):
                     #XXX duplicates __get_value()...
                     values[k] = prop.from_neo(v)
         else:
-            #TODO raise uniqueness or other error!
-            pass
+            if script_rv == 'neo4django: uniqueness error': #TODO fix this magic string
+                raise ValueError( "Duplicate index entries for <%s>.%s" % 
+                                 (instance.__class__.__name__, prop.name))
+            raise ValueError('Unexpected response from server: %s' % script_rv)
         
     NodeModel._save_properties = staticmethod(_save_) #TODO this needs to be revised. I hope there's a better way.
     del _save_
