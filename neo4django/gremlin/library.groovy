@@ -138,8 +138,7 @@ class Neo4Django {
     }
 
     static removeFromIndex(indexName, node, prop) {
-        //TODO for some reason this throws a 'NotInTransactionException'
-        //getRawIndex(indexName).remove(node.getRawVertex(), prop)
+        getRawIndex(indexName).remove(node.getRawVertex(), prop)
     }
 
     static indexNodeAsTypes(node, typeNames) {
