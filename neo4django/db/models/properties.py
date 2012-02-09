@@ -317,7 +317,7 @@ class BoundProperty(AttrRouter):
                     indexed_values = prop_dict['values_to_index'] = []
                     prop_dict['unique'] = bool(prop.unique)
                     if value is not None:
-                        indexed_values.append(value)
+                        indexed_values.append(prop.to_neo_index(value))
                         if prop.indexed_by_member:
                             for m in value:
                                 indexed_values.append(prop.member_to_neo_index(m))
