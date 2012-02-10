@@ -184,7 +184,7 @@ class Neo4Django {
                 //and reindex it
                 for(v in valuesToIndex) {
                     if (v != null ){
-                        index.put(prop, v, node)
+                        rawIndex.add(node.getRawVertex(), prop, v)
                     }
                 }
             }
