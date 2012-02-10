@@ -126,7 +126,7 @@ def query_indices(name_and_query, using):
     #return_expr = reduce(and_,
     #                     (js_expression_from_condition(c, J('testedNode')) 
     #                      for c in unindexed))
-    result_set = connections[using].gremlin('results = Neo4Django.queryNodeIndices(queries)', queries=name_and_query)
+    result_set = connections[using].gremlin_tx('results = Neo4Django.queryNodeIndices(queries)', queries=name_and_query)
     
     #make the result_set not insane (properly lazy)
     return [LazyNode.from_dict(dic) for dic in result_set._list] if result_set else []

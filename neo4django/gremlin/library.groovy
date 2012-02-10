@@ -15,17 +15,15 @@ class Neo4Django {
         * @param queries a list of (query name, query string) pairs.
         */
         def neo4j = binding.g.getRawGraph()
-        def indexManager = neo4j.index()
 
         //pull all nodes from indexes
         //TODO run the javascript expression on each node, and only return if true
         //TODO check all the types and make sure they match, or don't return
-        def nodes = [] as Set
-        def index
+        def nodes = [] as Set, index, rawIndex
         for (def q : queries) {
-            index = indexManager.forNodes(q[0])
-            if (index != null) {
-                def newNodes = index.query(q[1])
+            (index, rawIndex) = getOrCreateIndex(q[0])
+            if (rawIndex != null) {
+                def newNodes = rawIndex.query(q[1])
                 if (newNodes != null) {
                     if (nodes.size() == 0) {
                         for (def n: newNodes) {
@@ -120,16 +118,20 @@ class Neo4Django {
         newVertex
     }
 
+    //returns 
     static getOrCreateIndex(indexName) {
         def g = binding.g
-        def index = g.idx(indexName)
+        def index = g.idx(indexName), rawIndex = null
         if (!index){
             def opts = MapUtil.stringMap(IndexManager.PROVIDER, "lucene", "type", "fulltext")
-            g.getRawGraph().index().forNodes(indexName, opts)
+            rawIndex = g.getRawGraph().index().forNodes(indexName, opts)
             //XXX can't use g.idx because gremlin doesn't get indices dynamically
             index = new Neo4jIndex(indexName, Vertex.class, g)
         }
-        return index
+        else {
+            rawIndex = g.getRawGraph().index().forNodes(indexName)
+        }
+        return [index, rawIndex]
     }
 
     static getRawIndex(indexName) {
@@ -137,12 +139,8 @@ class Neo4Django {
         return indexManager.existsForNodes(indexName)? indexManager.forNodes(indexName) : null
     }
 
-    static removeFromIndex(indexName, node, prop) {
-        getRawIndex(indexName).remove(node.getRawVertex(), prop)
-    }
-
     static indexNodeAsTypes(node, typeNames) {
-        //TODO
+        //TODO!
     }
 
     static updateNodeProperties(node, propMap, indexName) {
@@ -170,7 +168,7 @@ class Neo4Django {
                 value = dict.get('value')
             }
             if (dict.containsKey('values_to_index')) {
-                index = getOrCreateIndex(indexName)
+                (index, rawIndex) = getOrCreateIndex(indexName)
                 valuesToIndex = dict.get('values_to_index') ?: []
                 if (dict.get('unique')){
                     //TODO take care of unique vs array membership indexing
@@ -182,7 +180,7 @@ class Neo4Django {
                     }
                 }
                 //totally remove the node for a key
-                removeFromIndex(index.indexName, node, prop)
+                rawIndex.remove(node.getRawVertex(), prop)
                 //and reindex it
                 for(v in valuesToIndex) {
                     if (v != null ){
