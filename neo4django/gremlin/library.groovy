@@ -194,6 +194,9 @@ class Neo4Django {
                 node.removeProperty(prop)
             }
             else {
+                if (value instanceof List) {
+                    value = value as String[]
+                }
                 node[prop] = value
             }
         }
