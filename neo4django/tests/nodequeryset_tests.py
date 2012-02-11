@@ -323,7 +323,7 @@ def test_filter_lte():
 alphabet = [chr(i + 97) for i in range(26)]
 def test_filter_range():
     import random
-    ages_and_names = zip(*[(random.sample(alphabet, 6), i + 70) for i in xrange(20)])
+    ages_and_names = zip(*[(''.join(random.sample(alphabet, 6)), i + 70) for i in xrange(20)])
     make_people(*ages_and_names)
     octogenarians = Person.objects.filter(age__range=(80, 89))
     assert all(80 <= p.age <= 89 for p in octogenarians), "These guys aren't all in their 80's!"

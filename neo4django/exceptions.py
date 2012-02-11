@@ -2,6 +2,14 @@ class Error(Exception):
     """Base class for neo4django exceptions."""
     pass
 
+class GremlinLibraryCouldNotBeLoaded(Error):
+    """
+    Error for when the Gremlin library could not be loaded within the number of
+    acceptable retries. This could happen if the database's GremlinScriptEngine
+    is being reset more than usual.
+    """
+    pass
+
 class NoSuchDatabaseError(Error):
     def __init__(self, url=None, name=None):
         """
