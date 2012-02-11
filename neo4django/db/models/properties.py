@@ -18,7 +18,6 @@ from .. import connections
 from neo4django.validators import validate_array, validate_str_array,\
         validate_int_array, ElementValidator
 from neo4django.utils import AttrRouter, write_through
-from neo4django.constants import AUTO_PROP_INDEX_VALUE
 
 from dateutil.tz import tzutc, tzoffset
 
@@ -310,7 +309,11 @@ class BoundProperty(AttrRouter):
                 prop_dict['auto_default'] = prop.auto_default
             if key in values:
                 value = values[key]
+                prop.clean(value, instance)
                 value = prop.pre_save(node, node_is_new, prop.name) or value
+                if not value in validators.EMPTY_VALUES:
+                    #should already have errored if self.null==False
+                    value = prop.to_neo(value)
                 values[key] = value
                 prop_dict['value'] = value
                 if prop.indexed:

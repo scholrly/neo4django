@@ -8,6 +8,8 @@ class Neo4Django {
     static bufferSizes = [];
     static final AUTO_PROP_INDEX_KEY = 'LAST_AUTO_VALUE';
     static final UNIQUENESS_ERROR_MESSAGE = 'neo4django: uniqueness error';
+    static final INTERNAL_ATTR='_neo4django'
+    static final TYPE_ATTR=INTERNAL_ATTR + '_type'
     static queryNodeIndices(queries) {
         /**
         * Returns the intersection of multiple node index queries.
@@ -134,13 +136,12 @@ class Neo4Django {
         return [index, rawIndex]
     }
 
-    static getRawIndex(indexName) {
-        def indexManager = binding.g.getRawGraph().index()
-        return indexManager.existsForNodes(indexName)? indexManager.forNodes(indexName) : null
-    }
-
-    static indexNodeAsTypes(node, typeNames) {
-        //TODO!
+    static indexNodeAsTypes(node, indexName, typeNames) {
+        def (index, rawIndex) = getOrCreateIndex(indexName)
+        def rawVertex = node.getRawVertex()
+        for(name in typeNames) {
+            rawIndex.add(rawVertex, TYPE_ATTR, name)
+        }   
     }
 
     static updateNodeProperties(node, propMap, indexName) {

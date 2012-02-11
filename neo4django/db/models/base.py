@@ -343,12 +343,13 @@ class NodeModel(NeoModel):
                                        and t is not NodeModel)]
             script = '''
             node = Neo4Django.createNodeWithTypes(types)
-            Neo4Django.indexNodeAsTypes(node, types_to_index)
+            Neo4Django.indexNodeAsTypes(node, indexName, typesToIndex)
             results = node
             '''
             conn = connections[using]
-            self.__node = node = conn.gremlin_tx(script, 
-                    types=type_hier_props, types_to_index=type_names_to_index)
+            self.__node = node = conn.gremlin_tx(script, types=type_hier_props,
+                                                 indexName=self.index_name(), 
+                                                 typesToIndex=type_names_to_index)
         return self.__node
 
     @classmethod
