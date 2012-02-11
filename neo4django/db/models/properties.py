@@ -340,6 +340,9 @@ class BoundProperty(AttrRouter):
                 if prop:
                     #XXX duplicates __get_value()...
                     values[k] = prop.from_neo(v)
+            #XXX this relies on neo4jrestclient private implementation details
+            node._dic['data'].clear()
+            node._dic['data'].update(script_rv.properties)
         else:
             if script_rv == 'neo4django: uniqueness error': #TODO fix this magic string
                 raise ValueError( "Duplicate index entries for <%s>.%s" % 
