@@ -18,7 +18,6 @@ from .. import connections
 from neo4django.validators import validate_array, validate_str_array,\
         validate_int_array, ElementValidator
 from neo4django.utils import AttrRouter, write_through
-from neo4django.constants import AUTO_PROP_INDEX_VALUE
 
 from dateutil.tz import tzutc, tzoffset
 
@@ -297,70 +296,59 @@ class BoundProperty(AttrRouter):
         else:
             return self.__class.index(using)
 
-    def _save_(instance, node, node_is_new): #TODO this entire method could be transactional
+    def _save_(instance, node, node_is_new):
         values = BoundProperty.__values_of(instance)
         properties = BoundProperty._all_properties_for(instance)
+
+        gremlin_props = {}
         for key, prop in properties.items():
-            index = None
+            prop_dict = gremlin_props[key] = {}
             if prop.auto and values.get(key, None) is None:
-                type_node = prop.target._type_node(instance.using)
-
-                last_auto_attname = '%s.%s' % (prop.attname, AUTO_PROP_INDEX_VALUE)
-
-                script = prop.next_value_gremlin
-                script += \
-                """
-                typeNode = g.v(typeNodeID)
-                rawTypeNode = typeNode.getRawVertex()
-
-                lockManager.getWriteLock(rawTypeNode)
-
-                if (lastAutoProp in typeNode.map) {
-                    value = typeNode[lastAutoProp]
-                    value = nextValue(value)
-                }
-                else {
-                    value = defaultAutoVal
-                }
-                typeNode[lastAutoProp] = value
-
-                lockManager.releaseWriteLock(rawTypeNode, null)
-
-                results = value
-                """
-                conn = connections[instance.using]
-                value = conn.gremlin_tx_deadlock_proof(script, 0,
-                      defaultAutoVal=prop.auto_default, lastAutoProp=last_auto_attname,
-                      typeNodeID=type_node.id)
-                #if the code is interrupted between here and setting
-                #the value, there might be a problem... worst case, lost
-                #id space?
-
-                values[key] = value
+                prop_dict['auto_increment'] = True
+                prop_dict['increment_func'] = prop.next_value_gremlin
+                prop_dict['auto_default'] = prop.auto_default
             if key in values:
                 value = values[key]
+                prop.clean(value, instance)
                 value = prop.pre_save(node, node_is_new, prop.name) or value
+                if not value in validators.EMPTY_VALUES:
+                    #should already have errored if self.null==False
+                    value = prop.to_neo(value)
                 values[key] = value
-                old, value = prop.__set_value(instance, value)
+                prop_dict['value'] = value
                 if prop.indexed:
-                    index = index if index else prop.index(using=instance.using)
-                    if prop.unique:#TODO empty values? in validators.empty? # and value is not None:
-                        try:
-                            old_node = index[prop.attname][value]
-                        except NotFoundError, e:
-                            old_node = None
-                        if old_node and old_node != node:
-                            raise ValueError(
-                                "Duplicate index entries for <%s>.%s" %
-                                (instance.__class__.__name__,
-                                    prop.name))
-                    if old is not None:
-                        index.delete(prop.attname, None, node)
+                    indexed_values = prop_dict['values_to_index'] = []
+                    prop_dict['unique'] = bool(prop.unique)
                     if value is not None:
-                        index.add(prop.attname, prop.to_neo_index(value), node)
+                        indexed_values.append(prop.to_neo_index(value))
                         if prop.indexed_by_member:
                             for m in value:
-                                index.add(prop.attname, prop.member_to_neo_index(m), node)
+                                indexed_values.append(prop.member_to_neo_index(m))
+        script = '''
+        node=g.v(nodeId);
+        results = Neo4Django.updateNodeProperties(node, propMap, indexName);
+        '''
+        conn = connections[instance.using]
+        script_rv= conn.gremlin_tx(script, nodeId=instance.id,
+                propMap=gremlin_props, indexName=instance.index_name(instance.using))
+        
+        if hasattr(script_rv, 'properties'):
+            values.clear()
+            
+            for k, v in script_rv.properties.items():
+                prop = properties.get(k, None)
+                if prop:
+                    #XXX duplicates __get_value()...
+                    values[k] = prop.from_neo(v)
+            #XXX this relies on neo4jrestclient private implementation details
+            node._dic['data'].clear()
+            node._dic['data'].update(script_rv.properties)
+        else:
+            if script_rv == 'neo4django: uniqueness error': #TODO fix this magic string
+                raise ValueError( "Duplicate index entries for <%s>.%s" % 
+                                 (instance.__class__.__name__, prop.name))
+            raise ValueError('Unexpected response from server: %s' % script_rv)
+        
     NodeModel._save_properties = staticmethod(_save_) #TODO this needs to be revised. I hope there's a better way.
     del _save_
 
@@ -500,15 +488,11 @@ class AutoProperty(IntegerProperty):
     @property
     def next_value_gremlin(self):
         """
-        Return a Gremlin/Groovy closure that can compute next_value()
-        server-side. The function should be named 'nextValue', and take a
-        single value as an argument to increment.
+        Return a Gremlin/Groovy closure literal that can compute next_value()
+        server-side. The closure take a single value as an argument to
+        increment.
         """
-        script = \
-        """
-        def nextValue = { i -> i + 1}
-        """
-        return script
+        return """{ i -> i + 1}"""
 
 class DateProperty(Property):
     __format = '%Y-%m-%d'
