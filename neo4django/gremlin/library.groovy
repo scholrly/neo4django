@@ -157,7 +157,7 @@ class Neo4Django {
                 closureString = dict.get('increment_func') ?: '{i -> i+1}'
                 
                 if (typeNode.map().containsKey(lastAutoProp)){
-                    value = getNextAutoValue(typeNode[lastAutoProp], closureString)
+                    value = singleArgEval(closureString, typeNode[lastAutoProp])
                 }
                 else {
                     autoDefault = dict.get('auto_default')
@@ -168,9 +168,12 @@ class Neo4Django {
             else {
                 value = dict.get('value')
             }
-            if (dict.containsKey('values_to_index')) {
+            if (dict.get('indexed')) {
                 (index, rawIndex) = getOrCreateIndex(indexName)
                 valuesToIndex = dict.get('values_to_index') ?: []
+                if (valuesToIndex.size() == 0 && dict.containsKey('to_index_func')) {
+                    valuesToIndex << singleArgEval(dict.get('to_index_func') ?: '{i->i}', value)
+                }
                 if (dict.get('unique')){
                     //TODO take care of unique vs array membership indexing
                     //eventually the prop name and index key should be decoupled
@@ -207,7 +210,7 @@ class Neo4Django {
         return node
     }
 
-    static getNextAutoValue(original, closureString) {
+    static singleArgEval(closureString, original) {
         Eval.x(original, closureString + "(x)")
     }
 }
