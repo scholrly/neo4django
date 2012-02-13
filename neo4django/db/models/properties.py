@@ -797,11 +797,8 @@ class ArrayProperty(Property):
     def get_default(self):
         return []
 
-    #def from_neo(self, value):
-    #    from nose.tools import set_trace; set_trace()
-    #    if value is None:
-    #        return []
-    #    return value
+    def from_neo(self, value):
+        return tuple(value)
 
 class StringArrayProperty(ArrayProperty):
     default_validators = [validate_str_array]

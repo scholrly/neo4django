@@ -199,7 +199,12 @@ class Neo4Django {
             }
             else {
                 if (value instanceof List) {
-                    value = value as String[]
+                    if (value[0] instanceof Integer || value[0] instanceof Long) {
+                        value = value as Long[]
+                    }
+                    else {
+                        value = value as String[]
+                    }
                 }
                 node[prop] = value
             }

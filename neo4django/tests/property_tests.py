@@ -249,7 +249,6 @@ def test_int_array_property():
     """Tests that IntArrayProperty validates, saves and returns properly."""
     class IntArrayNode(models.NodeModel):
         vals = models.IntArrayProperty()
-    from nose.tools import set_trace; set_trace()
     
     n1 = IntArrayNode(vals = (1,2,3))
     eq_(n1.vals, (1,2,3))
