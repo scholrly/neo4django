@@ -1,4 +1,5 @@
 from nose.tools import eq_, with_setup
+from django.core.exceptions import ValidationError
 
 import datetime
 import itertools
@@ -244,20 +245,24 @@ def test_empty_array():
 
     eq_(n1.vals, [])
 
-def test_int_array_property_validator():
-    """Tests that IntArrayProperty validates properly."""
-    class StrArrayNode(models.NodeModel):
+def test_int_array_property():
+    """Tests that IntArrayProperty validates, saves and returns properly."""
+    class IntArrayNode(models.NodeModel):
         vals = models.IntArrayProperty()
-
-    n1 = StrArrayNode(vals = (1,2,3))
+    from nose.tools import set_trace; set_trace()
+    
+    n1 = IntArrayNode(vals = (1,2,3))
+    eq_(n1.vals, (1,2,3))
     n1.save()
+    eq_(n1.vals, (1,2,3))
+
     try:
-        n2 = StrArrayNode(vals = ('1','2','3'))
+        n2 = IntArrayNode(vals = ('1','2','3'))
         n2.save()
-    except:
+    except ValidationError:
         pass
     else:
-        raise AssertionError('tuples of strs should not work')
+        raise AssertionError('tuples of strs should not validate')
 
 def test_str_array_property_validator():
     """Tests that StringArrayProperty validates properly."""

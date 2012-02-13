@@ -39,7 +39,7 @@ tests=[
 	'test_model_inheritance',
 	'test_nodemodel_independence',
 	'test_array_property_validator',
-	'test_int_array_property_validator',
+	'test_int_array_property',
 	'test_str_array_property_validator',
 	'test_url_array_property_validator',
 	'test_basic_indexed_query',
