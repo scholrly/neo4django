@@ -222,6 +222,7 @@ class BoundProperty(AttrRouter):
                      'unique',
                      'to_neo',
                      'to_neo_index',
+                     'to_neo_index_gremlin',
                      'member_to_neo_index',
                      'from_python',
                      'from_neo',
@@ -307,6 +308,10 @@ class BoundProperty(AttrRouter):
                 prop_dict['auto_increment'] = True
                 prop_dict['increment_func'] = prop.next_value_gremlin
                 prop_dict['auto_default'] = prop.auto_default
+            if prop.indexed:
+                prop_dict['indexed'] = True
+                if hasattr(prop, 'to_neo_index_gremlin'):
+                    prop_dict['to_index_func'] = prop.to_neo_index_gremlin
             if key in values:
                 value = values[key]
                 prop.clean(value, instance)
@@ -472,6 +477,15 @@ class IntegerProperty(Property):
         if len(s) > 20:
             raise ValueError('Values should be between {0} and {1}.'.format(MIN_INT, MAX_INT))
         return ('-' if value < 0 else '0') + s.zfill(19)
+
+    @property
+    def to_neo_index_gremlin(self):
+        """
+        Return a Gremlin/Groovy closure literal that can compute 
+        to_neo_index(value) server-side. The closure should take a single value
+        as an argument (that value actually set on the node).
+        """
+        return """{ i -> (i < 0?'-':'0') + String.format('%019d',i)} """
 
 class AutoProperty(IntegerProperty):
     def __init__(self, *args, **kwargs):
