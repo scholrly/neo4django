@@ -1,4 +1,4 @@
-from nose.tools import with_setup
+from nose.tools import with_setup, eq_
 
 def setup():
     global Person, neo4django, settings, gdb, models
@@ -99,5 +99,8 @@ def test_auto_property_indexing():
         some_id = models.AutoProperty(indexed=True)
 
     nodes = [IndexedAutoNode.objects.create() for i in xrange(5)]
-    #assert all(IndexedAutoNode.index()['some_id'][IndexedAutoNode.some_id.to_neo_index(nodes[i]).id].id == nodes[i].id for i in xrange(5))
+    for i in xrange(5):
+        lookup = IndexedAutoNode.index()['some_id'][IndexedAutoNode.some_id.to_neo_index(nodes[i].some_id)]
+        eq_(len(lookup), 1)
+        eq_(next(lookup).id, nodes[i].id)
 
