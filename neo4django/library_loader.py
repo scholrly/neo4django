@@ -1,6 +1,8 @@
 from neo4jrestclient.client import GraphDatabase
 from django.conf import settings as _settings
+
 from pkg_resources import resource_stream as _pkg_resource_stream
+from collections import namedtuple
 import re as _re
 
 from .exceptions import GremlinLibraryCouldNotBeLoaded as _LibraryCouldNotLoad
@@ -8,7 +10,11 @@ from .exceptions import GremlinLibraryCouldNotBeLoaded as _LibraryCouldNotLoad
 #TODO move this somewhere sane (settings?)
 LIBRARY_LOADING_RETRIES = 1
 
-LIBRARY_LOADING_ERROR = 'neo4django: library not loaded!'
+#TODO DRY considerations
+LIBRARY_NAME = 'Neo4Django'
+LIBRARY_LOADING_ERROR = 'neo4django: "%s" library not loaded!'
+
+other_libraries = {}
 
 class EnhancedGraphDatabase(GraphDatabase):
     def gremlin(self, script, tx=False, **params):
@@ -34,8 +40,8 @@ class EnhancedGraphDatabase(GraphDatabase):
         %(main_code)s
         } catch (MissingPropertyException mpe) {
             %(tx_fail)s
-            if (mpe.property == 'Neo4Django') {
-                results ='%(load_error)s'
+            if (mpe.property in %(library_names)s) {
+                results =String.format('%(load_error)s', mpe.property)
             }
             else { throw mpe }
         }
@@ -46,10 +52,14 @@ class EnhancedGraphDatabase(GraphDatabase):
         %(tx_end)s
         results
         '''
+        library_names = ("'%s'" % str(c) for c in 
+                         (['Neo4Django'] + other_libraries.keys()))
+        library_list = '[' + ','.join(library_names) + ']'
         repl_dict = {'imports':('\n'.join(s.strip(';') for s in import_statements)),
                      'tx_begin':'',
                      'main_code':importless_script,
                      'tx_fail':'',
+                     'library_names':library_list,
                      'load_error':LIBRARY_LOADING_ERROR,
                      'tx_end':''
                     }
@@ -62,11 +72,17 @@ class EnhancedGraphDatabase(GraphDatabase):
         lib_script %= repl_dict
         ext = self.extensions.GremlinPlugin
 
-        def include_library(s):
+        def include_main_library(s):
             #get the library source
             lib_source = _pkg_resource_stream(__package__.split('.',1)[0],
                                         'gremlin/library.groovy').read()
             return lib_source + '\n' + s
+
+        def include_library(name, s):
+            return other_libraries[name] + '\n' + s #TODO TODO TODO
+
+        def include_all_libraries(s):
+            return include_main_library(s) #TODO TODO TODO
 
         def send_script(s, params):
             script_rv = ext.execute_script(s, params=params)
@@ -77,13 +93,14 @@ class EnhancedGraphDatabase(GraphDatabase):
                 raise _LibraryCouldNotLoad
 
         if getattr(_settings, 'NEO4DJANGO_DEBUG_GREMLIN', False):
-            return send_script(include_library(lib_script), params)
+            all_libs = include_all_libraries(lib_script)
+            return send_script(all_libs, params)
         for i in xrange(LIBRARY_LOADING_RETRIES + 1):
             try:
                 return send_script(lib_script, params)
             except _LibraryCouldNotLoad:
                 if i == 0:
-                    lib_script = include_library(lib_script)
+                    lib_script = include_main_library(lib_script)
         raise _LibraryCouldNotLoad
 
     def gremlin_tx(self, script, **params):
@@ -97,4 +114,15 @@ class EnhancedGraphDatabase(GraphDatabase):
         ext = self.extensions.CypherPlugin
         return ext.execute_query(query=query, params=params)
 
+Library = namedtuple('Library', ['source', 'loaded'])
 
+def load_library(library_class, library_source):
+    if not isinstance(library_class, basestring):
+        raise TypeError('Expected a string class name, not %s.' 
+                        % str(library_class))
+    if library_class == LIBRARY_NAME:
+        raise ValueError('%s is a reserved library name.' % LIBRARY_NAME)
+    other_libraries[library_class] = Library(library_source, False)
+
+def remove_library(library_class):
+    other_libraries.pop(library_class, None)
