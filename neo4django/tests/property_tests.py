@@ -243,7 +243,7 @@ def test_empty_array():
     n1.vals = []
     n1.save()
 
-    eq_(n1.vals, [])
+    eq_(n1.vals, tuple())
 
 def test_int_array_property():
     """Tests that IntArrayProperty validates, saves and returns properly."""
