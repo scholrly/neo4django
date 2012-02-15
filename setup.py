@@ -30,6 +30,7 @@ setup(
     ],
     dependency_links = [
         'https://github.com/mhluongo/jexp/tarball/master#egg=jexp-0.1.2',
+        'https://github.com/versae/neo4j-rest-client/tarball/e675afa75514768f08771f6945aa85fd5b329d79#egg=neo4jrestclient-1.5.0',
         'https://github.com/kennethreitz/requests/tarball/add6feab02d21967ca35f1572e6202b1dd11b788#egg=requests-0.4.1-py2.6-dev',
   ]
 )
