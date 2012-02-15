@@ -84,7 +84,8 @@ tests=[
 	'test_zerovalued_lookup',
 	'test_datetimetz_constructor',
 	'test_datetimetz_prop',
-	'test_datetime_prop']
+	'test_datetime_prop',
+    'test_other_library']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
