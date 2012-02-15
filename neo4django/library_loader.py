@@ -13,6 +13,7 @@ LIBRARY_LOADING_RETRIES = 1
 #TODO DRY considerations
 LIBRARY_NAME = 'Neo4Django'
 LIBRARY_LOADING_ERROR = 'neo4django: "%s" library not loaded!'
+LIBRARY_ERROR_REGEX = _re.compile(LIBRARY_LOADING_ERROR % '.*?')
 
 other_libraries = {}
 
@@ -78,16 +79,23 @@ class EnhancedGraphDatabase(GraphDatabase):
                                         'gremlin/library.groovy').read()
             return lib_source + '\n' + s
 
-        def include_library(name, s):
-            return other_libraries[name] + '\n' + s #TODO TODO TODO
+        def include_unloaded_libraries(s):
+            for name in other_libraries.keys():
+                if not other_libraries[name].loaded:
+                    source = other_libraries[name].source
+                    s = source + '\n' +  s
+            return s
 
         def include_all_libraries(s):
-            return include_main_library(s) #TODO TODO TODO
+            for name in other_libraries.keys():
+                source = other_libraries[name].source
+                other_libraries[name] = Library(source, True)
+                s = source + '\n' +  s
+            return include_main_library(s)
 
         def send_script(s, params):
             script_rv = ext.execute_script(s, params=params)
-
-            if not isinstance(script_rv, basestring) or script_rv != LIBRARY_LOADING_ERROR:
+            if not isinstance(script_rv, basestring) or not LIBRARY_ERROR_REGEX.match(script_rv):
                 return script_rv
             else:
                 raise _LibraryCouldNotLoad
@@ -97,10 +105,11 @@ class EnhancedGraphDatabase(GraphDatabase):
             return send_script(all_libs, params)
         for i in xrange(LIBRARY_LOADING_RETRIES + 1):
             try:
-                return send_script(lib_script, params)
+                return send_script(include_unloaded_libraries(lib_script), 
+                                   params)
             except _LibraryCouldNotLoad:
                 if i == 0:
-                    lib_script = include_main_library(lib_script)
+                    lib_script = include_all_libraries(lib_script)
         raise _LibraryCouldNotLoad
 
     def gremlin_tx(self, script, **params):
