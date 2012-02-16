@@ -1,4 +1,4 @@
-from neo4jrestclient.client import GraphDatabase
+from neo4jrestclient.client import GraphDatabase, RAW as RETURNS_RAW
 from django.conf import settings as _settings
 
 from pkg_resources import resource_stream as _pkg_resource_stream
@@ -18,7 +18,7 @@ LIBRARY_ERROR_REGEX = _re.compile(LIBRARY_LOADING_ERROR % '.*?')
 other_libraries = {}
 
 class EnhancedGraphDatabase(GraphDatabase):
-    def gremlin(self, script, tx=False, **params):
+    def gremlin(self, script, tx=False, raw=False, **params):
         """
         Execute a Gremlin script server-side and return the results.
         Transactions will be automatically managed, unless otherwise requested
@@ -94,7 +94,10 @@ class EnhancedGraphDatabase(GraphDatabase):
             return include_main_library(s)
 
         def send_script(s, params):
-            script_rv = ext.execute_script(s, params=params)
+            execute_kwargs = {}
+            if raw:
+                execute_kwargs['returns'] = RETURNS_RAW
+            script_rv = ext.execute_script(s, params=params, **execute_kwargs)
             if not isinstance(script_rv, basestring) or not LIBRARY_ERROR_REGEX.match(script_rv):
                 return script_rv
             else:
