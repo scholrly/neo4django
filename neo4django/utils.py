@@ -198,7 +198,7 @@ class AttrRouter(object):
     def _unroute_all(self, attrs, obj):
         self._unroute(attrs, obj, get=True, set=True, delete=True)
 
-class Neo4djangoIntegrationRouter():
+class Neo4djangoIntegrationRouter(object):
     def allow_relation(self, obj1, obj2, **hints):
         "Disallow any relations between Neo4j and regular SQL models."
         from neo4django.db.models import NodeModel
