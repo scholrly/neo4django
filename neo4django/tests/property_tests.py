@@ -314,9 +314,15 @@ def test_auto_property():
             abstract = True
         some_id = models.AutoProperty()
 
-    class ConcreteAutoNode(AbstractAutoNode):
+    class ConcreteAutoNode1(AbstractAutoNode):
         pass
 
-    nodes = [ConcreteAutoNode.objects.create() for i in xrange(5)]
+    class ConcreteAutoNode2(AbstractAutoNode):
+        pass
+
+    nodes = [ConcreteAutoNode1.objects.create() for i in xrange(5)]
     eq_([n.some_id for n in nodes], range(1, 6))
 
+    #make sure the two child classes share an id 'collision domain'
+    nodes = [ConcreteAutoNode2.objects.create() for i in xrange(6, 11)]
+    eq_([n.some_id for n in nodes], range(6, 11))
