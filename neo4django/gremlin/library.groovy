@@ -174,7 +174,7 @@ class Neo4Django {
             if (dict.get('auto_increment')){
                 if (dict.get('auto_abstract')) {
                     types = [['app_label':dict['auto_app_label'],
-                              'model':dict['auto_model']]]
+                              'model_name':dict['auto_model']]]
                     typeNode = getTypeNode(types)
                 }
                 else {
