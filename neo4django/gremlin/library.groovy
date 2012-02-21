@@ -157,6 +157,7 @@ class Neo4Django {
         return [index, rawIndex]
     }
 
+    //TODO this might suffer from a problem similar to #54
     static indexNodeAsTypes(node, indexName, typeNames) {
         def (index, rawIndex) = getOrCreateIndex(indexName)
         def rawVertex = node.getRawVertex()
@@ -165,12 +166,20 @@ class Neo4Django {
         }   
     }
 
-    static updateNodeProperties(node, propMap, indexName) {
+    static updateNodeProperties(node, propMap) {
         def originalVal, closureString, value, lastAutoProp, autoDefault, index
-        def oldNodes, valuesToIndex, rawIndex, error = null, g = binding.g
-        def typeNode = getTypeNodeFromNode(node)
+        def oldNodes, valuesToIndex, rawIndex, indexName, error = null, typeNode
+        def types, g = binding.g
         propMap.each{prop, dict ->
             if (dict.get('auto_increment')){
+                if (dict.get('auto_abstract')) {
+                    types = [['app_label':dict['auto_app_label'],
+                              'model':dict['auto_model']]]
+                    typeNode = getTypeNode(types)
+                }
+                else {
+                    typeNode = getTypeNodeFromNode(node)
+                }
                 //get a ghetto write lock on the type node
                 getGhettoWriteLock(typeNode)
 
@@ -189,7 +198,8 @@ class Neo4Django {
             else {
                 value = dict.get('value')
             }
-            if (dict.get('indexed')) {
+            if (dict.containsKey('index_name')) {
+                indexName = dict['index_name']
                 (index, rawIndex) = getOrCreateIndex(indexName)
                 valuesToIndex = dict.get('values_to_index') ?: []
                 if (valuesToIndex.size() == 0 && dict.containsKey('to_index_func')) {

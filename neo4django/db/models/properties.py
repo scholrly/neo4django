@@ -297,19 +297,29 @@ class BoundProperty(AttrRouter):
         else:
             return self.__class.index(using)
 
+    def index_name(self, using):
+        if not (self.indexed or self.auto):
+            raise TypeError("'%s' is not indexed" % (self.__propname,))
+        else:
+            return self.__class.index_name(using)
+
     def _save_(instance, node, node_is_new):
         values = BoundProperty.__values_of(instance)
         properties = BoundProperty._all_properties_for(instance)
 
         gremlin_props = {}
         for key, prop in properties.items():
+            prop_class = prop.__class
             prop_dict = gremlin_props[key] = {}
             if prop.auto and values.get(key, None) is None:
                 prop_dict['auto_increment'] = True
                 prop_dict['increment_func'] = prop.next_value_gremlin
                 prop_dict['auto_default'] = prop.auto_default
+                prop_dict['auto_abstract'] = prop_class._meta.abstract
+                prop_dict['auto_app_label'] = prop_class._meta.app_label
+                prop_dict['auto_model'] = prop_class.__name__
             if prop.indexed:
-                prop_dict['indexed'] = True
+                prop_dict['index_name'] = prop.index_name(instance.using)
                 if hasattr(prop, 'to_neo_index_gremlin'):
                     prop_dict['to_index_func'] = prop.to_neo_index_gremlin
             if key in values:
@@ -331,11 +341,11 @@ class BoundProperty(AttrRouter):
                                 indexed_values.append(prop.member_to_neo_index(m))
         script = '''
         node=g.v(nodeId);
-        results = Neo4Django.updateNodeProperties(node, propMap, indexName);
+        results = Neo4Django.updateNodeProperties(node, propMap);
         '''
         conn = connections[instance.using]
         script_rv= conn.gremlin_tx(script, nodeId=instance.id,
-                propMap=gremlin_props, indexName=instance.index_name(instance.using))
+                propMap=gremlin_props)
         
         if hasattr(script_rv, 'properties'):
             values.clear()
