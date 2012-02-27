@@ -1,6 +1,7 @@
 __all__ = ['connection', 'connections','DEFAULT_DB_ALIAS']
 
 from django.conf import settings as _settings
+from django.core import exceptions
 from neo4jrestclient import client as _client
 from time import time as _time
 
