@@ -598,7 +598,7 @@ class RelationshipInstance(models.Manager):
     def __save__(self, node):
         #Deletes all relationships removed since last save and adds any new
         #relatonships to the database.
-
+    
         #TODO this should be batched
         for relationship in self._removed:
             relationship.delete()
@@ -645,18 +645,20 @@ class RelationshipInstance(models.Manager):
         if hasattr(self.__obj, 'node'):
             neo_rels = list(rel._load_relationships(self.__obj.node,
                                                     ordered=self.ordered))
-            rels_by_node = defaultdict(list)
+            rels_by_node_id = defaultdict(list)
             for neo_rel in neo_rels:
-                other_end = neo_rel.start if neo_rel.end == self.__obj.node\
+                #import pdb; pdb.set_trace()
+                other_end = neo_rel.start if neo_rel.end.id == self.__obj.node.id\
                             else neo_rel.end
-                rels_by_node[other_end].append(neo_rel)
+                rels_by_node_id[other_end.id].append(neo_rel)
             nodes_to_remove = [o.node for o in objs if hasattr(o, 'node')]
             unsaved_obj_to_remove = [o for o in objs if not hasattr(o, 'node')]
             for obj in objs:
-                candidate_rels = rels_by_node[obj.node]\
+                candidate_rels = rels_by_node_id[obj.node.id]\
                         if hasattr(o, 'node') else []
                 if candidate_rels:
-                    self._removed.append(candidate_rels.pop(0))
+                    if candidate_rels[0] not in self._removed:
+                        self._removed.append(candidate_rels.pop(0))
                 else:
                     try:
                         self._added.remove(obj)
