@@ -1,8 +1,15 @@
 from nose.tools import with_setup, eq_
 import random, string
+from django.conf import settings as _settings
+from neo4django.db import connections
+from neo4django.neo4jclient import EnhancedGraphDatabase
+
+class MyGraphDatabase(EnhancedGraphDatabase):
+    def do_something(self):
+        return "did something"
 
 def setup():
-    global neo4django, gdb, library_loader, connection
+    global neo4django, gdb, neo4jclient, connection
 
     from neo4django.tests import neo4django, gdb
     from neo4django import neo4jclient
@@ -27,3 +34,14 @@ def test_other_library():
 
     node = connection.gremlin('results = %s.getRoot()' % class_name)
     eq_(node.id, 0)
+
+def test_custom_clients_same_database():
+    """Testing to make sure our custom """
+    assert connections['custom'].do_something() == "did something"
+
+    try:
+        connections['default'].do_something()
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError('Default database should not have access to do_something()')
