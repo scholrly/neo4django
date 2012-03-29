@@ -3,9 +3,8 @@ __all__ = ['connection', 'connections','DEFAULT_DB_ALIAS']
 from django.conf import settings as _settings
 from django.core import exceptions
 from neo4jrestclient import client as _client
+from ..utils import ConnectionHandler
 from time import time as _time
-
-from ..library_loader import EnhancedGraphDatabase
 
 if getattr(_settings, 'NEO4DJANGO_PROFILE_REQUESTS', False):
     class ProfilingRequest(_client.Request):
@@ -25,7 +24,7 @@ if getattr(_settings, 'NEO4DJANGO_PROFILE_REQUESTS', False):
                                                           data=data,
                                                           headers=headers)
     _client.Request = ProfilingRequest
- 
+
 DEFAULT_DB_ALIAS = 'default'
 
 if not _settings.NEO4J_DATABASES:
@@ -37,16 +36,6 @@ if not DEFAULT_DB_ALIAS in _settings.NEO4J_DATABASES:
                                           'database, \"%s\",to use Neo4j models'
                                           '.' % DEFAULT_DB_ALIAS)
 
-connections = {}
-
-#maybe move this to a ConnectionHandler ala django.db
-for key, value in _settings.NEO4J_DATABASES.items():
-    if 'HOST' not in value or 'PORT' not in value:
-        raise exceptions.ImproperlyConfigured('Each Neo4j database configured '
-                                              'needs a configured host and '
-                                              'port.')
-    connections[key] = EnhancedGraphDatabase('http://%s:%d/db/data' %
-                                             (value['HOST'], value['PORT']))
-
+connections = ConnectionHandler(_settings.NEO4J_DATABASES)
 #TODO: think about emulating django's db routing
 connection = connections[DEFAULT_DB_ALIAS]

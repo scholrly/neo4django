@@ -215,3 +215,90 @@ class Neo4djangoIntegrationRouter(object):
         if issubclass(model, NodeModel):
             return False
         return None
+
+## TODO: I think this connection stuff  might belong elsewhere?
+from threading import local
+from django.core import exceptions
+from django.utils.importlib import import_module
+from neo4jclient import EnhancedGraphDatabase
+
+
+class ConnectionDoesNotExist(Exception):
+    pass
+
+
+def load_client(client_path):
+    client_modname, client_classname = client_path.rsplit('.', 1)
+    try:
+        client_mod = import_module(client_modname)
+    except ImportError:
+        error_msg = "Could not import %s as a client"
+        raise exceptions.ImproperlyConfigured(error_msg % client_path)
+    try:
+        client = getattr(client_mod, client_classname)
+    except AttributeError:
+        error_msg = ("Neo4j client module %s has no class %s"
+                     % (client_mod, client_classname))
+        raise exceptions.ImproperlyConfigured(error_msg)
+    if not issubclass(client, EnhancedGraphDatabase):
+        error_msg = ("%s is not a subclass of EnhancedGraphDatabase "
+                     "Any custom neo4j clients must subclass EnhancedGraphDatabase"
+                     % client_path)
+        raise exceptions.ImproperlyConfigured(error_msg % client_path)
+    return client
+
+
+class ConnectionHandler(object):
+    def __init__(self, databases):
+        self.databases = databases
+        ## This is copied straight from django.db.utils. It uses threadlocality
+        #  to handle the case where the user wants to change the connection
+        #  info in middleware -- by keeping the connections thread-local, changes
+        #  on a per-view basis in middleware will not be applied globally.
+        self._connections = local()
+
+    def ensure_defaults(self, alias):
+        """
+        Puts the defaults into the settings dictionary for a given connection
+        where no settings is provided.
+        """
+        try:
+            conn = self.databases[alias]
+        except KeyError:
+            raise ConnectionDoesNotExist("The connection %s doesn't exist" % alias)
+
+        conn.setdefault('CLIENT', 'neo4django.neo4jclient.EnhancedGraphDatabase')
+        if conn['CLIENT'] == 'django.db.backends.' or not conn['CLIENT']:
+            conn['CLIENT'] = 'neo4django.neo4jclient.EnhancedGraphDatabase'
+        conn.setdefault('OPTIONS', {})
+        if 'HOST' not in conn or 'PORT' not in conn:
+            raise exceptions.ImproperlyConfigured('Each Neo4j database configured '
+                                                  'needs a configured host and '
+                                                  'port.')
+        for setting in ['HOST', 'PORT']:
+            conn.setdefault(setting, '')
+        ## We can add these back in if we upgrade to supporting 1.6
+        # for setting in ['USER', 'PASSWORD']:
+        #     conn.setdefault(setting, None)
+
+    def __getitem__(self, alias):
+        if hasattr(self._connections, alias):
+            return getattr(self._connections, alias)
+
+        self.ensure_defaults(alias)
+        db = self.databases[alias]
+        Client = load_client(db['CLIENT'])
+        conn = Client('http://%s:%d/db/data' % (db['HOST'], db['PORT']),
+                      **db['OPTIONS'])
+
+        setattr(self._connections, alias, conn)
+        return conn
+
+    def __setitem__(self, key, value):
+        setattr(self._connections, key, value)
+
+    def __iter__(self):
+        return iter(self.databases)
+
+    def all(self):
+        return [self[alias] for alias in self]
