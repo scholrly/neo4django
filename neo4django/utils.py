@@ -300,5 +300,8 @@ class ConnectionHandler(object):
     def __iter__(self):
         return iter(self.databases)
 
+    def __repr__(self):
+        return "<ConnectionHandler(%s)>" % str(self.databases)
+
     def all(self):
         return [self[alias] for alias in self]
