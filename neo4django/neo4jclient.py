@@ -20,7 +20,13 @@ other_libraries = {}
 
 class EnhancedGraphDatabase(GraphDatabase):
     def new_request(self):
-        return Request(**self._auth)
+        # Newer versions of neo4jrestclient support auth more robustly
+        # the older versions do not support at all, so we have to check here
+        try:
+            auth = self._auth
+        except AttributeError:
+            auth = {}
+        return Request(**auth)
 
     def gremlin(self, script, tx=False, raw=False, **params):
         """
