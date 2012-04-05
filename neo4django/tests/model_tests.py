@@ -14,6 +14,19 @@ def setup():
 def teardown():
     gdb.cleandb()
 
+def test_custom_manager():
+
+    class MyCustomManager(neo4django.db.models.manager.NodeModelManager):
+        def my_custom_manager_method(self):
+            pass
+
+
+    class CustomPerson(Person):
+        objects = MyCustomManager()
+
+    assert CustomPerson.objects.model is CustomPerson
+    assert hasattr(CustomPerson.objects, 'my_custom_manager_method')
+
 def test_save_delete():
     """Basic sanity check for NodeModel save and delete.  """
     from neo4jrestclient.client import NotFoundError
