@@ -7,6 +7,7 @@ class NodeModelManager(models.Manager):
     def __init__(self):
         self._using = None
         self.model = None
+        self._inherited = False
 
     @not_implemented
     def _insert(self, values, **kwargs):
