@@ -154,8 +154,8 @@ class NodeModel(NeoModel):
         instance.__node = neo_node
 
         #take care of using by inferring from the neo4j node
-        names = [name_db_pair[0] for name_db_pair in connections.iteritems() 
-            if name_db_pair[1].url in neo_node.url]
+        names = [name for name in connections
+            if connections[name].url in neo_node.url]
         if len(names) < 1:
             raise NoSuchDatabaseError(url=neo_node.url)
 

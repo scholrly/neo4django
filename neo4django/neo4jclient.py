@@ -1,5 +1,8 @@
+from urlparse import urlparse
 from neo4jrestclient.client import GraphDatabase, RAW as RETURNS_RAW
+from neo4jrestclient.request import Request
 from django.conf import settings as _settings
+from django.core import exceptions
 
 from pkg_resources import resource_stream as _pkg_resource_stream
 from collections import namedtuple
@@ -18,6 +21,33 @@ LIBRARY_ERROR_REGEX = _re.compile(LIBRARY_LOADING_ERROR % '.*?')
 other_libraries = {}
 
 class EnhancedGraphDatabase(GraphDatabase):
+
+    def __init__(self, *args, **kwargs):
+        cleandb_uri = kwargs.pop('CLEANDB_URI', None)
+        super(EnhancedGraphDatabase, self).__init__(*args, **kwargs)
+        if cleandb_uri:
+            parsed_url = urlparse(self.url)
+            cleandb_uri = "%s://%s%s" % (parsed_url.scheme,
+                                         parsed_url.netloc, cleandb_uri)
+
+            self._cleandb_uri = cleandb_uri
+
+    def new_request(self):
+        # Newer versions of neo4jrestclient support auth more robustly
+        # the older versions do not support at all, so we have to check here
+        try:
+            auth = self._auth
+        except AttributeError:
+            auth = {}
+        return Request(**auth)
+
+    def cleandb(self):
+        request = self.new_request()
+        response, content = request.delete(self._cleandb_uri)
+        if response.status != 200:
+            error_msg = 'The CLEANDB_URI you specified is invalid: %s'
+            raise exceptions.ImproperlyConfigured(error_msg % self._cleandb_uri)
+
     def gremlin(self, script, tx=False, raw=False, **params):
         """
         Execute a Gremlin script server-side and return the results.

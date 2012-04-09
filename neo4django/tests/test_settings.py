@@ -3,7 +3,13 @@ NEO4J_DATABASES = {
         'HOST':'localhost',
         'PORT':7474,
         'ENDPOINT':'/db/data'
-    }
+    },
+    'custom': {
+        'HOST':'localhost',
+        'PORT':7474,
+        'ENDPOINT':'/db/data',
+        'CLIENT': 'neo4django.tests.neo4jclient_tests.MyGraphDatabase'
+    },
 }
 
 DEBUG = True
