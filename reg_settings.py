@@ -25,6 +25,7 @@ tests=[
 	'test_relationship_model',
 	'test_multinode_setting',
 	'test_save_delete',
+	'test_custom_clients_same_database',
 	'test_prop',
 	'test_none_prop',
 	'test_integer',

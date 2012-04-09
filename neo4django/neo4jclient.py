@@ -1,4 +1,5 @@
 from neo4jrestclient.client import GraphDatabase, RAW as RETURNS_RAW
+from neo4jrestclient.request import Request
 from django.conf import settings as _settings
 
 from pkg_resources import resource_stream as _pkg_resource_stream
@@ -18,6 +19,15 @@ LIBRARY_ERROR_REGEX = _re.compile(LIBRARY_LOADING_ERROR % '.*?')
 other_libraries = {}
 
 class EnhancedGraphDatabase(GraphDatabase):
+    def new_request(self):
+        # Newer versions of neo4jrestclient support auth more robustly
+        # the older versions do not support at all, so we have to check here
+        try:
+            auth = self._auth
+        except AttributeError:
+            auth = {}
+        return Request(**auth)
+
     def gremlin(self, script, tx=False, raw=False, **params):
         """
         Execute a Gremlin script server-side and return the results.
