@@ -86,6 +86,7 @@ tests=[
 	'test_datetimetz_constructor',
 	'test_datetimetz_prop',
 	'test_datetime_prop',
+        'test_custom_manager',
     'test_other_library']
 should_fail=[
 	'test_dates',
