@@ -181,6 +181,32 @@ Concurrency
 Because of the difficulty of transactionality over the REST API, using neo4django from multiple threads, or connecting to the same Neo4j instance from multiple servers, is not recommended. That said, we do, in fact, do this in testing environments. Hotspots like type hierarchy management are transactional, so as long as you can separate the entities being manipulated in the graph, concurrent use of neo4django is possible.
 
 
+Writing Django Tests
+====================
+
+There is a custom test case included, which you can use to write Django tests
+that need access to NodeModels. If properly configured, it will wipe out the
+neo4j database in between each test. To configure it, you must set up a neo4j
+instance with the cleandb_ extension installed. If your neo4j instance were
+configured at port 7475, and your cleandb install were pointing to
+``/cleandb/secret-key``, then you would put the following into your ``settings.py``::
+
+    NEO4J_TEST_DATABASES = {
+        'default': {
+            'HOST': 'localhost",
+            'PORT': 7475,
+            'ENDPOINT': '/db/data',
+            'OPTIONS': {
+                'CLEANDB_URI': '/cleandb/secret-key',
+            }
+        }
+    }
+
+With that set up, you can start writing test cases that inherit from
+``neo4django.testutils.NodeModelTestCase`` and run them as you normally would
+through your Django test suite.
+
+
 Multiple Databases
 ==================
 
@@ -202,7 +228,6 @@ When possible, neo4django follows Django ORM, and thus allows some introspection
 
 Running the Test Suite
 ======================
-
 The test suite requires that Neo4j be running on localhost:7474, and that you have the cleandb_ extension installed at ``/cleandb``.
 
 We test with nose_. To run the suite, set ``test_settings.py`` as your ``DJANGO_SETTINGS_MODULE`` and run ``nosetests``. In bash, that's simply::
