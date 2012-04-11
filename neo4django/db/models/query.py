@@ -673,6 +673,8 @@ class NodeQuerySet(QuerySet):
     def delete(self):
         #TODO naive delete, should be seriously optimized- consider using
         # the batch api or some clever traversal deletion type stuff
+        #TODO When new batch delete is put in place, will need to call pre_
+        # and post_delete signals here; now they are covered in model delete()
         clone = self._clone()
         for obj in clone:
             obj.delete()
