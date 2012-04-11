@@ -38,4 +38,15 @@ if not DEFAULT_DB_ALIAS in _settings.NEO4J_DATABASES:
 
 connections = ConnectionHandler(_settings.NEO4J_DATABASES)
 #TODO: think about emulating django's db routing
-connection = connections[DEFAULT_DB_ALIAS]
+class DefaultConnectionProxy(object):
+    """
+    Proxy for accessing the default DatabaseWrapper object's attributes. If you
+    need to access the DatabaseWrapper object itself, use
+    connections[DEFAULT_DB_ALIAS] instead.
+    """
+    def __getattr__(self, item):
+        return getattr(connections[DEFAULT_DB_ALIAS], item)
+
+    def __setattr__(self, name, value):
+        return setattr(connections[DEFAULT_DB_ALIAS], name, value)
+connection = DefaultConnectionProxy()
