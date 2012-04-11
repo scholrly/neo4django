@@ -708,7 +708,7 @@ class NodeQuerySet(QuerySet):
         for c in conditions_from_kws(self.model, kwargs):
             neg_c = Condition(*c[:-1], negate=negate)
             new_query = new_query.add_cond(neg_c)
-        return self._clone(klass=NodeQuerySet, query=new_query)
+        return self._clone(query=new_query)
 
     @not_implemented
     def complex_filter(self, filter_obj):
