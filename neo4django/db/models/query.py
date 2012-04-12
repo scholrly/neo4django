@@ -466,7 +466,12 @@ class Query(object):
                 gremlin_script = 'list=[%s];res=[];list.each{res.add(g.v(it))};res._()'
                 gremlin_script %= ','.join(str(i) for i in id_set)
                 nodes = ext.execute_script(gremlin_script)
-                #TODO also check type!!
+                ## TODO: HACKS: We don't know type coming out of neo4j-rest-client
+                #               so we check it hackily here.
+                if nodes == u'null':
+                    return
+                if hasattr(nodes, 'url'):
+                    nodes = [nodes]
                 for node in nodes:
                     if all(matches_condition(node, c) for c in itertools.chain(indexed, unindexed)):
                         yield self.model_from_node(node)

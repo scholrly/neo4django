@@ -282,6 +282,12 @@ def test_in_id():
     eq_(len(people), 1)
     eq_(people[0].id, uninteresting_man.id)
 
+    single_person = list(Person.objects.filter(id__in=(interesting_man.id,)))
+    eq_(len(single_person), 1)
+
+    no_people = list(Person.objects.filter(id__in=(1000,)))
+    eq_(len(no_people), 0)
+
 def setup_teens():
     setup_people()
     make_people(['Tina', 'Rob', 'Tiny Tim'], [13, 15, 12])
