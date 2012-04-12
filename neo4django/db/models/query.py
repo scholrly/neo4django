@@ -460,10 +460,18 @@ class Query(object):
             id_set = reduce(and_, (set(c.value) for c in in_id_lookups))
             if id_set:
                 ext = connections[using].extensions['GremlinPlugin']
-                gremlin_script = 'g.v(%s)'
+                ## GREMLIN HACK ALERT: This is a workaround because g.v() can't
+                ##                     take more than 250 elements by itself.
+                ##                     According to gremlin devs, this is equiv
+                gremlin_script = 'list=[%s];res=[];list.each{res.add(g.v(it))};res._()'
                 gremlin_script %= ','.join(str(i) for i in id_set)
                 nodes = ext.execute_script(gremlin_script)
-                #TODO also check type!!
+                ## TODO: HACKS: We don't know type coming out of neo4j-rest-client
+                #               so we check it hackily here.
+                if nodes == u'null':
+                    return
+                if hasattr(nodes, 'url'):
+                    nodes = [nodes]
                 for node in nodes:
                     if all(matches_condition(node, c) for c in itertools.chain(indexed, unindexed)):
                         yield self.model_from_node(node)
