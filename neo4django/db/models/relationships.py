@@ -714,6 +714,9 @@ class RelationshipQuerySet(object):
             if self.__keep_instance(item):
                 yield item
 
+    def __getitem__(self, key):
+        return list(self)[key]
+
     def __keep_instance(self, obj):
         return True # TODO: filtering
 
