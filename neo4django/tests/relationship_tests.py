@@ -337,4 +337,4 @@ def test_rel_slicing():
 
     eq_([n.value for n in toc.contains.all()[0:2]], ['0','1'])
     eq_([n.value for n in toc.contains.all()[1:-1]], ['1','2', '3'])
-    eq_(toc.contains[-1].value, '4')
+    eq_(toc.contains.all()[-1].value, '4')
