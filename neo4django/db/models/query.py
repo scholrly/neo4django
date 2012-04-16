@@ -480,8 +480,9 @@ class Query(object):
                         yield self.model_from_node(node)
                 return
             else:
-                raise ValueError('Conflicting id__in lookups - the intersection'
-                                 ' of the queried id lists is empty.')
+                return ## Emulates django's behavior
+                # raise ValueError('Conflicting id__in lookups - the intersection'
+                #                  ' of the queried id lists is empty.')
                                                       
         #TODO order by type - check against the global type first, so that if
         #we get an empty result set, we can return none? this kind of impedes Q

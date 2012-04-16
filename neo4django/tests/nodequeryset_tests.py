@@ -294,6 +294,14 @@ def test_in_id():
         ).filter(id__in=(interesting_man.id, uninteresting_man.id))
     eq_(len(only_interesting), 1)
 
+    only_interesting = Person.objects.filter(
+        id__in=(interesting_man.id,)
+        ).filter(id__in=(uninteresting_man.id,))
+    eq_(len(only_interesting), 0)
+    
+    # Passing in an empty qs -- replicate django
+    eq_(len(Person.objects.filter(id__in=[])), 0)
+
 def setup_teens():
     setup_people()
     make_people(['Tina', 'Rob', 'Tiny Tim'], [13, 15, 12])
