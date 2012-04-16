@@ -467,7 +467,7 @@ class Query(object):
                 ##                     take more than 250 elements by itself.
                 ##                     According to gremlin devs, this is equiv
                 gremlin_script = 'list=[%s];res=[];list.each{res.add(g.v(it))};res._()'
-                gremlin_script %= ','.join(str(i) for i in id_set)
+                gremlin_script %= ','.join(str(i) for i in id_set if i is not None)
                 nodes = ext.execute_script(gremlin_script)
                 ## TODO: HACKS: We don't know type coming out of neo4j-rest-client
                 #               so we check it hackily here.

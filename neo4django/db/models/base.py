@@ -38,7 +38,10 @@ class IdLookup(object):
     index = property(lambda self: self)
     
     def to_neo(self, value):
-        return int(value)
+        if value is not None:
+            return int(value)
+        else: # Allows lookups on Nulls
+            return value
     
     def nodes(self, nodeid):
         #TODO is this dead code?

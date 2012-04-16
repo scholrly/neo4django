@@ -302,6 +302,9 @@ def test_in_id():
     # Passing in an empty qs -- replicate django
     eq_(len(Person.objects.filter(id__in=[])), 0)
 
+    # Passing in qs with None -- replicate django
+    eq_(len(Person.objects.filter(id__in=[uninteresting_man.id, None])), 1)
+
 def setup_teens():
     setup_people()
     make_people(['Tina', 'Rob', 'Tiny Tim'], [13, 15, 12])
