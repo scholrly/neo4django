@@ -272,7 +272,7 @@ def test_in_id():
     uninteresting_man = Person.objects.create(name=boring_name, age=boring_age)
 
     Person.objects.create(age=boring_age)
-
+    
     people = list(Person.objects.filter(id__in=(interesting_man.id, uninteresting_man.id)))
     eq_(len(people), 2)
     eq_([boring_age, age], sorted(p.age for p in people))
@@ -287,6 +287,23 @@ def test_in_id():
 
     no_people = list(Person.objects.filter(id__in=(1000,)))
     eq_(len(no_people), 0)
+
+    # Test chaining
+    only_interesting = Person.objects.filter(
+        id__in=(interesting_man.id,)
+        ).filter(id__in=(interesting_man.id, uninteresting_man.id))
+    eq_(len(only_interesting), 1)
+
+    only_interesting = Person.objects.filter(
+        id__in=(interesting_man.id,)
+        ).filter(id__in=(uninteresting_man.id,))
+    eq_(len(only_interesting), 0)
+    
+    # Passing in an empty qs -- replicate django
+    eq_(len(Person.objects.filter(id__in=[])), 0)
+
+    # Passing in qs with None -- replicate django
+    eq_(len(Person.objects.filter(id__in=[uninteresting_man.id, None])), 1)
 
 def setup_teens():
     setup_people()

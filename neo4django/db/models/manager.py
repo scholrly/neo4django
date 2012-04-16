@@ -21,6 +21,10 @@ class NodeModelManager(models.Manager):
     def get_empty_query_set(self):
         pass
 
+    @not_implemented
+    def exclude(self, *args, **kwargs):
+        pass
+
     def get_query_set(self):
         return NodeQuerySet(self.model)
 
@@ -37,4 +41,6 @@ class NodeModelManager(models.Manager):
         return self.get_query_set().create(**kwargs)
     
     def filter(self, *args, **kwargs):
+        if args:
+            raise NotImplementedError('The Q operator is not currently supported')
         return self.get_query_set().filter(**kwargs)

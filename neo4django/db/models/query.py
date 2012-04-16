@@ -424,13 +424,15 @@ class Query(object):
     #TODO when does a returned index query of len 0 mean we're done?
     def execute(self, using):
         conditions = uniqify(self.conditions)
-
+        
         #TODO exclude those that can't be evaluated against (eg exact=None, etc)
         id_conditions = []
         indexed = []
         unindexed = []
 
         for c in conditions:
+            # if c.negate:
+            #     raise NotImplementedError('Negative conditions (eg .exclude() are not supported')
             if getattr(c.field, 'id', False):
                 id_conditions.append(c)
             elif c.field.indexed:
@@ -438,7 +440,8 @@ class Query(object):
             else:
                 unindexed.append(c)
 
-        id_lookups = dict(itertools.groupby(id_conditions, lambda c: c.operator))
+        grouped_id_conds = itertools.groupby(id_conditions, lambda c: c.operator)
+        id_lookups = dict(((k, list(l)) for k, l in grouped_id_conds))
         exact_id_lookups = list(id_lookups.get(OPERATORS.EXACT, []))
         #if we have an exact lookup, do it and return
         if len(exact_id_lookups) == 1:
@@ -464,7 +467,7 @@ class Query(object):
                 ##                     take more than 250 elements by itself.
                 ##                     According to gremlin devs, this is equiv
                 gremlin_script = 'list=[%s];res=[];list.each{res.add(g.v(it))};res._()'
-                gremlin_script %= ','.join(str(i) for i in id_set)
+                gremlin_script %= ','.join(str(i) for i in id_set if i is not None)
                 nodes = ext.execute_script(gremlin_script)
                 ## TODO: HACKS: We don't know type coming out of neo4j-rest-client
                 #               so we check it hackily here.
@@ -477,8 +480,9 @@ class Query(object):
                         yield self.model_from_node(node)
                 return
             else:
-                raise ValueError('Conflicting id__in lookups - the intersection'
-                                 ' of the queried id lists is empty.')
+                return ## Emulates django's behavior
+                # raise ValueError('Conflicting id__in lookups - the intersection'
+                #                  ' of the queried id lists is empty.')
                                                       
         #TODO order by type - check against the global type first, so that if
         #we get an empty result set, we can return none? this kind of impedes Q
