@@ -317,3 +317,24 @@ def test_rel_query_direction():
 
     eq_(len(list(m.follows.all())), 1)
     eq_(len(list(m.lettern_set.all())), 1)
+
+
+@with_setup(None, teardown)
+def test_rel_slicing():
+    class Topic(models.NodeModel):
+        value = models.StringProperty()
+
+    class TOC(models.NodeModel):
+        contains = models.Relationship(Topic, rel_type='follows', preserve_ordering=True)
+
+    toc = TOC()
+    for i in xrange(5):
+        toc.contains.add(Topic(value=str(i)))
+    toc.save()
+
+    for i in xrange(5):
+        eq_(toc.contains.all()[i].value, str(i))
+
+    eq_([n.value for n in toc.contains.all()[0:2]], ['0','1'])
+    eq_([n.value for n in toc.contains.all()[1:-1]], ['1','2', '3'])
+    eq_(toc.contains[-1].value, '4')
