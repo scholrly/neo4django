@@ -74,14 +74,16 @@ def test_type_nodes():
 
     test_type_nodes = filter(
         lambda n: (n['app_label'], n['model_name']) == ('type_node_test','TestType'),
-        gdb.traverse(types=[neo4jrestclient.Outgoing.get('<<TYPE>>')],
+        gdb.traverse(gdb.reference_node,
+                     types=[neo4jrestclient.Outgoing.get('<<TYPE>>')],
                      stop=neo_constants.STOP_AT_END_OF_GRAPH))
     assert len(test_type_nodes) != 0, 'TestType type node does not exist.'
     assert len(test_type_nodes) <= 1, 'There are multiple TestType type nodes.'
 
     test_type_nodes = filter(
         lambda n: (n['app_label'], n['model_name']) == ('type_node_test2','SecondTestType'),
-        gdb.traverse(types=[neo4jrestclient.Outgoing.get('<<TYPE>>')],
+        gdb.traverse(gdb.reference_node,
+                     types=[neo4jrestclient.Outgoing.get('<<TYPE>>')],
                      stop=neo_constants.STOP_AT_END_OF_GRAPH))
 
     assert len(test_type_nodes) != 0, 'SecondTestType type node does not exist.'
