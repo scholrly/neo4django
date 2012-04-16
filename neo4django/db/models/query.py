@@ -424,13 +424,15 @@ class Query(object):
     #TODO when does a returned index query of len 0 mean we're done?
     def execute(self, using):
         conditions = uniqify(self.conditions)
-
+        
         #TODO exclude those that can't be evaluated against (eg exact=None, etc)
         id_conditions = []
         indexed = []
         unindexed = []
 
         for c in conditions:
+            # if c.negate:
+            #     raise NotImplementedError('Negative conditions (eg .exclude() are not supported')
             if getattr(c.field, 'id', False):
                 id_conditions.append(c)
             elif c.field.indexed:
