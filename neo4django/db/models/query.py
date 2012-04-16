@@ -440,7 +440,8 @@ class Query(object):
             else:
                 unindexed.append(c)
 
-        id_lookups = dict(itertools.groupby(id_conditions, lambda c: c.operator))
+        grouped_id_conds = itertools.groupby(id_conditions, lambda c: c.operator)
+        id_lookups = dict(((k, list(l)) for k, l in grouped_id_conds))
         exact_id_lookups = list(id_lookups.get(OPERATORS.EXACT, []))
         #if we have an exact lookup, do it and return
         if len(exact_id_lookups) == 1:
