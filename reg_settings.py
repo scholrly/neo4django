@@ -86,8 +86,9 @@ tests=[
 	'test_datetimetz_constructor',
 	'test_datetimetz_prop',
 	'test_datetime_prop',
-        'test_custom_manager',
-    'test_other_library']
+	'test_custom_manager',
+	'test_other_library',
+	'test_rel_slicing']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
