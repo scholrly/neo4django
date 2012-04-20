@@ -56,6 +56,13 @@ def test_basic_relationship_manager():
     other_paper.authors.clear()
     eq_(list(other_paper.authors.all()), [])
 
+    ## Test to make sure we don't end up with duplicates
+    ## When we do two saves in a row after clearing
+    other_paper.save()
+    other_paper.authors.add(pete)
+    other_paper.save()
+    eq_(len(list(other_paper.authors.all())), 1)
+
 def test_one_to_many():
     class Origin1(models.NodeModel):
         name = models.StringProperty()
