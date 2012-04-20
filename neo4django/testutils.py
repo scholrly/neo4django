@@ -13,6 +13,7 @@ class NodeModelTestCase(django_test.TestCase):
         ##       TestCase and a custom runner?
         super(NodeModelTestCase, self).__init__(*args, **kwargs)
         _settings.NEO4J_DATABASES = _settings.NEO4J_TEST_DATABASES
+        _settings.RUNNING_NEO4J_TESTS = True
         new_connections = ConnectionHandler(_settings.NEO4J_TEST_DATABASES)
         for alias in new_connections:
             connections[alias] = new_connections[alias]

@@ -392,7 +392,7 @@ class NodeModel(NeoModel):
         if not hasattr(script_rv, 'properties'):
             raise RuntimeError(error_message + '\n\n%s' % script_rv)
         return script_rv
-    if not settings.DEBUG:
+    if not (settings.DEBUG or getattr(settings, 'RUNNING_NEO4J_TESTS', None)):
         _type_node = memoized(_type_node)
     _type_node = classmethod(_type_node)
 
