@@ -602,9 +602,13 @@ class RelationshipInstance(models.Manager):
                 self._cache.append(pair)
                 self._cache_unique.add(pair)
 
-    def _remove_from_cache(self, pair):
-        self._cache.remove(pair)
-        self._cache_unique.remove(pair)
+    def _remove_from_cache(self, obj):
+        for r, cached_obj in self._cache[:]:
+            if cached_obj == obj:
+                pair = (r, cached_obj)
+                self._cache.remove(pair)
+                self._cache_unique.remove(pair)
+                break
 
     def __save__(self, node):
         #Deletes all relationships removed since last save and adds any new
@@ -675,6 +679,7 @@ class RelationshipInstance(models.Manager):
                         self._added.remove(obj)
                     except ValueError:
                         raise rel.target_model.DoesNotExist("%r is not related to %r." % (obj, self.__obj))
+                self._remove_from_cache(obj)
         else:
             for obj in objs:
                 try:
