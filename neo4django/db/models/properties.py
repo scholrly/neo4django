@@ -1,4 +1,4 @@
-import re
+`import re
 import datetime
 import time
 
@@ -808,7 +808,10 @@ class ArrayProperty(Property):
         return []
 
     def from_neo(self, value):
-        return tuple(value)
+        if not value:
+            return tuple([])
+        else:
+            return tuple(value)
 
 class StringArrayProperty(ArrayProperty):
     default_validators = [validate_str_array]
