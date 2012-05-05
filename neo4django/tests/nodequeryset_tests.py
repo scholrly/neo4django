@@ -56,7 +56,7 @@ def test_delete():
         pass
     else:
         raise AssertionError("Jack's pk is still in the graph- he wasn't "
-                             "created.")
+                             "deleted.")
 
 @with_setup(None, teardown)
 def test_iter():
