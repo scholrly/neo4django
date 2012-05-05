@@ -1,4 +1,5 @@
 from django.db import models as dj_models
+from django.db.models import signals
 from django.core import exceptions
 from django.conf import settings
 
@@ -295,7 +296,10 @@ class NodeModel(NeoModel):
             raise ValueError("Unsaved nodes can't be deleted.")
         for rel in self.__node.relationships.all():
             rel.delete()
+        cls = self.__class__
+        signals.pre_delete.send(sender=cls, instance=self, using=self.using)
         self.__node.delete()
+        signals.post_delete.send(sender=cls, instance=self, using=self.using)
         self.__node = None
 
     @alters_data
@@ -324,10 +328,17 @@ class NodeModel(NeoModel):
         assert not (force_insert and force_update)
         self.__using = using
 
+        if cls is None:
+            cls = self.__class__
+        signals.pre_save.send(sender=cls, instance=self, raw=raw, using=using)
+
         is_new = self.__node is None
         self._save_neo4j_node(using)
         self._save_properties(self, self.__node, is_new)
         self._save_neo4j_relationships(self, self.__node)
+
+        signals.post_save.send(sender=cls, instance=self, created=(not is_new),
+                               raw=raw, using=using)
 
     @alters_data
     @transactional
