@@ -249,5 +249,14 @@ class Neo4Django {
     static singleArgEval(closureString, original) {
         Eval.x(original, closureString + "(x)")
     }
+
+    static getVerticesByIds(ids) {
+        // GREMLIN HACK ALERT: This is a workaround because g.v() can't
+        //                     take more than 250 elements by itself.
+        //                     According to gremlin devs, this is equiv
+        def res = []
+        ids.each{if(it != null){res.add(binding.g.v(it))}}
+        return res
+    }
 }
 Neo4Django.binding = binding;
