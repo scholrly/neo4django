@@ -193,7 +193,7 @@ configured at port 7475, and your cleandb install were pointing to
 
     NEO4J_TEST_DATABASES = {
         'default': {
-            'HOST': 'localhost",
+            'HOST': 'localhost',
             'PORT': 7475,
             'ENDPOINT': '/db/data',
             'OPTIONS': {
