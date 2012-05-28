@@ -120,7 +120,7 @@ And then in the interpreter::
     >>> pete.pets.add(garfield)
     >>> pete.save()
     >>> list(pete.pets.all())
-    [<Pet: Pet object]
+    [<Pet: Pet object>]
 
 You can also add a new option, ``preserve_ordering``, to the ``Relationship``. In that case, the order of relationship creation will be persisted.
 
@@ -232,7 +232,7 @@ The test suite requires that Neo4j be running on localhost:7474, and that you ha
 
 We test with nose_. To run the suite, set ``test_settings.py`` as your ``DJANGO_SETTINGS_MODULE`` and run ``nosetests``. In bash, that's simply::
 
-    cd <your path/neo4django/
+    cd <your path>/neo4django/
     export DJANGO_SETTINGS_MODULE="neo4django.tests.test_settings"
     nosetests
 
