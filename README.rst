@@ -228,7 +228,7 @@ When possible, neo4django follows Django ORM, and thus allows some introspection
 
 Running the Test Suite
 ======================
-The test suite requires that Neo4j be running on localhost:7474, and that you have the cleandb_ extension installed at ``/cleandb``.
+The test suite requires that Neo4j be running, and that you have the cleandb_ extension installed at ``localhost:<NEO4J_PORT>/cleandb``.
 
 We test with nose_. To run the suite, set ``test_settings.py`` as your ``DJANGO_SETTINGS_MODULE`` and run ``nosetests``. In bash, that's simply::
 
