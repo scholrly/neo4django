@@ -1,0 +1,12 @@
+language: python
+python:
+  - "2.6"
+  - "2.7"
+before_install:
+  - which neo4j && sudo neo4j start
+  - sleep 3
+install: pip install --use-mirrors -r requirements.txt -r test_requirements.txt
+env:
+  - DJANGO_SETTINGS_MODULE="neo4django.tests.test_settings"
+script:
+  - nosetests --with-regression
