@@ -198,6 +198,8 @@ configured at port 7475, and your cleandb install were pointing to
             'ENDPOINT': '/db/data',
             'OPTIONS': {
                 'CLEANDB_URI': '/cleandb/secret-key',
+                'username': 'lorem',
+                'password': 'ipsum',
             }
         }
     }
