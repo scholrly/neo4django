@@ -454,6 +454,14 @@ def test_in_bulk():
     eq_(people[interesting_man.id].name, name)
     eq_([boring_age, age], sorted(p.age for p in people.values()))
 
+@with_setup(setup_people, teardown)
+def test_in_bulk_not_found():
+    """
+    Tests QuerySet.in_builk() with items not found.
+    """
+    people = Person.objects.in_bulk([999999])
+    eq_(people, [])
+
 @with_setup(setup_mice_and_people, teardown)
 def test_contains():
     q1 = Person.objects.filter(name__contains='a')
