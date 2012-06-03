@@ -254,8 +254,13 @@ class Neo4Django {
         // GREMLIN HACK ALERT: This is a workaround because g.v() can't
         //                     take more than 250 elements by itself.
         //                     According to gremlin devs, this is equiv
-        def res = []
-        ids.each{if(it != null){res.add(binding.g.v(it))}}
+        def res = [], v
+        ids.each{
+            if(it != null){
+                v = binding.g.v(it)
+                if (v != null){ res << v }
+            }
+        }
         return res
     }
 }
