@@ -87,7 +87,10 @@ def test_dates():
     assert paper.name == 'Papes'
     assert other.name == 'other'
     assert paper.datetime < other.datetime
-    
+
+def test_none():
+    eq_(len(Person.objects.none()), 0)
+
 def make_mice(names, ages):
     for name, age in zip(names, ages):
         IndexedMouse.objects.create(name=name,age=age)
