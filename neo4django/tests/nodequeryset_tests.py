@@ -463,7 +463,7 @@ def test_in_bulk_not_found():
     Tests QuerySet.in_builk() with items not found.
     """
     people = Person.objects.in_bulk([999999])
-    eq_(list(people), [])
+    eq_(people, {})
 
 @with_setup(setup_mice_and_people, teardown)
 def test_contains():
