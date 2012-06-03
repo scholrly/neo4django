@@ -543,4 +543,3 @@ def test_zerovalued_lookup():
 
     mice =  list(IndexedMouse.objects.filter(age__in=ages))
     eq_(len(mice), len(ages))
-    pass
