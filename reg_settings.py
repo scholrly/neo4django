@@ -96,7 +96,8 @@ tests=[
 	'test_pre_delete',
 	'test_post_delete',
 	'test_pre_queryset_delete',
-	'test_post_queryset_delete']
+	'test_post_queryset_delete',
+	'test_in_bulk_not_found']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
@@ -104,4 +105,5 @@ should_fail=[
 	'test_nodemodel_independence',
 	'test_url_array_property_validator',
 	'test_type_query',
-	'test_model_casting_validation']
+	'test_model_casting_validation',
+	'test_in_bulk_not_found']
