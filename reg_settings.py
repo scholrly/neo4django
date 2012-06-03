@@ -97,7 +97,8 @@ tests=[
 	'test_post_delete',
 	'test_pre_queryset_delete',
 	'test_post_queryset_delete',
-	'test_in_bulk_not_found']
+	'test_in_bulk_not_found',
+	'test_none']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',

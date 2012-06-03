@@ -9,7 +9,7 @@ from ...decorators import transactional, not_supported, alters_data, \
 from . import script_utils
 from .script_utils import id_from_url
 
-from django.db.models.query import QuerySet
+from django.db.models.query import QuerySet, EmptyQuerySet
 from django.core import exceptions
 from django.db.models.loading import get_model
 
