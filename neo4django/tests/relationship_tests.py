@@ -1,7 +1,7 @@
 from nose.tools import eq_, with_setup
 
 def setup():
-    global Person, neo4django, settings, gdb, models
+    global Person, neo4django, settings, gdb, models, Poll, Choice
 
     from neo4django.tests import Person, neo4django, gdb, models
 
@@ -277,6 +277,25 @@ def test_rel_string_type():
     #test proper direction
     for r in childs:
         eq_(r.start, child.node)
+
+def test_relationship_none():
+    class Poll(models.NodeModel):
+        question = models.StringProperty()
+
+    class Choice(models.NodeModel):
+        poll = models.Relationship(Poll,
+                                    rel_type=neo4django.Incoming.OWNS,
+                                    single=True,
+                                    related_name='choices')
+        choice = models.StringProperty()
+    
+    pbest = Poll(question="Who's the best?")
+    c = Choice(poll=pbest, choice='Chris')
+    pbest.save()
+    c.save()
+
+    p = list(Poll.objects.all())[0]
+    eq_(len(p.choices.none()), 0)
 
 @with_setup(None, teardown)
 def test_abstract_rel_inheritance():
