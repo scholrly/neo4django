@@ -734,6 +734,9 @@ class RelationshipQuerySet(object):
             if self.__keep_instance(item):
                 yield item
 
+    def __len__(self):
+        return sum(1 for _ in self)
+
     def __getitem__(self, key):
         return list(self)[key]
 
@@ -746,3 +749,6 @@ class RelationshipQuerySet(object):
     @not_implemented
     def get(self, **lookup):
         pass
+
+    def count(self):
+        return len(self)

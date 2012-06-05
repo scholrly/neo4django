@@ -99,7 +99,9 @@ tests=[
 	'test_post_queryset_delete',
 	'test_in_bulk_not_found',
 	'test_none',
-	'test_relationship_none']
+	'test_relationship_none',
+	'test_relationship_count']
+
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
