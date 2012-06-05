@@ -764,6 +764,5 @@ class RelationshipQuerySet(object):
     def get(self, **lookup):
         pass
 
-    @not_implemented
     def count(self):
-        pass
+        return len(self)
