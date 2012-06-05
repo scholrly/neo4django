@@ -735,21 +735,7 @@ class RelationshipQuerySet(object):
                 yield item
 
     def __len__(self):
-        "Based on __iter__ method"
-        # removed = list(self.__inst._old)
-        added = list(self.__inst._new)
-        length = 0
-        try:
-            node = self.__obj.node
-        except:
-            pass
-        else:
-            for item in self.__saved_instances(node):
-                length += 1
-        for item in added:
-            if self.__keep_instance(item):
-                length += 1
-        return length
+        return sum(1 for _ in self)
 
     def __getitem__(self, key):
         return list(self)[key]
