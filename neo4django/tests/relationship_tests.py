@@ -1,7 +1,7 @@
 from nose.tools import eq_, with_setup
 
 def setup():
-    global Person, neo4django, settings, gdb, models, Poll, Choice
+    global Person, neo4django, settings, gdb, models
 
     from neo4django.tests import Person, neo4django, gdb, models
 
@@ -291,6 +291,8 @@ def test_relationship_none():
     
     pbest = Poll(question="Who's the best?")
     c = Choice(poll=pbest, choice='Chris')
+    eq_(len(pbest.choices.none()), 0)
+
     pbest.save()
     c.save()
 
