@@ -278,6 +278,27 @@ def test_rel_string_type():
     for r in childs:
         eq_(r.start, child.node)
 
+def test_relationship_none():
+    class Poll(models.NodeModel):
+        question = models.StringProperty()
+
+    class Choice(models.NodeModel):
+        poll = models.Relationship(Poll,
+                                    rel_type=neo4django.Incoming.OWNS,
+                                    single=True,
+                                    related_name='choices')
+        choice = models.StringProperty()
+    
+    pbest = Poll(question="Who's the best?")
+    c = Choice(poll=pbest, choice='Chris')
+    eq_(len(pbest.choices.none()), 0)
+
+    pbest.save()
+    c.save()
+
+    p = list(Poll.objects.all())[0]
+    eq_(len(p.choices.none()), 0)
+
 @with_setup(None, teardown)
 def test_abstract_rel_inheritance():
     """
