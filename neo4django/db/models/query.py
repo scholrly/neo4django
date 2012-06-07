@@ -240,10 +240,8 @@ def cypher_match_from_fields(nodetype, fields):
         rel_matches = []
         cur_m = nodetype
         for step in f.split('__'):
-            candidates_on_models = list(
-                reversed(sorted(s for s in 
-                                ((score_model_rel(step,r),r) for _,r in 
-                                 nodetype._meta._relationships.items()) if s > 0)))
+            candidates_on_models = sorted((s for s in ((score_model_rel(step,r),r)
+                for _,r in nodetype._meta._relationships.items()) if s > 0), reverse=True)
             choice = candidates_on_models[0]
             rel_matches.append(cypher_rel_str(choice[1].rel_type, choice[1].direction))
         matches.append('p%d=(s%d%sr%d)'  %(i, i, '()'.join(rel_matches), i))
