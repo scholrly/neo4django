@@ -1,6 +1,7 @@
 options={
 	}
 tests=[
+	'test_get_or_create',
 	'test_json_serialize',
 	'test_unique',
 	'test_default_parents_index',
