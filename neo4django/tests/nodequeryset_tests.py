@@ -546,3 +546,12 @@ def test_zerovalued_lookup():
 
     mice =  list(IndexedMouse.objects.filter(age__in=ages))
     eq_(len(mice), len(ages))
+
+@with_setup(None, teardown)
+def test_get_or_create():
+    name = "Kristian"
+    (obj1, created) = Person.objects.get_or_create(name=name)
+    assert created == True, "Person should have been created but wasn't"
+    (obj2, created) = Person.objects.get_or_create(name=name)
+    assert created == False, "Person should not have been created, one should already exist"
+    assert obj1 == obj2, "Second get_or_create() should have returned Person created by first get_or_create()"

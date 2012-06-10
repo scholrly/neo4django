@@ -648,9 +648,12 @@ class NodeQuerySet(QuerySet):
     #TODO would be awesome if this were transactional
     def get_or_create(self, **kwargs):
         try:
-            return self.get(**kwargs)
+            obj = self.get(**kwargs)
+            created = False
         except:
-            return self.create(**kwargs)
+            obj = self.create(**kwargs)
+            created = True
+        return (obj, created)
 
     @not_implemented
     def latest(self, field_name=None):
