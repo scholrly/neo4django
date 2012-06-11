@@ -1,6 +1,7 @@
 options={
 	}
 tests=[
+	'test_get_or_create',
 	'test_json_serialize',
 	'test_unique',
 	'test_default_parents_index',
@@ -88,7 +89,20 @@ tests=[
 	'test_datetime_prop',
 	'test_custom_manager',
 	'test_other_library',
-	'test_rel_slicing']
+	'test_rel_slicing',
+	'test_pre_init',
+	'test_post_init',
+	'test_pre_save',
+	'test_post_save',
+	'test_pre_delete',
+	'test_post_delete',
+	'test_pre_queryset_delete',
+	'test_post_queryset_delete',
+	'test_in_bulk_not_found',
+	'test_none',
+	'test_relationship_none',
+	'test_relationship_count']
+
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',

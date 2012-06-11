@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models.query import EmptyQuerySet
 
 from neo4django.decorators import not_implemented
 from query import NodeQuerySet
@@ -17,9 +18,8 @@ class NodeModelManager(models.Manager):
     def _update(self, values, **kwargs):
         pass   
 
-    @not_implemented
     def get_empty_query_set(self):
-        pass
+        return EmptyQuerySet()
 
     @not_implemented
     def exclude(self, *args, **kwargs):

@@ -278,6 +278,49 @@ def test_rel_string_type():
     for r in childs:
         eq_(r.start, child.node)
 
+def test_relationship_none():
+    class Poll(models.NodeModel):
+        question = models.StringProperty()
+
+    class Choice(models.NodeModel):
+        poll = models.Relationship(Poll,
+                                    rel_type=neo4django.Incoming.OWNS,
+                                    single=True,
+                                    related_name='choices')
+        choice = models.StringProperty()
+    
+    pbest = Poll(question="Who's the best?")
+    c = Choice(poll=pbest, choice='Chris')
+    eq_(len(pbest.choices.none()), 0)
+
+    pbest.save()
+    c.save()
+
+    p = list(Poll.objects.all())[0]
+    eq_(len(p.choices.none()), 0)
+
+def test_relationship_count():
+    class CountingPoll(models.NodeModel):
+        question = models.StringProperty()
+
+    class CountingChoice(models.NodeModel):
+        poll = models.Relationship(CountingPoll,
+                                    rel_type=neo4django.Incoming.OWNS,
+                                    single=True,
+                                    related_name='choices')
+        choice = models.StringProperty()
+
+
+    pbest = CountingPoll(question="Who's the best?")
+    eq_(pbest.choices.count(), 0)
+
+    c1 = CountingChoice(poll=pbest, choice='Chris')
+    c2 = CountingChoice(poll=pbest, choice='Matt')
+    pbest.save()
+    c1.save()
+    c2.save()
+    eq_(pbest.choices.count(), 2)
+
 @with_setup(None, teardown)
 def test_abstract_rel_inheritance():
     """
