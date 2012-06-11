@@ -56,7 +56,7 @@ def test_delete():
         pass
     else:
         raise AssertionError("Jack's pk is still in the graph- he wasn't "
-                             "created.")
+                             "deleted.")
 
 @with_setup(None, teardown)
 def test_iter():
@@ -87,7 +87,10 @@ def test_dates():
     assert paper.name == 'Papes'
     assert other.name == 'other'
     assert paper.datetime < other.datetime
-    
+
+def test_none():
+    eq_(len(Person.objects.none()), 0)
+
 def make_mice(names, ages):
     for name, age in zip(names, ages):
         IndexedMouse.objects.create(name=name,age=age)
@@ -454,6 +457,14 @@ def test_in_bulk():
     eq_(people[interesting_man.id].name, name)
     eq_([boring_age, age], sorted(p.age for p in people.values()))
 
+@with_setup(setup_people, teardown)
+def test_in_bulk_not_found():
+    """
+    Tests QuerySet.in_builk() with items not found.
+    """
+    people = Person.objects.in_bulk([999999])
+    eq_(people, {})
+
 @with_setup(setup_mice_and_people, teardown)
 def test_contains():
     q1 = Person.objects.filter(name__contains='a')
@@ -535,4 +546,12 @@ def test_zerovalued_lookup():
 
     mice =  list(IndexedMouse.objects.filter(age__in=ages))
     eq_(len(mice), len(ages))
-    pass
+
+@with_setup(None, teardown)
+def test_get_or_create():
+    name = "Kristian"
+    (obj1, created) = Person.objects.get_or_create(name=name)
+    assert created == True, "Person should have been created but wasn't"
+    (obj2, created) = Person.objects.get_or_create(name=name)
+    assert created == False, "Person should not have been created, one should already exist"
+    assert obj1 == obj2, "Second get_or_create() should have returned Person created by first get_or_create()"

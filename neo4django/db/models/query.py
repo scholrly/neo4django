@@ -9,7 +9,7 @@ from ...decorators import transactional, not_supported, alters_data, \
 from . import script_utils
 from .script_utils import id_from_url
 
-from django.db.models.query import QuerySet
+from django.db.models.query import QuerySet, EmptyQuerySet
 from django.core import exceptions
 from django.db.models.loading import get_model
 
@@ -240,10 +240,8 @@ def cypher_match_from_fields(nodetype, fields):
         rel_matches = []
         cur_m = nodetype
         for step in f.split('__'):
-            candidates_on_models = list(
-                reversed(sorted(s for s in 
-                                ((score_model_rel(step,r),r) for _,r in 
-                                 nodetype._meta._relationships.items()) if s > 0)))
+            candidates_on_models = sorted((s for s in ((score_model_rel(step,r),r)
+                for _,r in nodetype._meta._relationships.items()) if s > 0), reverse=True)
             choice = candidates_on_models[0]
             rel_matches.append(cypher_rel_str(choice[1].rel_type, choice[1].direction))
         matches.append('p%d=(s%d%sr%d)'  %(i, i, '()'.join(rel_matches), i))
@@ -462,13 +460,8 @@ class Query(object):
         if in_id_lookups:
             id_set = reduce(and_, (set(c.value) for c in in_id_lookups))
             if id_set:
-                ext = connections[using].extensions['GremlinPlugin']
-                ## GREMLIN HACK ALERT: This is a workaround because g.v() can't
-                ##                     take more than 250 elements by itself.
-                ##                     According to gremlin devs, this is equiv
-                gremlin_script = 'list=[%s];res=[];list.each{res.add(g.v(it))};res._()'
-                gremlin_script %= ','.join(str(i) for i in id_set if i is not None)
-                nodes = ext.execute_script(gremlin_script)
+                script = "results = Neo4Django.getVerticesByIds(ids)._();"
+                nodes = connections[using].gremlin_tx(script, ids=list(id_set))
                 ## TODO: HACKS: We don't know type coming out of neo4j-rest-client
                 #               so we check it hackily here.
                 if nodes == u'null':
@@ -481,8 +474,6 @@ class Query(object):
                 return
             else:
                 return ## Emulates django's behavior
-                # raise ValueError('Conflicting id__in lookups - the intersection'
-                #                  ' of the queried id lists is empty.')
                                                       
         #TODO order by type - check against the global type first, so that if
         #we get an empty result set, we can return none? this kind of impedes Q
@@ -657,9 +648,12 @@ class NodeQuerySet(QuerySet):
     #TODO would be awesome if this were transactional
     def get_or_create(self, **kwargs):
         try:
-            return self.get(**kwargs)
+            obj = self.get(**kwargs)
+            created = False
         except:
-            return self.create(**kwargs)
+            obj = self.create(**kwargs)
+            created = True
+        return (obj, created)
 
     @not_implemented
     def latest(self, field_name=None):

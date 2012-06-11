@@ -2,6 +2,7 @@
 from django.db import models
 from django.db.models.fields.related import add_lazy_relation
 from django.db.models.query_utils import DeferredAttribute
+from django.db.models.query import EmptyQuerySet
 
 from neo4django import Incoming, Outgoing
 from neo4django.db import DEFAULT_DB_ALIAS
@@ -705,6 +706,9 @@ class RelationshipInstance(models.Manager):
     def get_query_set(self):
         return RelationshipQuerySet(self, self.__rel, self.__obj)
 
+    def get_empty_query_set(self):
+        return EmptyQuerySet()
+
 class RelationshipQuerySet(object):
     def __init__(self, inst, rel, obj):
         self.__inst = inst
@@ -730,6 +734,9 @@ class RelationshipQuerySet(object):
             if self.__keep_instance(item):
                 yield item
 
+    def __len__(self):
+        return sum(1 for _ in self)
+
     def __getitem__(self, key):
         return list(self)[key]
 
@@ -742,3 +749,6 @@ class RelationshipQuerySet(object):
     @not_implemented
     def get(self, **lookup):
         pass
+
+    def count(self):
+        return len(self)
