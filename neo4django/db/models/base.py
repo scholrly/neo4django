@@ -386,7 +386,7 @@ class NodeModel(NeoModel):
         return itertools.chain([cls], model_parents(cls))
 
     #XXX: conditionally memoized classmethod
-    def _type_node(cls, using):
+    def __type_node(cls, using):
         conn = connections[using]
         name = cls.__name__
         
@@ -403,10 +403,20 @@ class NodeModel(NeoModel):
         if not hasattr(script_rv, 'properties'):
             raise RuntimeError(error_message + '\n\n%s' % script_rv)
         return script_rv
-    if not (settings.DEBUG or getattr(settings, 'RUNNING_NEO4J_TESTS', None)):
-        _type_node = memoized(_type_node)
-    _type_node = classmethod(_type_node)
 
+    __type_node_memoized = memoized(__type_node)
+    __type_node_classmethod = classmethod(__type_node)
+
+    @property
+    def _type_node(self):
+        """
+        Switch between memoized and classmethod when attribute is accessed
+        """
+        if not (settings.DEBUG or
+                getattr(settings, 'RUNNING_NEO4J_TESTS', None)):
+            return self.__type_node_memoized
+        else:
+            return self.__type_node_classmethod
 
     @classmethod
     def _type_name(cls):
