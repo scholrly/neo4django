@@ -407,16 +407,16 @@ class NodeModel(NeoModel):
     __type_node_memoized = memoized(__type_node)
     __type_node_classmethod = classmethod(__type_node)
 
-    @property
-    def _type_node(self):
+    @classmethod
+    def _type_node(cls, using):
         """
         Switch between memoized and classmethod when attribute is accessed
         """
         if not (settings.DEBUG or
                 getattr(settings, 'RUNNING_NEO4J_TESTS', None)):
-            return self.__type_node_memoized
+            return cls.__type_node_memoized(using)
         else:
-            return self.__type_node_classmethod
+            return cls.__type_node_classmethod(using)
 
     @classmethod
     def _type_name(cls):
