@@ -2,18 +2,22 @@
 from django.db import models
 from django.db.models.fields.related import add_lazy_relation
 from django.db.models.query_utils import DeferredAttribute
-from django.db.models.query import EmptyQuerySet
+from django.db.models.query import QuerySet, EmptyQuerySet
 
+from .. import DEFAULT_DB_ALIAS
 from neo4django import Incoming, Outgoing
 from neo4django.db import DEFAULT_DB_ALIAS
 from neo4django.decorators import not_implemented, transactional
 from neo4django.utils import buffer_iterator, AssignableList, AttrRouter
 from neo4django.constants import INTERNAL_ATTR, ORDER_ATTR
 from base import NodeModel
+from neo4django.db.models.query import conditions_from_kws, OPERATORS, Condition, matches_condition, Query
+
 
 from neo4jrestclient.constants import RELATIONSHIPS_ALL, RELATIONSHIPS_IN, RELATIONSHIPS_OUT
 
 from collections import defaultdict
+from itertools import groupby
 
 class LazyModel(object):
     """
@@ -543,15 +547,15 @@ class MultipleNodes(BoundRelationship):
     def _save_relationship(self, instance, node, state):
         state.__save__(node)
 
-#    @classmethod
-#    def to_neo(cls, value):
-#         pass
+   # @classmethod
+   # def to_neo(cls, value):
+   #      pass
 
-#    @classmethod
-#    def from_neo(cls, value):
-#        pass
+   # @classmethod
+   # def from_neo(cls, value):
+   #     pass
 
-    #def _set_relationship():
+    # def _set_relationship():
     #    #TODO diff rels and this list
     #    #add news rels, delete old
     #    #preserve order if we're supposed to
@@ -709,11 +713,27 @@ class RelationshipInstance(models.Manager):
     def get_empty_query_set(self):
         return EmptyQuerySet()
 
-class RelationshipQuerySet(object):
-    def __init__(self, inst, rel, obj):
+# class RelationshipQuerySet(object):
+class RelationshipQuerySet(QuerySet):
+    def __init__(self, inst, rel, obj, query=None, using=DEFAULT_DB_ALIAS):
         self.__inst = inst
         self.__rel = rel
         self.__obj = obj
+        self.model = rel._BoundRelationship__rel._Relationship__target
+
+        super(RelationshipQuerySet, self).__init__(model=self.model,
+            using=using, query=query or Query(self.model))
+
+
+    # def __init__(self, model, using=DEFAULT_DB_ALIAS, query=None):
+    #     super(NodeQuerySet, self).__init__(model=model, using=using, query=query or Query(model))
+    #     #TODO is this actually necessary?
+    #     self._app_label = model._meta.app_label
+
+    def iterator(self):
+        using = self.db
+        for model in self.query.execute(using):
+            yield model    
 
     def __saved_instances(self, node):
         for rel, item in self.__inst._neo4j_relationships_and_models(node):
@@ -746,9 +766,79 @@ class RelationshipQuerySet(object):
     def __keep_relationship(self, rel):
         return True # TODO: filtering
 
+    def _clone(self, klass=None, setup=False, **kwargs):
+        if klass is None:
+            klass = self.__class__
+        query = self.query.clone()
+        if not query.conditions:
+            query = kwargs.get('query', None)
+        # print 'Cloning self query conditions:', self.query.conditions
+        # print 'Cloning query conditions:', query.conditions
+        # print 'Query is of class', query.__class__
+        if self._sticky_filter:
+            query.filter_is_sticky = True
+        c = klass(self.__inst, self.__rel, self.__obj, query=query)
+
+        # c = klass(model=self.model, query=query, using=self._db)
+        c._for_write = self._for_write
+        c._prefetch_related_lookups = self._prefetch_related_lookups[:]
+        c.__dict__.update(kwargs)
+        if setup and hasattr(c, '_setup_query'):
+            c._setup_query()
+        return c
+
+    def _filter_or_exclude(self, negate, *args, **kwargs):
+        new_query = self.query.clone()
+        for c in conditions_from_kws(self.model, kwargs):
+            neg_c = Condition(*c[:-1], negate=negate)
+            new_query = new_query.add_cond(neg_c)
+        print new_query.conditions
+        return self._clone(query=new_query)
+
     @not_implemented
     def get(self, **lookup):
         pass
 
     def count(self):
         return len(self)
+
+    # def filter(self, **kwargs):
+    #     "Currently returns a generator, not a RelationshipQuerySet"
+    #     rels = list(self)
+    #     try:
+    #         tp = type(rels[0])
+    #     except IndexError:
+    #         yield EmptyQuerySet()
+    #     else:
+    #         for c in conditions_from_kws(tp, kwargs):
+    #             for item in rels:
+    #                 if matches_condition(item.node, c):
+    #                     yield item
+
+    # def _filter_or_exclude(self, negate, *args, **kwargs):
+    #     if args or kwargs:
+    #         assert self.query.can_filter(), \
+    #                 "Cannot filter a query once a slice has been taken."
+
+    #     clone = self._clone()
+    #     if negate:
+    #         clone.query.add_q(~Q(*args, **kwargs))
+    #     else:
+    #         clone.query.add_q(Q(*args, **kwargs))
+    #     return clone
+
+
+
+    # def filter(self, **kwargs):
+    #     "Currently returns a generator, not a RelationshipQuerySet"
+    #     kls = self.model
+    #     instances = list(self)
+    #     if not instances:
+    #         yield EmptyQuerySet
+    #     for c in conditions_from_kws(kls, kwargs):
+    #         for instance in instances:
+    #             if matches_condition(instance.node, c):
+    #                 yield instance
+
+        # return sorted(self, key=type)
+
