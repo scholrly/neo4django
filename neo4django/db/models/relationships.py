@@ -4,14 +4,13 @@ from django.db.models.fields.related import add_lazy_relation
 from django.db.models.query_utils import DeferredAttribute
 from django.db.models.query import EmptyQuerySet
 
-from .. import DEFAULT_DB_ALIAS
 from neo4django import Incoming, Outgoing
 from neo4django.db import DEFAULT_DB_ALIAS
 from neo4django.decorators import not_implemented, transactional
 from neo4django.utils import buffer_iterator, AssignableList, AttrRouter
 from neo4django.constants import INTERNAL_ATTR, ORDER_ATTR
 from base import NodeModel
-from neo4django.db.models.query import conditions_from_kws, OPERATORS, Condition, matches_condition, Query
+from neo4django.db.models.query import conditions_from_kws, matches_condition
 
 
 from neo4jrestclient.constants import RELATIONSHIPS_ALL, RELATIONSHIPS_IN, RELATIONSHIPS_OUT
