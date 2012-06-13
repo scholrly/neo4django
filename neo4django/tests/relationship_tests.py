@@ -278,6 +278,7 @@ def test_rel_string_type():
     for r in childs:
         eq_(r.start, child.node)
 
+@with_setup(None, teardown)
 def test_relationship_none():
     class Poll(models.NodeModel):
         question = models.StringProperty()
@@ -320,6 +321,43 @@ def test_relationship_count():
     c1.save()
     c2.save()
     eq_(pbest.choices.count(), 2)
+
+# @with_setup(None, teardown)
+def test_relationship_filter():
+    class PollF(models.NodeModel):
+        question = models.StringProperty()
+
+    class ChoiceF(models.NodeModel):
+        poll = models.Relationship(PollF,
+                                    rel_type=neo4django.Incoming.OWNS,
+                                    single=True,
+                                    related_name='choices')
+        choice = models.StringProperty()
+        votes = models.IntegerProperty()
+
+    p = PollF(question="Who's the best?")
+    names = ['Matt', 'Corbin', 'Bob', 'Billy', 'Chris', 'Gus Chiggens']
+    choices = [ChoiceF(poll=p, choice=name, votes=n) for n, name in enumerate(names)]
+    for c in choices:
+        c.save()
+    p.save()
+
+    p = list(PollF.objects.all())[0]
+    choices = p.choices.all()
+    eq_(len(PollF.objects.all()), 1)
+    eq_(len(choices), 6)
+
+    eq_(choices.filter(votes__lt=3).__class__.__name__, 'RelationshipQuerySet')
+    eq_(set(choices.filter(votes__lt=3)), set([c for c in choices if c.votes < 3]))
+    eq_(set(['Matt', 'Corbin']), set(c.choice for c in choices.filter(votes__lt=2)))
+
+    eq_(len(choices.filter(choice='Gus Chiggens')), 1)
+    eq_(len(choices.filter(choice__contains='C')), 3)
+    eq_(len(choices.filter(choice__contains='c')), 0)
+    eq_(len(choices.filter(votes__gte=3)), 3)
+    eq_(len(choices.filter(votes__gte=3, choice='Matt')), 4)
+    eq_(len(choices.filter(votes__gte=3).filter(choice='Matt')), 0)
+
 
 @with_setup(None, teardown)
 def test_abstract_rel_inheritance():
