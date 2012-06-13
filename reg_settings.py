@@ -101,8 +101,8 @@ tests=[
 	'test_in_bulk_not_found',
 	'test_none',
 	'test_relationship_none',
-	'test_relationship_count']
-
+	'test_relationship_count',
+	'test_relationship_filter']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
