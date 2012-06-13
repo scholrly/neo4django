@@ -743,11 +743,7 @@ class RelationshipQuerySet(object):
 
         for item in iterable:
             if any(matches_condition(item.node, c) for c in conditions_from_kws(self.model, kwargs)):
-                # print 'Adding', item
                 new_inst.add(item)
-            else: pass
-                # print 'Not adding', item
-
         return RelationshipQuerySet(new_inst, self.__rel, self.__obj)
 
     def __saved_instances(self, node):
