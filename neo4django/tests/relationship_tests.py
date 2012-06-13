@@ -356,6 +356,7 @@ def test_relationship_filter():
     eq_(len(choices.filter(votes__gte=3)), 3)
     eq_(len(choices.filter(votes__gte=3, choice='Matt')), 4)
     eq_(len(choices.filter(votes__gte=3).filter(choice='Matt')), 0)
+    eq_(len(p.choices.filter(votes__gte=3).filter(choice='Matt')), 0)
 
 
 @with_setup(None, teardown)
