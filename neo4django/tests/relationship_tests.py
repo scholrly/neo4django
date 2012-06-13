@@ -322,7 +322,6 @@ def test_relationship_count():
     c2.save()
     eq_(pbest.choices.count(), 2)
 
-# @with_setup(None, teardown)
 def test_relationship_filter():
     class PollF(models.NodeModel):
         question = models.StringProperty()
