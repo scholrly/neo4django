@@ -10,6 +10,8 @@ from neo4django.decorators import not_implemented, transactional
 from neo4django.utils import buffer_iterator, AssignableList, AttrRouter
 from neo4django.constants import INTERNAL_ATTR, ORDER_ATTR
 from base import NodeModel
+from neo4django.db.models.query import conditions_from_kws, matches_condition
+
 
 from neo4jrestclient.constants import RELATIONSHIPS_ALL, RELATIONSHIPS_IN, RELATIONSHIPS_OUT
 
@@ -180,10 +182,7 @@ class Relationship(object):
 
     @staticmethod
     def get_name(target, single=False):
-        if single:
-            suffix = '%ss'
-        else:
-            suffix = '%s_set'
+        suffix = '%ss' if single else '%s_set'
         if isinstance(target, basestring):
             name = target.rsplit('.',1)[-1]
         else:
@@ -543,15 +542,15 @@ class MultipleNodes(BoundRelationship):
     def _save_relationship(self, instance, node, state):
         state.__save__(node)
 
-#    @classmethod
-#    def to_neo(cls, value):
-#         pass
+   # @classmethod
+   # def to_neo(cls, value):
+   #      pass
 
-#    @classmethod
-#    def from_neo(cls, value):
-#        pass
+   # @classmethod
+   # def from_neo(cls, value):
+   #     pass
 
-    #def _set_relationship():
+    # def _set_relationship():
     #    #TODO diff rels and this list
     #    #add news rels, delete old
     #    #preserve order if we're supposed to
@@ -625,6 +624,7 @@ class RelationshipInstance(models.Manager):
         self._added[:] = []
 
     def _neo4j_relationships_and_models(self, node):
+        "Returns generator of relationship, neo4j instance tuples associated with node."
         if not self._cache:
             self._add_to_cache(*[(r, self.__rel._neo4j_instance(node, r)) for r in 
                            self.__rel._load_relationships(node, ordered=self.ordered)])
@@ -695,6 +695,12 @@ class RelationshipInstance(models.Manager):
         all_objs = list(self.all())
         self.remove(*all_objs)
 
+    def clone(self):
+        # Should cache be updated as well?
+        cloned = RelationshipInstance(self.__rel, self.__obj)
+        cloned.add(*self._new)
+        return cloned
+
     @not_implemented
     def create(self, *args, **kwargs):
         pass
@@ -714,6 +720,27 @@ class RelationshipQuerySet(object):
         self.__inst = inst
         self.__rel = rel
         self.__obj = obj
+        self.model = rel._BoundRelationship__rel._Relationship__target
+
+    def filter(self, **kwargs):
+        "Returns RelationshipQuerySet with filtered items"
+        inst = self.__inst
+        added = list(inst._new)
+
+        new_inst = self.__inst.clone()
+        new_inst.clear()
+
+        if added:
+            iterable = added
+        else:
+            # TODO: is wrapping in getattr necessary?
+            node = getattr(self.__obj, 'node', None)
+            iterable = [i for r, i in inst._neo4j_relationships_and_models(node)] if node else []
+
+        for item in iterable:
+            if any(matches_condition(item.node, c) for c in conditions_from_kws(self.model, kwargs)):
+                new_inst.add(item)
+        return RelationshipQuerySet(new_inst, self.__rel, self.__obj)
 
     def __saved_instances(self, node):
         for rel, item in self.__inst._neo4j_relationships_and_models(node):
@@ -736,6 +763,14 @@ class RelationshipQuerySet(object):
 
     def __len__(self):
         return sum(1 for _ in self)
+
+    # Taken from Django's QuerySet repr
+    def __repr__(self):
+        REPR_OUTPUT_SIZE = 4
+        data = list(self[:REPR_OUTPUT_SIZE + 1])
+        if len(data) > REPR_OUTPUT_SIZE:
+            data[-1] = "...(remaining elements truncated)..."
+        return repr(data)
 
     def __getitem__(self, key):
         return list(self)[key]
