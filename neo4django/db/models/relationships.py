@@ -2,7 +2,7 @@
 from django.db import models
 from django.db.models.fields.related import add_lazy_relation
 from django.db.models.query_utils import DeferredAttribute
-from django.db.models.query import QuerySet, EmptyQuerySet
+from django.db.models.query import EmptyQuerySet
 
 from .. import DEFAULT_DB_ALIAS
 from neo4django import Incoming, Outgoing
