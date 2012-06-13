@@ -5,6 +5,7 @@ def setup():
     global models
 
     from django.conf import settings
+
     import neo4django, neo4jrestclient.client as neo4jrestclient
     from neo4django.db import models
     import neo4jrestclient.constants as neo_constants
