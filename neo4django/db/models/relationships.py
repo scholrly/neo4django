@@ -719,7 +719,7 @@ class RelationshipInstance(models.Manager):
         return EmptyQuerySet()
 
 class RelationshipQuerySet(object):
-    def __init__(self, inst, rel, obj, query=None, using=DEFAULT_DB_ALIAS):
+    def __init__(self, inst, rel, obj):
         self.__inst = inst
         self.__rel = rel
         self.__obj = obj
