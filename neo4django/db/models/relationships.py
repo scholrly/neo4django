@@ -704,7 +704,6 @@ class RelationshipInstance(models.Manager):
         cloned.add(*self._new)
         return cloned
 
-    # Do we need args?
     def create(self, **kwargs):
         kwargs[self.name] = self.__obj
         new_model = self.model(**kwargs)
@@ -713,17 +712,6 @@ class RelationshipInstance(models.Manager):
         # to save self.__obj after #89 fix
         new_model.save()
         self.__obj.save()
-
-        # obj = 
-    # def create(self, **kwargs):
-    #     """
-    #     Creates a new object with the given kwargs, saving it to the database
-    #     and returning the created object.
-    #     """
-    #     obj = self.model(**kwargs)
-    #     self._for_write = True
-    #     obj.save(force_insert=True, using=self.db)
-    #     return obj
 
     @not_implemented
     def get_or_create(self, *args, **kwargs):
