@@ -358,6 +358,24 @@ def test_relationship_filter():
     eq_(len(choices.filter(votes__gte=3).filter(choice='Matt')), 0)
     eq_(len(p.choices.filter(votes__gte=3).filter(choice='Matt')), 0)
 
+def test_relationship_create():
+    class PollCreate(models.NodeModel):
+        question = models.StringProperty()
+
+    class ChoiceCreate(models.NodeModel):
+        poll = models.Relationship(PollCreate,
+                                    rel_type=neo4django.Incoming.OWNS,
+                                    single=True,
+                                    related_name='choices')
+        choice = models.StringProperty()
+        votes = models.IntegerProperty()
+
+    p = PollCreate(question="Who's the best?")
+    eq_(len(p.choices.all()), 0)
+    p.choices.create(choice='Superman', votes=2)
+    p.choices.create(choice='Batman', votes=20)
+    eq_(len(p.choices.all()), 2)
+    eq_(len(ChoiceCreate.objects.all()), 2)
 
 @with_setup(None, teardown)
 def test_abstract_rel_inheritance():
