@@ -1,0 +1,17 @@
+1
+[[/tutorial]]
+2
+[[https://github.com/d10genes/neo4django/raw/master/tutorial/poll-choice.png]]
+Tries
+
+3
+
+[[/tutorial/poll-choice.png]]
+
+4
+
+[[https://github.com/d10genes/neo4django/raw/master/tutorial/poll-choice.png]]
+
+
+5
+![alt](https://github.com/d10genes/neo4django/raw/master/tutorial/poll-choice.png)
