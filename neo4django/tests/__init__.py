@@ -25,7 +25,18 @@ def setup():
         resp = requests.delete('http://%s:%s/cleandb/%s' %
                                (server['HOST'], str(server['PORT']), key))
         if resp.status_code != 200:
-            print "\nTest database couldn't be cleared - have you installed the cleandb extension at https://github.com/jexp/neo4j-clean-remote-db-addon?"
+            # then try to do it with gremlin
+            script = """
+            try
+            {
+                g.V.filter{it.id!=0}.sideEffect{g.removeVertex(it)}.iterate();
+                true
+            }
+            catch(Exception e){false}
+            """
+            gremlin_ret = gdb.extensions.GremlinPlugin.execute_script(script)
+            if gremlin_ret != 'true':
+                print "\nTest database couldn't be cleared - have you installed the cleandb extension at https://github.com/jexp/neo4j-clean-remote-db-addon?"
 
     if None not in (key, server):
         gdb.cleandb = cleandb
