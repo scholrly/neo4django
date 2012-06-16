@@ -596,6 +596,9 @@ class RelationshipInstance(models.Manager):
         #holds cached domain objects (that have been added or loaded by query)
         self._cache = []
         self._cache_unique = set([])
+        # TODO: accessor for rel so we don't need .model or .name
+        self.model = rel._BoundRelationship__rel._Relationship__target
+        self.name = rel._BoundRelationship__rel._related_name
 
     ordered = property(lambda self: self.__rel.ordered)
 
@@ -704,9 +707,14 @@ class RelationshipInstance(models.Manager):
         cloned.add(*self._new)
         return cloned
 
-    @not_implemented
-    def create(self, *args, **kwargs):
-        pass
+    def create(self, **kwargs):
+        kwargs[self.name] = self.__obj
+        new_model = self.model(**kwargs)
+        self.new_model = new_model
+        # TODO: saving twice, should only need
+        # to save self.__obj after #89 fix
+        new_model.save()
+        self.__obj.save()
 
     @not_implemented
     def get_or_create(self, *args, **kwargs):
