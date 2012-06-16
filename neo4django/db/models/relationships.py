@@ -435,7 +435,10 @@ class SingleNode(BoundRelationship):
     @transactional
     def _load_related(self, node):
         relationships = self._load_relationships(node)
-        django_relationships = filter(lambda rel: rel['_neo4django'], relationships)
+        #TODO seriously consider removing this restriction- I'm not sure I see
+        # any benefit, and it makes creating neo4django-compliant graphs that
+        # much more difficult.
+        django_relationships = filter(lambda rel: rel[INTERNAL_ATTR], relationships)
         if len(django_relationships) < 1:
             return None
         elif len(django_relationships) > 1:
