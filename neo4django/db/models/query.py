@@ -308,7 +308,7 @@ def execute_select_related(models=None, query=None, index_name=None,
         results = conn.cypher(cypher_query)
 
     else:
-        raise ValueError("Either a field list of max_depth must be provided "
+        raise ValueError("Either a field list or max_depth must be provided "
                          "for select_related.") #TODO
 
     def get_columns(column_name_pred, table):
@@ -317,9 +317,18 @@ def execute_select_related(models=None, query=None, index_name=None,
         return itertools.chain(*(rc if isinstance(rc, tuple) else (rc,)
                                  for rc in (col_getter(r)
                                             for r in table['data'])))
-    paths = sorted(get_columns(lambda c:c.startswith('p'), results), key=lambda p:p['length'])
-    nodes = get_columns(lambda c:c.startswith('r'), results)
-    types = get_columns(lambda c:c.startswith('t'), results)
+
+    path_columns = get_columns(lambda c:c.startswith('p'), results)
+    node_columns = get_columns(lambda c:c.startswith('r'), results)
+    type_columns = get_columns(lambda c:c.startswith('t'), results)
+
+    #paths ordered by shortest to longest
+    paths = sorted((c for c in path_columns if c is not None), key=lambda v:v['length'])
+
+    #since loading a node without a type makes no sense, cut rows that have an
+    #entry of None for either
+    node_and_type_cols = itertools.izip(node_columns, type_columns)
+    nodes, types = itertools.izip(*(row for row in node_and_type_cols if not None in row))
 
     #put nodes in an id-lookup dict
     nodes = [script_utils.LazyNode.from_dict(d) for d in nodes]
@@ -346,9 +355,6 @@ def execute_select_related(models=None, query=None, index_name=None,
 
     models_so_far = dict((m.id, m) for m in itertools.chain(models, rel_models))
 
-    #paths ordered by shortest to longest
-    paths = sorted(paths, key=lambda v:v['length'])
-
     for path in paths:
         m = models_so_far[id_from_url(path['start'])]
 
@@ -357,20 +363,23 @@ def execute_select_related(models=None, query=None, index_name=None,
 
         cur_m = m
         for rel_id, node_id in itertools.izip(rel_it, node_it):
-            #make choice ab where it goes
+            #decide how this part of the path matches the select_related field
+            #strings
             rel = rels_by_id[rel_id]
             rel.direction = neo_constants.RELATIONSHIPS_OUT if node_id == rel.end.id \
                             else neo_constants.RELATIONSHIPS_IN
-            new_model = models_so_far[node_id]
             field_candidates = [(k,v) for k,v in cur_m._meta._relationships.items()
                                 if str(v.rel_type)==str(rel.type) and v.direction == rel.direction]
             if len(field_candidates) < 1:
                 continue
             elif len(field_candidates) > 1:
                 raise ValueError("Too many model field candidates for "
-                                    "returned path - there's an error in the "
-                                    "Cypher query or your model definition.")
+                                 "returned path - there's an error in the "
+                                 "Cypher query or your model definition.")
             field_name, field = field_candidates[0]
+
+            #grab the model that should fit in this part of the path
+            new_model = models_so_far[node_id]
 
             #if rel is many side
             rel_on_model = getattr(cur_m, field_name, None)
