@@ -457,7 +457,15 @@ class Query(object):
                 node = connections[using].nodes[int(id_val)]
                 #TODO also check type!!
                 if all(matches_condition(node, c) for c in itertools.chain(indexed, unindexed)):
-                    yield self.model_from_node(node)
+                    #TODO DRY violation!
+                    model_results = [self.model_from_node(node)]
+                    if self.select_related:
+                        sel_fields = self.select_related_fields
+                        if not sel_fields: sel_fields = None
+                        execute_select_related(models=model_results,
+                                                fields=sel_fields,
+                                                max_depth=self.max_depth)
+                    yield model_results[0]
             except:
                 pass
             return
@@ -477,9 +485,18 @@ class Query(object):
                     return
                 if hasattr(nodes, 'url'):
                     nodes = [nodes]
-                for node in nodes:
-                    if all(matches_condition(node, c) for c in itertools.chain(indexed, unindexed)):
-                        yield self.model_from_node(node)
+                model_results = [self.model_from_node(node) for node in nodes
+                                 if all(matches_condition(node, c) for c in itertools.chain(indexed, unindexed))]
+                #TODO DRY violation
+                if self.select_related:
+                    sel_fields = self.select_related_fields
+                    if not sel_fields: sel_fields = None
+                    execute_select_related(models=model_results,
+                                            fields=sel_fields,
+                                            max_depth=self.max_depth)
+
+                for r in model_results:
+                    yield r
                 return
             else:
                 return ## Emulates django's behavior
