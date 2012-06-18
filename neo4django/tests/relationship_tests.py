@@ -377,6 +377,31 @@ def test_relationship_create():
     eq_(len(p.choices.all()), 2)
     eq_(len(ChoiceCreate.objects.all()), 2)
 
+def test_relationship_delete():
+    class PollDelete(models.NodeModel):
+        question = models.StringProperty()
+
+    class ChoiceDelete(models.NodeModel):
+        poll = models.Relationship(PollDelete,
+                                    rel_type=neo4django.Incoming.OWNS,
+                                    single=True,
+                                    related_name='choices')
+        choice = models.StringProperty()
+        votes = models.IntegerProperty()
+
+    p = PollDelete(question="Who's the best?")
+    names = ['Matt', 'Corbin', 'Bob', 'Billy', 'Chris', 'Gus Chiggens']
+    choices = [ChoiceDelete(poll=p, choice=name, votes=n) for n, name in enumerate(names)]
+    for c in choices:
+        c.save()
+    p.save()
+    eq_(len(p.choices.all()), 6)
+
+    qs = p.choices.filter(votes=5) # only Gus
+    qs.delete()
+
+    eq_(len(ChoiceDelete.objects.all()), 5)
+
 @with_setup(None, teardown)
 def test_abstract_rel_inheritance():
     """
