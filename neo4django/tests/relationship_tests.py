@@ -400,7 +400,24 @@ def test_relationship_delete():
     qs = p.choices.filter(votes=5) # only Gus
     qs.delete()
 
+    p = list(PollDelete.objects.all())[0]  # have to re-select poll after each delete
     eq_(len(ChoiceDelete.objects.all()), 5)
+    eq_(len(p.choices.all()), 5)
+
+    qs = p.choices.filter(votes__gte=1) # all but Matt
+    qs.delete()
+    
+    p = list(PollDelete.objects.all())[0]
+    eq_(len(ChoiceDelete.objects.all()), 1)
+    eq_(len(p.choices.all()), 1)
+
+    qs = p.choices.filter(votes__gte=0) #all the rest
+    qs.delete()
+
+    p = list(PollDelete.objects.all())[0]
+    eq_(len(p.choices.all()), 0)
+    eq_(len(ChoiceDelete.objects.all()), 0)
+
 
 @with_setup(None, teardown)
 def test_abstract_rel_inheritance():
