@@ -796,5 +796,9 @@ class RelationshipQuerySet(object):
     def get(self, **lookup):
         pass
 
+    def delete(self):
+        for obj in self:
+            obj.delete()
+
     def count(self):
         return len(self)
