@@ -4,3 +4,4 @@ include LICENSE-GPL.txt
 include MANIFEST.in
 include README.rst
 include reg_settings.py
+recursive-include neo4django/gremlin *.groovy

@@ -9,6 +9,8 @@ setup(
     license = 'GPL',
     url = "http://packages.python.org/neo4django",
     packages=['neo4django','neo4django.db','neo4django.db.models','neo4django.tests', 'neo4django.gremlin'],
+    package_dir={'neo4django':'neo4django'},
+    package_data={'neo4django':['gremlin/*.groovy']},
     long_description=open('README.rst').read(),
     platforms=['posix'],
     install_requires=[

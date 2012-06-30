@@ -7,6 +7,8 @@ The PRIMARY AUTHORS of this integration are (ordered by aproximated LOC number):
     * Edd Purcell, @purpleplatypus, https://github.com/epurcell3
     * Corbin Pon, @corbinpon, https://github.com/clp16
     * Michael Meeks, @mmeeksy, https://github.com/msmeeks
+    * Chris Beard, https://github.com/d10genes
+    * Seth Madison, https://github.com/baconz
     * Rami Chowdhury, @necaris_tweets, https://github.com/necaris
 
 APPRECIATED CONTRIBUTORS:
