@@ -627,6 +627,26 @@ class NodeQuerySet(QuerySet):
     # METHODS THAT DO DATABASE QUERIES #
     ####################################
 
+    def __getitem__(self, k):
+        """"
+        If k is a slice or there's a ._result_cache, use super __getitem__.
+        Otherwise, iterate over the queryset, loading items into the cache
+        one by one, and return last element of the cache.
+        """
+        if not isinstance(k, (int, long)) or (k < 0) or self._result_cache is not None:
+            return super(NodeQuerySet, self).__getitem__(k)
+
+        try:
+            # ._fill_cache would be handy, but doesn't work when ._iter is None
+            self._result_cache = []
+            self._iter = self._iter or self.iterator()
+            for _ in range(k + 1):
+                self._result_cache.append(next(self._iter))
+            return self._result_cache[-1]
+
+        except self.model.DoesNotExist, e:
+            raise IndexError(e.args)
+
     def iterator(self):
         using = self.db
         for model in self.query.execute(using):
