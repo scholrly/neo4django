@@ -555,3 +555,41 @@ def test_get_or_create():
     (obj2, created) = Person.objects.get_or_create(name=name)
     assert created == False, "Person should not have been created, one should already exist"
     assert obj1 == obj2, "Second get_or_create() should have returned Person created by first get_or_create()"
+
+def test_object_index():
+    class PollIdx(models.NodeModel):
+            question = models.StringProperty()
+            def __unicode__(self):
+                return self.question
+    p1 = PollIdx(question="Who's the best")
+    p2 = PollIdx(question="How's the weather?")
+    p3 = PollIdx(question="What's up?")
+    p1.save()
+    p2.save()
+    p3.save()
+
+    eq_(len(PollIdx.objects.all()), 3)
+    p0 = PollIdx.objects.all()[0]
+    p1 = PollIdx.objects.all()[1]
+    p2 = PollIdx.objects.all()[2]
+    assert len(set([p0, p1, p2, p0])) == 3, "There should be 3 different polls"
+
+    qsall = PollIdx.objects.all()
+    # Should fill up cache one by one
+    eq_(qsall._result_cache, None)
+    p0 = qsall[0]
+    eq_(len(qsall._result_cache), 1)
+    p1 = qsall[1]
+    eq_(len(qsall._result_cache), 2)
+    p2 = qsall[2]
+    eq_(len(qsall._result_cache), 3)
+    assert len(set([p0, p1, p2, p0, p1])) == 3, "There should be 3 different polls"
+
+    qsall = PollIdx.objects.all()
+    # Filling up the cache first
+    len(qsall)
+    eq_(len(qsall._result_cache), 3)
+    p0 = qsall[0]
+    p1 = qsall[1]
+    p2 = qsall[2]
+    assert len(set([p0, p1, p2, p0, p1, p2])) == 3, "There should still be 3 different polls"
