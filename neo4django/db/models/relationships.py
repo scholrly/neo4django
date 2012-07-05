@@ -591,9 +591,17 @@ class RelationshipInstance(models.Manager):
         self._added = [] # contains domain objects
         self._removed = [] # contains relationships
         #holds cached domain objects (that have been added or loaded by query)
-        self._cache = []
+        self._cache = None
 
     ordered = property(lambda self: self.__rel.ordered)
+
+    def _has_cache(self):
+        return self._cache is not None
+
+    def _get_or_create_cache(self):
+        if self._cache is None:
+            self._cache = []
+        return self._cache
 
     def __save__(self, node):
         #Deletes all relationships removed since last save and adds any new
@@ -604,12 +612,12 @@ class RelationshipInstance(models.Manager):
             relationship.delete()
         for obj in self._added:
             new_rel = self.__rel._create_neo_relationship(node, obj)
-            self._cache.append((new_rel, obj))
+            self._get_or_create_cache.append((new_rel, obj))
         self._removed[:] = []
         self._added[:] = []
 
     def _neo4j_relationships_and_models(self, node):
-        if not self._cache:
+        if self._cache is None:
             self._cache = [(r, self.__rel._neo4j_instance(node, r)) for r in 
                            self.__rel._load_relationships(node, ordered=self.ordered)]
         for tup in self._cache:
@@ -667,7 +675,7 @@ class RelationshipInstance(models.Manager):
                 try:
                     if obj in self._added:
                         self._added.remove(obj)
-                    else:
+                    elif obj in self._cache:
                         self._cache.remove(obj)
                 except ValueError:
                     raise rel.target_model.DoesNotExist("%r is not related to %r." % (obj, self.__obj))

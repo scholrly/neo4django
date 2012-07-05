@@ -348,6 +348,25 @@ def execute_select_related(models=None, query=None, index_name=None,
 
     models_so_far = dict((m.id, m) for m in itertools.chain(models, rel_models))
 
+    # TODO HACK set model rel caches to empty 
+    # in the future, we'd like to properly mark a cache as 'filled', 'empty',
+    # or 'unknown', to deal with deferred relationships versus those that have
+    # been serviced by select_related. That will require doing more bookkeeping-
+    # eg, knowing which models are at what depth in the max_depth case, and
+    # which correspond to which field in the field case.
+    # This covers the easy case, max_depth=1, and ignores the hard case of
+    # dealing with a fields list or a greater depth.
+    if fields is None and max_depth == 1:
+        for m in models:
+            for field_name, field in m._meta._relationships.items():
+                #if rel is many side
+                rel_on_model = getattr(m, field_name, None)
+                if rel_on_model is not None and hasattr(rel_on_model, '_cache'):
+                    rel_on_model._get_or_create_cache() #set the cache to loaded and empty
+                else:
+                    #otherwise single side
+                    field._set_cached_relationship(m, None)
+
     #paths ordered by shortest to longest
     paths = sorted(paths, key=lambda v:v['length'])
 
