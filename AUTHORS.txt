@@ -10,6 +10,7 @@ The PRIMARY AUTHORS of this integration are (ordered by aproximated LOC number):
     * Chris Beard, https://github.com/d10genes
     * Seth Madison, https://github.com/baconz
     * Rami Chowdhury, @necaris_tweets, https://github.com/necaris
+    * Alex Yuskauskas, https://github.com/vistorve
 
 APPRECIATED CONTRIBUTORS:
 
