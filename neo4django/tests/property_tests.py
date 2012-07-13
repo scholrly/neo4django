@@ -293,6 +293,42 @@ def test_url_array_property_validator():
     else:
         raise AssertionError('tuples of ints should not work')
 
+def get_raw_property_by_rest(node, property_name):
+    import urllib2, simplejson
+    data = simplejson.loads(
+        urllib2.urlopen(
+            node.connection.url + "node/%i/properties" % node.pk).read())
+    return data[property_name]
+
+def test_array_use_strings():
+    """
+    Tests that array are stored as token separated strings if use_string flag
+    is True.
+    """
+
+    class MyNode(models.NodeModel):
+        arr = models.ArrayProperty(use_string=True)
+
+    node = MyNode(arr=["a","b","c"])
+    node.save()
+
+    assert MyNode.arr._property.token.join(node.arr) == \
+        get_raw_property_by_rest(node, "arr")
+
+def test_array_use_strings_value_escaping():
+    """
+    Test intra-value escaping is working.
+    """
+
+    class MyNode(models.NodeModel):
+        arr = models.ArrayProperty(use_string=True)
+
+    node = MyNode(arr=["a%sb" % MyNode.arr._property.token,"b","c"])
+    node.save()
+    node2 = MyNode.objects.get(pk=node.pk)
+
+    assert node.arr == node2.arr
+
 def test_prop_metadata():
     class NodeWithMetadata(models.NodeModel):
         name = models.StringProperty(metadata={'test':123})

@@ -804,14 +804,42 @@ class ArrayProperty(Property):
                 el_val = ElementValidator(vals_or_tuple)
             self.validators.append(el_val)
 
+        #Store array values as a token separated string. For use in the event
+        #the user needs to access the neo4j data multiple ways.
+        #For example using REST interface you cannot store an empty array
+        self.use_string = kwargs.get("use_string", False)
+        self.token = kwargs.get("token", ",")
+        self.escape_token = kwargs.get("escape_token", "+")
+        self.token_regex = re.compile(
+            "(?<!%s)%s" % (re.escape(self.escape_token), self.token))
+
     def get_default(self):
-        return []
+        if self.use_string:
+            return ""
+        else:
+            return []
 
     def from_neo(self, value):
+        if value and not isinstance(value, (tuple, list)) and self.use_string:
+            array_values = self.token_regex.split(value)
+            for i, v in enumerate(array_values):
+                array_values[i] = v.replace(
+                    "%s%s" % (self.escape_token, self.token), self.token)
+            return tuple(array_values)
         if not value:
             return tuple([])
         else:
             return tuple(value)
+
+    def to_neo(self, value):
+        if self.use_string:
+            escaped_values = []
+            for v in value:
+                escaped_values.append(
+                    str(v).replace(self.token, "%s%s" % (self.escape_token,
+                                                         self.token)))
+            return self.token.join(escaped_values)
+        return value
 
 class StringArrayProperty(ArrayProperty):
     default_validators = [validate_str_array]
