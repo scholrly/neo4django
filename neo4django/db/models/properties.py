@@ -260,7 +260,7 @@ class BoundProperty(AttrRouter):
         return cmp(self.creation_counter, other.creation_counter)
 
     @staticmethod
-    def __values_of(instance, create=True):
+    def _values_of(instance, create=True):
         try:
             values = instance._prop_values
         except:
@@ -304,7 +304,7 @@ class BoundProperty(AttrRouter):
             return self.__class.index_name(using)
 
     def _save_(instance, node, node_is_new):
-        values = BoundProperty.__values_of(instance)
+        values = BoundProperty._values_of(instance)
         properties = BoundProperty._all_properties_for(instance)
 
         gremlin_props = {}
@@ -369,7 +369,7 @@ class BoundProperty(AttrRouter):
 
     def __get__(self, instance, cls=None):
         if instance is None: return self
-        values = self.__values_of(instance, create=False)
+        values = self._values_of(instance, create=False)
         if self.__propname in values:
             return values[self.__propname]
         else:
@@ -379,7 +379,7 @@ class BoundProperty(AttrRouter):
         if write_through(instance):
             self.___set_value(instance, value)
         else:
-            values = self.__values_of(instance)
+            values = self._values_of(instance)
             values[self.__propname] = value
 
     @transactional
@@ -390,7 +390,7 @@ class BoundProperty(AttrRouter):
             pass
         else:
             try:
-                values = BoundProperty.__values_of(instance)
+                values = BoundProperty._values_of(instance)
                 values[self.__propname] = val = self._property.from_neo(underlying[self.__propname])
                 return val
             except: # no value set on node
