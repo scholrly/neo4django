@@ -21,9 +21,11 @@ if getattr(_settings, 'NEO4DJANGO_PROFILE_REQUESTS', False):
             else:
                 print [d.items() for d in data]
             stdout.flush()
-            return super(ProfilingRequest, self)._request(method, url,
+            ret = super(ProfilingRequest, self)._request(method, url,
                                                           data=data,
                                                           headers=headers)
+            print "took %0.3f seconds..." % (_time() - new_time)
+            return ret
     _client.Request = ProfilingRequest
  
 DEFAULT_DB_ALIAS = 'default'
