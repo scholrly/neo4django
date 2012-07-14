@@ -57,6 +57,39 @@ class LazyRelationship(LazyBase, neo4j.Relationship):
                 pass
         return super(LazyRelationship, self).end
 
+class SkeletonBase(object):
+    """
+    A mixin to allow REST element construction from an id and property dict.
+
+    Expects a LazyNode or LazyRelationship in the class hierarchy.
+    """
+    def __init__(self, db_url, element_id, prop_dict):
+        url = db_url + (self.id_url_template % element_id)
+        element_dict = {}
+        for k, v in self.DICT_TEMPLATE.items():
+            element_dict[k] = v.replace('{db_url}',db_url).replace('{id}',str(element_id)) \
+                    if not hasattr(v, 'keys') else v
+        element_dict['data'] = prop_dict
+        super(SkeletonBase, self).__init__(url, element_dict)
+
+class SkeletonNode(SkeletonBase, LazyNode):
+    DICT_TEMPLATE = {
+        "outgoing_relationships" : "{db_url}node/{id}/relationships/out",
+        "data" : {},
+        "traverse" : "{db_url}node/{id}/traverse/{returnType}",
+        "all_typed_relationships" : "{db_url}node/{id}/relationships/all/{-list|&|types}",
+        "property" : "{db_url}node/{id}/properties/{key}",
+        "self" : "{db_url}node/{id}",
+        "outgoing_typed_relationships" : "{db_url}node/{id}/relationships/out/{-list|&|types}",
+        "properties" : "{db_url}node/{id}/properties",
+        "incoming_relationships" : "{db_url}node//relationships/in",
+        "extensions" : {},
+        "create_relationship" : "{db_url}node/{id}/relationships",
+        "paged_traverse" : "{db_url}node/{id}/paged/traverse/{returnType}{?pageSize,leaseTime}",
+        "all_relationships" : "{db_url}node/{id}/relationships/all",
+        "incoming_typed_relationships" : "{db_url}node/{id}/relationships/in/{-list|&|types}"
+    }
+
 def batch_base(ids, cls, using):
     """
     A function to replace the REST client's non-lazy batching.
