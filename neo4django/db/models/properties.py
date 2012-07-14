@@ -303,6 +303,26 @@ class BoundProperty(AttrRouter):
         else:
             return self.__class.index_name(using)
 
+    #update the state of the model instance based on a rest client element property dictionary
+    def _update_values_from_dict(instance, new_val_dict, clear=False):
+        values = BoundProperty._values_of(instance)
+        properties = BoundProperty._all_properties_for(instance)
+
+        values.clear()
+        
+        for k, v in new_val_dict.items():
+            prop = properties.get(k, None)
+            if prop:
+                #XXX duplicates __get_value()...
+                values[k] = prop.from_neo(v)
+        #XXX this relies on neo4jrestclient private implementation details
+        if clear:
+            instance.node._dic['data'].clear()
+        instance.node._dic['data'].update(new_val_dict)
+
+    NodeModel._update_values_from_dict = staticmethod(_update_values_from_dict) #TODO this needs to be revised
+    del _update_values_from_dict
+
     def _save_(instance, node, node_is_new):
         values = BoundProperty._values_of(instance)
         properties = BoundProperty._all_properties_for(instance)
@@ -348,16 +368,7 @@ class BoundProperty(AttrRouter):
                 propMap=gremlin_props)
         
         if hasattr(script_rv, 'properties'):
-            values.clear()
-            
-            for k, v in script_rv.properties.items():
-                prop = properties.get(k, None)
-                if prop:
-                    #XXX duplicates __get_value()...
-                    values[k] = prop.from_neo(v)
-            #XXX this relies on neo4jrestclient private implementation details
-            node._dic['data'].clear()
-            node._dic['data'].update(script_rv.properties)
+            NodeModel._update_values_from_dict(instance, script_rv.properties, clear=True)
         else:
             if script_rv == 'neo4django: uniqueness error': #TODO fix this magic string
                 raise ValueError( "Duplicate index entries for <%s>.%s" % 
