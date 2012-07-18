@@ -326,7 +326,7 @@ class BoundProperty(AttrRouter):
                 value = values[key]
                 prop.clean(value, instance)
                 value = prop.pre_save(node, node_is_new, prop.name) or value
-                if not value in validators.EMPTY_VALUES:
+                if not value in validators.EMPTY_VALUES or getattr(prop._property, "use_string", False):
                     #should already have errored if self.null==False
                     value = prop.to_neo(value)
                 values[key] = value
