@@ -265,6 +265,10 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
     def rel_type(self):
         return self._type
 
+    @property
+    def rel(self):
+        return self.__rel
+
     def get_default(self):
         return None
 
@@ -596,9 +600,6 @@ class RelationshipInstance(models.Manager):
         #holds cached domain objects (that have been added or loaded by query)
         self._cache = []
         self._cache_unique = set([])
-        # TODO: accessor for rel so we don't need .model or .name
-        self.model = rel._BoundRelationship__rel._Relationship__target
-        self.name = rel._BoundRelationship__rel._related_name
 
     ordered = property(lambda self: self.__rel.ordered)
 
@@ -708,9 +709,8 @@ class RelationshipInstance(models.Manager):
         return cloned
 
     def create(self, **kwargs):
-        kwargs[self.name] = self.__obj
-        new_model = self.model(**kwargs)
-        self.new_model = new_model
+        kwargs[self.__rel.rel._related_name] = self.__obj
+        new_model = self.__rel.rel.target_model(**kwargs)
         # TODO: saving twice, should only need
         # to save self.__obj after #89 fix
         new_model.save()
@@ -731,7 +731,6 @@ class RelationshipQuerySet(object):
         self.__inst = inst
         self.__rel = rel
         self.__obj = obj
-        self.model = rel._BoundRelationship__rel._Relationship__target
 
     def filter(self, **kwargs):
         "Returns RelationshipQuerySet with filtered items"
@@ -740,7 +739,6 @@ class RelationshipQuerySet(object):
 
         new_inst = self.__inst.clone()
         new_inst.clear()
-
         if added:
             iterable = added
         else:
@@ -749,7 +747,7 @@ class RelationshipQuerySet(object):
             iterable = [i for r, i in inst._neo4j_relationships_and_models(node)] if node else []
 
         for item in iterable:
-            if any(matches_condition(item.node, c) for c in conditions_from_kws(self.model, kwargs)):
+            if any(matches_condition(item.node, c) for c in conditions_from_kws(self.__rel.rel.target_model, kwargs)):
                 new_inst.add(item)
         return RelationshipQuerySet(new_inst, self.__rel, self.__obj)
 
