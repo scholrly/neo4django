@@ -248,8 +248,12 @@ class NodeModel(NeoModel):
 
     @classmethod
     def index(cls, using=DEFAULT_DB_ALIAS):
+        if cls in cls._indexes and using in cls._indexes[cls]:
+            return cls._indexes[cls][using]
+
         index_name = cls.index_name(using)
         conn = connections[using]
+
         def get_index(name):
             #XXX this is a hack bc of bad equality tests for indexes in
             #neo4jrestclient
@@ -261,8 +265,8 @@ class NodeModel(NeoModel):
                 index = conn.nodes.indexes.create(index_name, type='fulltext')
             index.__hash__ = _hash_.__get__(index, neo_client.Index)
             return index
-        
         cls._indexes[cls][using] = index = get_index(index_name)
+
         return index
 
     @classmethod
