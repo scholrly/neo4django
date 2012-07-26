@@ -612,7 +612,7 @@ class RelationshipInstance(models.Manager):
             relationship.delete()
         for obj in self._added:
             new_rel = self.__rel._create_neo_relationship(node, obj)
-            self._get_or_create_cache.append((new_rel, obj))
+            self._get_or_create_cache().append((new_rel, obj))
         self._removed[:] = []
         self._added[:] = []
 
