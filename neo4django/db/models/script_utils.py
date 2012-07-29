@@ -73,8 +73,8 @@ def batch_base(ids, cls, using):
     """
     script %= gremlin_func
     result_table = connections[using].gremlin(script, ids=ids)
-    return [cls.from_dict(v[0]) for v in result_table['data']]
-    
+    return [_add_auth(cls.from_dict(v[0])) for v in result_table['data']]
+
 def batch_rels(ids, using):
     return batch_base(ids, LazyRelationship, using)
 
@@ -100,9 +100,9 @@ def batch_paths(paths, using):
     for v in result_dict.values():
         d = v['body']
         if "start" in d:
-            rel_by_url[d['self']] = LazyRelationship.from_dict(d)
+            rel_by_url[d['self']] = _add_auth(LazyRelationship.from_dict(d), connections[using])
         else:
-            node_by_url[d['self']] = LazyNode.from_dict(d)
+            node_by_url[d['self']] = _add_auth(LazyNode.from_dict(d), connections[using])
     for p in paths:
         node_it = (node_by_url[n_url] for n_url in iter(p['nodes']))
         rel_it = (rel_by_url[r_url] for r_url in iter(p['relationships']))
@@ -127,9 +127,13 @@ def query_indices(name_and_query, using):
     #                     (js_expression_from_condition(c, J('testedNode')) 
     #                      for c in unindexed))
     result_set = connections[using].gremlin_tx('results = Neo4Django.queryNodeIndices(queries)', queries=name_and_query)
-    
+
     #make the result_set not insane (properly lazy)
-    return [LazyNode.from_dict(dic) for dic in result_set._list] if result_set else []
+    return [_add_auth(LazyNode.from_dict(dic), connections[using]) for dic in result_set._list] if result_set else []
+
+def _add_auth(n, conn):
+    n._auth = conn._auth
+    return n
 
 def id_from_url(url):
     from urlparse import urlsplit
