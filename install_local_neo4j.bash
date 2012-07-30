@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DEFAULT_VERSION="1.6"
+DEFAULT_VERSION="1.6.3"
 VERSION=${1-$DEFAULT_VERSION}
 DIR="neo4j-community-$VERSION"
 FILE="$DIR-unix.tar.gz"
@@ -15,7 +15,11 @@ if [[ ! -d lib/$DIR ]]; then
     [[ -h lib/neo4j ]] && unlink lib/neo4j
     ln -fs $DIR lib/neo4j
     mkdir lib/neo4j/testing/
-    DELETE_DB_PLUGIN_JAR="test-delete-db-extension-1.6.jar"
+    $PLUGIN_VERSION="1.6"
+    if [[ $NEO4J_VERSION == 1.5* ]]; then
+        $PLUGIN_VERSION="1.5"
+    fi
+    DELETE_DB_PLUGIN_JAR="test-delete-db-extension-$PLUGIN_VERSION.jar"
     wget --no-check-certificate -O lib/neo4j/testing/$DELETE_DB_PLUGIN_JAR https://github.com/downloads/jexp/neo4j-clean-remote-db-addon/$DELETE_DB_PLUGIN_JAR
     ln -s ../testing/$DELETE_DB_PLUGIN_JAR lib/neo4j/plugins/$DELETE_DB_PLUGIN_JAR
     cat >> $SERVER_PROPERTIES_FILE <<EOF
