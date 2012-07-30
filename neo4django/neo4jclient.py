@@ -7,6 +7,7 @@ from django.core import exceptions
 from pkg_resources import resource_stream as _pkg_resource_stream
 from collections import namedtuple
 import re as _re
+import warnings
 
 from .exceptions import GremlinLibraryCouldNotBeLoaded as _LibraryCouldNotLoad
 
@@ -45,8 +46,22 @@ class EnhancedGraphDatabase(GraphDatabase):
         request = self.new_request()
         response, content = request.delete(self._cleandb_uri)
         if response.status != 200:
-            error_msg = 'The CLEANDB_URI you specified is invalid: %s'
-            raise exceptions.ImproperlyConfigured(error_msg % self._cleandb_uri)
+            warnings.warn('The CLEANDB_URI you specified is invalid: %s' \
+                          % self._cleandb_uri)
+            # then try to do it with gremlin
+            script = """
+            try
+            {
+                g.V.filter{it.id!=0}.sideEffect{g.removeVertex(it)}.iterate();
+                true
+            }
+            catch(Exception e){false}
+            """
+            gremlin_ret = gdb.extensions.GremlinPlugin.execute_script(script)
+            if gremlin_ret != 'true':
+                error_msg = "\nDatabase couldn't be cleared - have you installed the cleandb extension at https://github.com/jexp/neo4j-clean-remote-db-addon?"
+                raise ImproperlyConfigured(error_msg)
+            
 
     def gremlin(self, script, tx=False, raw=False, **params):
         """
