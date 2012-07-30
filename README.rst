@@ -254,3 +254,11 @@ All contributions, no matter how small, are greatly appreciated!
 
 If you do decide to contribute, please test! If a pull request fails any regression tests, we won't be able to accept it.
 
+Debugging & Optimization
+========================
+
+A django-debug-toolbar_ plugin_ has been written to make debugging Neo4j REST calls easier. It should also make debugging and optimizing neo4django easier- check it out. 
+
+.. _django-debug-toolbar: https://github.com/django-debug-toolbar/django-debug-toolbar
+.. _plugin: https://github.com/robinedwards/django-debug-toolbar-neo4j-panel/
+If you're interested in helping improve performance, or otherwise need an easy way to debug
