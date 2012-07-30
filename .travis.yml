@@ -5,12 +5,20 @@ python:
 before_install:
   - ./install_local_neo4j.bash $NEO4J_VERSION
   - cd lib/neo4j && ./bin/neo4j start && cd ../../
+  - export DJANGO_SETTINGS_MODULE="neo4django.tests.test_settings"
   - sleep 3
 install: pip install --use-mirrors -r requirements.txt -r test_requirements.txt
 env:
-  - DJANGO_SETTINGS_MODULE="neo4django.tests.test_settings" NEO4J_VERSION="1.5"
-  - DJANGO_SETTINGS_MODULE="neo4django.tests.test_settings" NEO4J_VERSION="1.6.3"
-  - DJANGO_SETTINGS_MODULE="neo4django.tests.test_settings" NEO4J_VERSION="1.7.1"
-  - DJANGO_SETTINGS_MODULE="neo4django.tests.test_settings" NEO4J_VERSION="1.8.M04"
+  - NEO4J_VERSION="1.5.3"
+  - NEO4J_VERSION="1.6.3"
+  - NEO4J_VERSION="1.7.2"
+  - NEO4J_VERSION="1.8.M06"
+matrix:
+  allow_failures:
+    - env: NEO4J_VERSION="1.8.M06" #we don't support milestone releases
+notifications:
+  email:
+    on_success: change
+    on_failure: change
 script:
-  - nosetests --with-regression --verbose
+  - cat lib/neo4j/data/log/*.log && nosetests --with-regression --verbose
