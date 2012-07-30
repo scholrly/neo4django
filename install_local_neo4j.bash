@@ -5,6 +5,8 @@ VERSION=${1-$DEFAULT_VERSION}
 DIR="neo4j-community-$VERSION"
 FILE="$DIR-unix.tar.gz"
 SERVER_PROPERTIES_FILE="lib/neo4j/conf/neo4j-server.properties"
+#set a default neo4j port if none has been set
+: {NEO4J_PORT:="7474"}
 
 if [[ ! -d lib/$DIR ]]; then
     wget http://dist.neo4j.org/$FILE
@@ -26,4 +28,8 @@ if [[ ! -d lib/$DIR ]]; then
 org.neo4j.server.thirdparty_jaxrs_classes=org.neo4j.server.extension.test.delete=/cleandb
 org.neo4j.server.thirdparty.delete.key=supersecretdebugkey!
 EOF
+fi
+
+if grep 7474 $SERVER_PROPERTIES_FILE > /dev/null; then
+    sed -i s/7474/$NEO4J_PORT/g  $SERVER_PROPERTIES_FILE #change port
 fi
