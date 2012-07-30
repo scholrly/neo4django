@@ -14,4 +14,5 @@ APPRECIATED CONTRIBUTORS (ordered by aproximated LOC):
     * Rami Chowdhury, @necaris_tweets, https://github.com/necaris
     * Alex Yuskauskas, https://github.com/vistorve
     * Kristian Glass, https://github.com/doismellburning
+    * Robin Edwards, https://github.com/robinedwards
     * Get yourself on this list! We want your help!
