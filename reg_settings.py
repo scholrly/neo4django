@@ -102,7 +102,8 @@ tests=[
 	'test_none',
 	'test_relationship_none',
 	'test_relationship_count',
-	'test_relationship_filter']
+	'test_relationship_filter',
+    'test_cleandb']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
