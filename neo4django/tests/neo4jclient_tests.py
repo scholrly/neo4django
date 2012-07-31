@@ -19,9 +19,29 @@ def teardown():
     gdb.cleandb()
 
 def test_cleandb():
-    node_id = connection.gremlin('results=g.createVertex().id')
+    def assert_deletion(ids):
+        eq_(connection.gremlin('results=nodeIds.collect{(boolean)g.v(it)}.any()', nodeIds = ids, raw=True), 'false')
+
+    node_id = connection.gremlin('results=g.addVertex().id')
     connection.cleandb()
-    eq_(connection.gremlin('results=(boolean)g.v(node_id)', node_id=node_id, raw=True), 'false')
+    assert_deletion([node_id])
+
+    #try it with more nodes
+    node_ids = connection.gremlin('results=(0..50).collect{g.addVertex().id}', raw=True)
+    connection.cleandb()
+    assert_deletion(node_ids)
+
+    #try it with related nodes
+    linked_script = '''results = []
+                       lastNode=g.v(0);(0..50).each{
+                           thisNode=g.addVertex()
+                           results.append(thisNode.id)
+                           g.addEdge(lastNode, thisNode, "knows",[:]);
+                           lastNode = thisNode
+                       }'''
+    node_ids = connection.gremlin(linked_script, raw=True)
+    connection.cleandb()
+    assert_deletion(node_ids)
 
 def test_other_library():
     random_lib = """
