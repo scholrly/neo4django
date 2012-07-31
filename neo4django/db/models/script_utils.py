@@ -106,7 +106,7 @@ def batch_base(ids, cls, using):
     """
     script %= gremlin_func
     result_table = connections[using].gremlin(script, ids=ids)
-    return [_add_auth(cls.from_dict(v[0])) for v in result_table['data']]
+    return [_add_auth(cls.from_dict(v[0]), connections[using]) for v in result_table['data']]
 
 def batch_rels(ids, using):
     return batch_base(ids, LazyRelationship, using)

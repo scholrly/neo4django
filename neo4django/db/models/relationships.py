@@ -606,7 +606,7 @@ class RelationshipInstance(models.Manager):
     def _add_to_cache(self, *relationship_neo4j_pairs):
         for pair in relationship_neo4j_pairs:
             if pair not in self._cache_unique:
-                self._cache.append(pair)
+                self._get_or_create_cache().append(pair)
                 self._cache_unique.add(pair)
 
     def _remove_from_cache(self, obj):
@@ -639,14 +639,13 @@ class RelationshipInstance(models.Manager):
         self._added[:] = []
 
     def _neo4j_relationships_and_models(self, node):
-	"Returns generator of relationship, neo4j instance tuples associated with node."
+        "Returns generator of relationship, neo4j instance tuples associated with node."
         if self._cache is None:
-            self._cache = [(r, self.__rel._neo4j_instance(node, r)) for r in 
-                           self.__rel._load_relationships(node, ordered=self.ordered)]
-        for tup in self._cache:
+            self._add_to_cache(*[(r, self.__rel._neo4j_instance(node, r)) for r in 
+                           self.__rel._load_relationships(node, ordered=self.ordered)])
+        for tup in self._get_or_create_cache():
             if tup[0] not in self._removed:
                 yield tup
-
     @property
     def _new(self):
         for item in self._added:
@@ -701,7 +700,7 @@ class RelationshipInstance(models.Manager):
                     if obj in self._added:
                         self._added.remove(obj)
                     elif obj in self._cache:
-                        self._cache.remove(obj)
+                        self._remove_from_cache(obj)
                 except ValueError:
                     raise rel.target_model.DoesNotExist("%r is not related to %r." % (obj, self.__obj))
 
