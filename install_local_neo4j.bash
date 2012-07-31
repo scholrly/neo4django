@@ -17,9 +17,9 @@ if [[ ! -d lib/$DIR ]]; then
     [[ -h lib/neo4j ]] && unlink lib/neo4j
     ln -fs $DIR lib/neo4j
     mkdir lib/neo4j/testing/
-    $PLUGIN_VERSION="1.6"
+    PLUGIN_VERSION="1.6"
     if [[ $NEO4J_VERSION == 1.5* ]]; then
-        $PLUGIN_VERSION="1.5"
+        PLUGIN_VERSION="1.5"
     fi
     DELETE_DB_PLUGIN_JAR="test-delete-db-extension-$PLUGIN_VERSION.jar"
     wget --no-check-certificate -O lib/neo4j/testing/$DELETE_DB_PLUGIN_JAR https://github.com/downloads/jexp/neo4j-clean-remote-db-addon/$DELETE_DB_PLUGIN_JAR
