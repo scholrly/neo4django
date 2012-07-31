@@ -408,7 +408,7 @@ class NodeModel(NeoModel):
             raise RuntimeError(error_message + '\n\n%s' % script_rv)
         return script_rv
 
-    __type_node_memoized = memoized(__type_node)
+    __type_node_memoized = classmethod(memoized(__type_node))
     __type_node_classmethod = classmethod(__type_node)
 
     @classmethod

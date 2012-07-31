@@ -12,3 +12,6 @@ def setup():
     class Person(models.NodeModel):
         name = models.Property()
         age = models.IntegerProperty(indexed=True)
+
+def teardown():
+    gdb.cleandb()
