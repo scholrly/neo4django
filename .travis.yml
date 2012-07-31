@@ -4,11 +4,10 @@ python:
   - "2.7"
 before_install:
   - export DJANGO_SETTINGS_MODULE="neo4django.tests.test_settings"
-  - export NEO4J_PORT="7475"
-  - sed -i s/7474/$NEO4J_PORT/g neo4django/tests/test_settings.py #change test settings port
+  - sudo service neo4j stop && true
+  - sleep 3
   - ./install_local_neo4j.bash $NEO4J_VERSION
   - ./lib/neo4j/bin/neo4j start || ( cat ./lib/neo4j/data/log/*.log && exit 1 )
-  - sleep 3
 install: pip install --use-mirrors -r requirements.txt -r test_requirements.txt
 env:
   - NEO4J_VERSION="1.5.3"
