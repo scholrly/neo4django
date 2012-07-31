@@ -317,18 +317,9 @@ def execute_select_related(models=None, query=None, index_name=None,
         return itertools.chain(*(rc if isinstance(rc, tuple) else (rc,)
                                  for rc in (col_getter(r)
                                             for r in table['data'])))
-
-    path_columns = get_columns(lambda c:c.startswith('p'), results)
-    node_columns = get_columns(lambda c:c.startswith('r'), results)
-    type_columns = get_columns(lambda c:c.startswith('t'), results)
-
-    #paths ordered by shortest to longest
-    paths = sorted((c for c in path_columns if c is not None), key=lambda v:v['length'])
-
-    #since loading a node without a type makes no sense, cut rows that have an
-    #entry of None for either
-    node_and_type_cols = itertools.izip(node_columns, type_columns)
-    nodes, types = itertools.izip(*(row for row in node_and_type_cols if not None in row))
+    paths = sorted(get_columns(lambda c:c.startswith('p'), results), key=lambda p:p['length'])
+    nodes = get_columns(lambda c:c.startswith('r'), results)
+    types = get_columns(lambda c:c.startswith('t'), results)
 
     #put nodes in an id-lookup dict
     nodes = [script_utils.LazyNode.from_dict(d) for d in nodes]
@@ -351,9 +342,32 @@ def execute_select_related(models=None, query=None, index_name=None,
     #build all the models, ignoring types that django hasn't loaded
     rel_nodes_types= ((n, get_model(*t.split(':')))
                       for n, t in itertools.izip(nodes, types))
-    rel_models = (t._neo4j_instance(n) for n, t in rel_nodes_types if t is not None)
 
+    rel_models = (t._neo4j_instance(n) for n, t in rel_nodes_types if
+        (t is not None) and (t._neo4j_instance(n) not in models))
     models_so_far = dict((m.id, m) for m in itertools.chain(models, rel_models))
+
+    # TODO HACK set model rel caches to empty 
+    # in the future, we'd like to properly mark a cache as 'filled', 'empty',
+    # or 'unknown', to deal with deferred relationships versus those that have
+    # been serviced by select_related. That will require doing more bookkeeping-
+    # eg, knowing which models are at what depth in the max_depth case, and
+    # which correspond to which field in the field case.
+    # This covers the easy case, max_depth=1, and ignores the hard case of
+    # dealing with a fields list or a greater depth.
+    if fields is None and max_depth == 1:
+        for m in models:
+            for field_name, field in m._meta._relationships.items():
+                #if rel is many side
+                rel_on_model = getattr(m, field_name, None)
+                if rel_on_model is not None and hasattr(rel_on_model, '_cache'):
+                    rel_on_model._get_or_create_cache() #set the cache to loaded and empty
+                else:
+                    #otherwise single side
+                    field._set_cached_relationship(m, None)
+
+    #paths ordered by shortest to longest
+    paths = sorted(paths, key=lambda v:v['length'])
 
     for path in paths:
         m = models_so_far[id_from_url(path['start'])]
@@ -363,11 +377,11 @@ def execute_select_related(models=None, query=None, index_name=None,
 
         cur_m = m
         for rel_id, node_id in itertools.izip(rel_it, node_it):
-            #decide how this part of the path matches the select_related field
-            #strings
+            #make choice ab where it goes
             rel = rels_by_id[rel_id]
             rel.direction = neo_constants.RELATIONSHIPS_OUT if node_id == rel.end.id \
                             else neo_constants.RELATIONSHIPS_IN
+            new_model = models_so_far[node_id]
             field_candidates = [(k,v) for k,v in cur_m._meta._relationships.items()
                                 if str(v.rel_type)==str(rel.type) and v.direction == rel.direction]
             if len(field_candidates) < 1:
@@ -384,7 +398,7 @@ def execute_select_related(models=None, query=None, index_name=None,
             #if rel is many side
             rel_on_model = getattr(cur_m, field_name, None)
             if rel_on_model and hasattr(rel_on_model, '_cache'):
-                rel_on_model._cache.append((rel, new_model))
+                rel_on_model._get_or_create_cache().append((rel, new_model))
                 if field.ordered:
                     rel_on_model._cache.sort(
                         key=lambda r:r[0].properties.get(ORDER_ATTR, None))
@@ -431,7 +445,7 @@ class Query(object):
     #TODO when does a returned index query of len 0 mean we're done?
     def execute(self, using):
         conditions = uniqify(self.conditions)
-        
+
         #TODO exclude those that can't be evaluated against (eg exact=None, etc)
         id_conditions = []
         indexed = []
