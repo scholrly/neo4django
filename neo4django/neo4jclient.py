@@ -53,11 +53,11 @@ class EnhancedGraphDatabase(GraphDatabase):
             try
             {
                 g.V.filter{it.id!=0}.sideEffect{g.removeVertex(it)}.iterate();
-                true
+                results = true
             }
-            catch(Exception e){false}
+            catch(Exception e){results = false}
             """
-            gremlin_ret = self.extensions.GremlinPlugin.execute_script(script)
+            gremlin_ret = self.gremlin(script, raw=True)
             if gremlin_ret != 'true':
                 error_msg = "\nDatabase couldn't be cleared - have you installed the cleandb extension at https://github.com/jexp/neo4j-clean-remote-db-addon?"
                 raise ImproperlyConfigured(error_msg)
