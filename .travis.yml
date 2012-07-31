@@ -4,6 +4,7 @@ python:
   - "2.7"
 before_install:
   - export DJANGO_SETTINGS_MODULE="neo4django.tests.test_settings"
+  - export NEO4J_PORT="7474"
   - sudo service neo4j stop && true
   - sleep 3
   - ./install_local_neo4j.bash $NEO4J_VERSION
