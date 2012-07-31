@@ -18,6 +18,11 @@ def setup():
 def teardown():
     gdb.cleandb()
 
+def test_cleandb():
+    node_id = connection.gremlin('results=g.createVertex().id')
+    connection.cleandb()
+    eq_(connection.gremlin('results=(boolean)g.v(node_id)', node_id=node_id, raw=True), 'false')
+
 def test_other_library():
     random_lib = """
     class %(class_name)s {
