@@ -294,10 +294,9 @@ def test_url_array_property_validator():
         raise AssertionError('tuples of ints should not work')
 
 def get_raw_property_by_rest(node, property_name):
-    import urllib2, simplejson
-    data = simplejson.loads(
-        urllib2.urlopen(
-            node.connection.url + "node/%i/properties" % node.pk).read())
+    import requests, json
+    data = json.loads(
+        requests.get(node.connection.url + "node/%i/properties" % node.pk))
     return data[property_name]
 
 def test_array_use_strings():
