@@ -35,7 +35,7 @@ def test_cleandb():
     linked_script = '''results = []
                        lastNode=g.v(0);(0..50).each{
                            thisNode=g.addVertex()
-                           results.append(thisNode.id)
+                           results << thisNode.id
                            g.addEdge(lastNode, thisNode, "knows",[:]);
                            lastNode = thisNode
                        }'''
