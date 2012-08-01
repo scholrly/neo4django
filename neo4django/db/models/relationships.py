@@ -598,7 +598,7 @@ class RelationshipInstance(models.Manager):
         self._added = [] # contains domain objects
         self._removed = [] # contains relationships
         #holds cached domain objects (that have been added or loaded by query)
-        self._cache = []
+        self._cache = None
         self._cache_unique = set([])
 
     ordered = property(lambda self: self.__rel.ordered)
@@ -606,7 +606,7 @@ class RelationshipInstance(models.Manager):
     def _add_to_cache(self, *relationship_neo4j_pairs):
         for pair in relationship_neo4j_pairs:
             if pair not in self._cache_unique:
-                self._cache.append(pair)
+                self._get_or_create_cache().append(pair)
                 self._cache_unique.add(pair)
 
     def _remove_from_cache(self, obj):
@@ -617,28 +617,35 @@ class RelationshipInstance(models.Manager):
                 self._cache_unique.remove(pair)
                 break
 
+    def _has_cache(self):
+        return self._cache is not None
+
+    def _get_or_create_cache(self):
+        if self._cache is None:
+            self._cache = []
+        return self._cache
+
     def __save__(self, node):
         #Deletes all relationships removed since last save and adds any new
         #relatonships to the database.
-    
+
         #TODO this should be batched
         for relationship in self._removed:
             relationship.delete()
         for obj in self._added:
             new_rel = self.__rel._create_neo_relationship(node, obj)
-            self._add_to_cache((new_rel, obj))
+            self._get_or_create_cache().append((new_rel, obj))
         self._removed[:] = []
         self._added[:] = []
 
     def _neo4j_relationships_and_models(self, node):
         "Returns generator of relationship, neo4j instance tuples associated with node."
-        if not self._cache:
+        if self._cache is None:
             self._add_to_cache(*[(r, self.__rel._neo4j_instance(node, r)) for r in 
                            self.__rel._load_relationships(node, ordered=self.ordered)])
-        for tup in self._cache:
+        for tup in self._get_or_create_cache():
             if tup[0] not in self._removed:
                 yield tup
-
     @property
     def _new(self):
         for item in self._added:
@@ -668,16 +675,15 @@ class RelationshipInstance(models.Manager):
         if hasattr(self.__obj, 'node'):
             neo_rels = list(rel._load_relationships(self.__obj.node,
                                                     ordered=self.ordered))
-            rels_by_node_id = defaultdict(list)
+            rels_by_node = defaultdict(list)
             for neo_rel in neo_rels:
-                #import pdb; pdb.set_trace()
-                other_end = neo_rel.start if neo_rel.end.id == self.__obj.node.id\
+                other_end = neo_rel.start if neo_rel.end == self.__obj.node\
                             else neo_rel.end
-                rels_by_node_id[other_end.id].append(neo_rel)
+                rels_by_node[other_end].append(neo_rel)
             nodes_to_remove = [o.node for o in objs if hasattr(o, 'node')]
             unsaved_obj_to_remove = [o for o in objs if not hasattr(o, 'node')]
             for obj in objs:
-                candidate_rels = rels_by_node_id[obj.node.id]\
+                candidate_rels = rels_by_node[obj.node]\
                         if hasattr(o, 'node') else []
                 if candidate_rels:
                     if candidate_rels[0] not in self._removed:
@@ -693,7 +699,7 @@ class RelationshipInstance(models.Manager):
                 try:
                     if obj in self._added:
                         self._added.remove(obj)
-                    else:
+                    elif obj in self._cache:
                         self._remove_from_cache(obj)
                 except ValueError:
                     raise rel.target_model.DoesNotExist("%r is not related to %r." % (obj, self.__obj))
