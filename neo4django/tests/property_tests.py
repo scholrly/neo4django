@@ -18,6 +18,13 @@ def setup():
 def teardown():
     gdb.cleandb()
 
+#TODO refactor this for use by the rest of the suite
+def assert_gremlin(script, params):
+    """
+    Assert the provided Gremlin script results evaluates to `true`.
+    """
+    eq_(gdb.gremlin_tx(script, **params), 'true')
+
 def test_prop():
     pete = Person(name='Pete')
     assert pete.name == 'Pete'
@@ -30,10 +37,12 @@ def test_prop():
 
 def test_none_prop():
     """Confirm that `None` and null verification work properly."""
+    #first show that unsert properties are None
     pete = Person()
     pete.save()
     assert pete.name is None
     
+    #then that `null=False` works properly
     class NotNullPerson(models.NodeModel):
         class Meta:
             app_label = 'test'
@@ -45,6 +54,15 @@ def test_none_prop():
         pass
     else:
         raise AssertionError('Non-nullable field accepted `None` as a value.')
+
+    #and finally, that setting a property to None deletes it in the db
+    pete.name = 'Pete'
+    pete.save()
+    pete.name = None
+    pete.save()
+
+    assert_gremlin('results=!g.v(node_id).any{it.hasProperty("name")}',
+                   {'node_id':pete.id})
 
 def test_integer():
     def try_int(integer):
