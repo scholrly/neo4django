@@ -157,6 +157,9 @@ def test_one_to_one():
     s.person = p
     s.save()
 
+    #test the other side of the relationship
+    eq_(p.stalker, s)
+
     #test that the one-to-one is correct after a retrieval
     new_s = list(Stalker.objects.all())[0]
     eq_(new_s.person, p)
