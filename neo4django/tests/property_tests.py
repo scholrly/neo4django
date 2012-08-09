@@ -238,19 +238,12 @@ def test_array_property_validator():
     n2 = ArrayNode(vals = [1, 2, 3])
     n2.save()
     try:
-        n3 = ArrayNode(vals = {'1':1, '2':2, '3':3})
+        n3 = ArrayNode(vals = 55555)
         n3.save()
-    except:
+    except ValidationError:
         pass
     else:
-        raise AssertionError('dicts should not work')
-    try:
-        n4 = ArrayNode(vals = 'hurrr')
-        n4.save()
-    except:
-        pass
-    else:
-        raise AssertionError('strings should not work')
+        raise AssertionError('ints should not work')
 
 def test_empty_array():
     """Tests that an empty array is saved and retrieved properly."""
