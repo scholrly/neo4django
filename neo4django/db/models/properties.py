@@ -196,9 +196,9 @@ class Property(object):
         and validate are propagated. The correct value is returned if no error is
         raised.
         """
-        value = self.to_python(value)
         self.validate(value, model_instance)
         self.run_validators(value)
+        value = self.to_python(value)
         return value
 
     def pre_save(self, model_instance, add, attname):
