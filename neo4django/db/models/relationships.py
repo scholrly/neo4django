@@ -182,7 +182,7 @@ class Relationship(object):
 
     @staticmethod
     def get_name(target, single=False):
-        suffix = '%ss' if single else '%s_set'
+        suffix = '%s' if single else '%s_set'
         if isinstance(target, basestring):
             name = target.rsplit('.',1)[-1]
         else:
