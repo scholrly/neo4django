@@ -9,7 +9,7 @@ from collections import namedtuple
 import re as _re
 import warnings
 
-from .exceptions import GremlinLibraryCouldNotBeLoaded as _LibraryCouldNotLoad
+from .exceptions import GremlinLibraryCouldNotBeLoaded as LibraryCouldNotLoad
 
 #TODO move this somewhere sane (settings?)
 LIBRARY_LOADING_RETRIES = 1
@@ -52,6 +52,9 @@ class EnhancedGraphDatabase(GraphDatabase):
             script = """
             try
             {
+                indexManager = g.getRawGraph().index()
+                indexManager.nodeIndexNames().each{g.dropIndex(it)}
+                indexManager.relationshipIndexNames().each{g.dropIndex(it)}
                 g.V.filter{it.id!=0}.sideEffect{g.removeVertex(it)}.iterate();
                 results = true
             }
@@ -60,7 +63,7 @@ class EnhancedGraphDatabase(GraphDatabase):
             gremlin_ret = self.gremlin(script, raw=True)
             if gremlin_ret != 'true':
                 error_msg = "\nDatabase couldn't be cleared - have you installed the cleandb extension at https://github.com/jexp/neo4j-clean-remote-db-addon?"
-                raise ImproperlyConfigured(error_msg)
+                raise exceptions.ImproperlyConfigured(error_msg)
 
     def gremlin(self, script, tx=False, raw=False, **params):
         """
@@ -145,7 +148,7 @@ class EnhancedGraphDatabase(GraphDatabase):
             if not isinstance(script_rv, basestring) or not LIBRARY_ERROR_REGEX.match(script_rv):
                 return script_rv
             else:
-                raise _LibraryCouldNotLoad
+                raise LibraryCouldNotLoad
 
         if getattr(_settings, 'NEO4DJANGO_DEBUG_GREMLIN', False):
             all_libs = include_all_libraries(lib_script)
@@ -154,10 +157,10 @@ class EnhancedGraphDatabase(GraphDatabase):
             try:
                 return send_script(include_unloaded_libraries(lib_script), 
                                    params)
-            except _LibraryCouldNotLoad:
+            except LibraryCouldNotLoad:
                 if i == 0:
                     lib_script = include_all_libraries(lib_script)
-        raise _LibraryCouldNotLoad
+        raise LibraryCouldNotLoad
 
     def gremlin_tx(self, script, **params):
         """
