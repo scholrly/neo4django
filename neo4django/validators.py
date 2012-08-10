@@ -6,7 +6,7 @@ class ArrayValidator(object):
         if hasattr(sup, '__call__'):
             sup.__call__(values)
         if not getattr(values, '__iter__', False):
-            raise exceptions.ValidationError('Enter a sequence that is not a str.')
+            raise exceptions.ValidationError('Enter a non-string sequence.')
     
 validate_array = ArrayValidator()
 
