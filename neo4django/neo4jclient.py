@@ -82,6 +82,7 @@ class EnhancedGraphDatabase(GraphDatabase):
         importless_script = import_regex.sub('', script)
 
         lib_script = '''
+        import groovy.json.JsonBuilder;
         %(imports)s
         %(tx_begin)s
         try{
@@ -98,6 +99,9 @@ class EnhancedGraphDatabase(GraphDatabase):
             throw otherE
         }
         %(tx_end)s
+        if (results instanceof Map) {
+            results = new JsonBuilder(results).toString()
+        }
         results
         '''
         library_names = ("'%s'" % str(c) for c in 

@@ -14,6 +14,7 @@ class Neo4Django {
     static final UNIQUENESS_ERROR_MESSAGE = 'neo4django: uniqueness error'
     static final INTERNAL_ATTR='_neo4django'
     static final TYPE_ATTR=INTERNAL_ATTR + '_type'
+
     static cypher(queryString, params) {
         def query, engine = new ExecutionEngine(binding.g.getRawGraph())
         if (parsedCypher.containsKey(queryString)) {
@@ -24,6 +25,7 @@ class Neo4Django {
         }
         return engine.execute(query, params)
     }
+
     static getModelTypes(nodes){
         /* Return a table with a node and its neo4django type name.*/
         //TODO
@@ -31,6 +33,7 @@ class Neo4Django {
         //rv = Table()
 
     }
+
     static queryNodeIndices(queries) {
         /**
         * Returns the intersection of multiple node index queries.
