@@ -32,7 +32,7 @@ def test_unique():
     except ValueError as verr:
         #confirms #62- uniqueness error should display correct property name.
         mess = str(verr)
-        assert 'name' in mess
+        assert '<UniqueName>.name' in mess
     else:
         raise AssertionError('A saving second node with the same name should'
                              ' raise an error.')

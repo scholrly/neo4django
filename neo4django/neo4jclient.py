@@ -149,10 +149,13 @@ class EnhancedGraphDatabase(GraphDatabase):
             if raw:
                 execute_kwargs['returns'] = RETURNS_RAW
             script_rv = ext.execute_script(s, params=params, **execute_kwargs)
-            if not isinstance(script_rv, basestring) or not LIBRARY_ERROR_REGEX.match(script_rv):
-                return script_rv
-            else:
-                raise LibraryCouldNotLoad
+            if isinstance(script_rv, basestring):
+                if LIBRARY_ERROR_REGEX.match(script_rv):
+                    raise LibraryCouldNotLoad
+                elif script_rv.startswith('{'):
+                    import json
+                    return json.loads(script_rv)
+            return script_rv
 
         if getattr(_settings, 'NEO4DJANGO_DEBUG_GREMLIN', False):
             all_libs = include_all_libraries(lib_script)
