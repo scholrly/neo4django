@@ -18,6 +18,7 @@ from .. import connections
 from neo4django.validators import validate_array, validate_str_array,\
         validate_int_array, ElementValidator
 from neo4django.utils import AttrRouter, write_through
+from neo4django.constants import ERROR_ATTR
 
 from dateutil.tz import tzutc, tzoffset
 
@@ -196,9 +197,9 @@ class Property(object):
         and validate are propagated. The correct value is returned if no error is
         raised.
         """
-        value = self.to_python(value)
         self.validate(value, model_instance)
         self.run_validators(value)
+        value = self.to_python(value)
         return value
 
     def pre_save(self, model_instance, add, attname):
@@ -365,15 +366,16 @@ class BoundProperty(AttrRouter):
         '''
         conn = connections[instance.using]
         script_rv= conn.gremlin_tx(script, nodeId=instance.id,
-                propMap=gremlin_props)
-        
-        if hasattr(script_rv, 'properties'):
-            NodeModel._update_values_from_dict(instance, script_rv.properties, clear=True)
-        else:
-            if script_rv == 'neo4django: uniqueness error': #TODO fix this magic string
+                propMap=gremlin_props, raw=True)
+
+        if isinstance(script_rv, dict) and ERROR_ATTR in script_rv and 'property' in script_rv:
                 raise ValueError( "Duplicate index entries for <%s>.%s" % 
-                                 (instance.__class__.__name__, prop.name))
-            raise ValueError('Unexpected response from server: %s' % script_rv)
+                                 (instance.__class__.__name__, script_rv['property']))
+        elif isinstance(script_rv, dict) and 'data' in script_rv:
+            #returned a node (TODO #128 error passing generalization)
+            NodeModel._update_values_from_dict(instance, script_rv['data'], clear=True)
+        else:
+            raise ValueError('Unexpected response from server: %s' % str(script_rv))
         
     NodeModel._save_properties = staticmethod(_save_) #TODO this needs to be revised. I hope there's a better way.
     del _save_

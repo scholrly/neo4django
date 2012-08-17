@@ -18,6 +18,13 @@ def setup():
 def teardown():
     gdb.cleandb()
 
+#TODO refactor this for use by the rest of the suite
+def assert_gremlin(script, params):
+    """
+    Assert the provided Gremlin script results evaluates to `true`.
+    """
+    eq_(gdb.gremlin_tx(script, **params), 'true')
+
 def test_prop():
     pete = Person(name='Pete')
     assert pete.name == 'Pete'
@@ -30,10 +37,12 @@ def test_prop():
 
 def test_none_prop():
     """Confirm that `None` and null verification work properly."""
+    #first show that unsert properties are None
     pete = Person()
     pete.save()
     assert pete.name is None
     
+    #then that `null=False` works properly
     class NotNullPerson(models.NodeModel):
         class Meta:
             app_label = 'test'
@@ -45,6 +54,15 @@ def test_none_prop():
         pass
     else:
         raise AssertionError('Non-nullable field accepted `None` as a value.')
+
+    #and finally, that setting a property to None deletes it in the db
+    pete.name = 'Pete'
+    pete.save()
+    pete.name = None
+    pete.save()
+
+    assert_gremlin('results=!g.v(node_id).any{it.hasProperty("name")}',
+                   {'node_id':pete.id})
 
 def test_integer():
     def try_int(integer):
@@ -220,19 +238,12 @@ def test_array_property_validator():
     n2 = ArrayNode(vals = [1, 2, 3])
     n2.save()
     try:
-        n3 = ArrayNode(vals = {'1':1, '2':2, '3':3})
+        n3 = ArrayNode(vals = 55555)
         n3.save()
-    except:
+    except ValidationError:
         pass
     else:
-        raise AssertionError('dicts should not work')
-    try:
-        n4 = ArrayNode(vals = 'hurrr')
-        n4.save()
-    except:
-        pass
-    else:
-        raise AssertionError('strings should not work')
+        raise AssertionError('ints should not work')
 
 def test_empty_array():
     """Tests that an empty array is saved and retrieved properly."""
@@ -294,10 +305,9 @@ def test_url_array_property_validator():
         raise AssertionError('tuples of ints should not work')
 
 def get_raw_property_by_rest(node, property_name):
-    import urllib2, simplejson
-    data = simplejson.loads(
-        urllib2.urlopen(
-            node.connection.url + "node/%i/properties" % node.pk).read())
+    import requests, json
+    data = json.loads(
+        requests.get(node.connection.url + "node/%i/properties" % node.pk))
     return data[property_name]
 
 def test_array_use_strings():

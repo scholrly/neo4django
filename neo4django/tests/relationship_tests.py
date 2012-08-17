@@ -157,6 +157,9 @@ def test_one_to_one():
     s.person = p
     s.save()
 
+    #test the other side of the relationship
+    eq_(p.stalker, s)
+
     #test that the one-to-one is correct after a retrieval
     new_s = list(Stalker.objects.all())[0]
     eq_(new_s.person, p)
@@ -486,3 +489,32 @@ def test_rel_slicing():
     eq_([n.value for n in toc.contains.all()[0:2]], ['0','1'])
     eq_([n.value for n in toc.contains.all()[1:-1]], ['1','2', '3'])
     eq_(toc.contains.all()[-1].value, '4')
+
+@with_setup(None, teardown)
+def test_rel_cache():
+    """
+    Test confirming issue #67 (rel queryset cache problems) as reported by
+    @baconz.
+    """
+    class Knight(models.NodeModel):
+        number_of_limbs = models.IntegerProperty(indexed=True)
+
+
+    class Spam(models.NodeModel):
+        VERY_DELICIOUS, NOT_DELICIOUS = 'v', 'n'
+        DELICIOUSNESS_CHOICES = (
+            ('n', 'not'),
+            ('v', 'very'),
+        )
+
+        deliciousness = models.StringProperty(max_length=1,
+                                          choices=DELICIOUSNESS_CHOICES)
+        on_top_of = models.Relationship('Knight', related_name="spams", rel_type=neo4django.Outgoing.GOES_WITH)
+
+    k = Knight.objects.create(number_of_limbs=1)
+    s = Spam.objects.create(deliciousness=Spam.VERY_DELICIOUS)
+    s.on_top_of.add(k)
+    s.save()
+    len(list(s.on_top_of.all()))
+    k.delete()
+    eq_(len(list(s.on_top_of.all())), 0)

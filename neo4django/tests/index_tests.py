@@ -14,7 +14,11 @@ def test_unique():
     """
 
     class UniqueName(models.NodeModel):
+        a_prop = models.StringProperty()
         name = models.StringProperty(indexed=True, unique=True)
+        z_prop = models.StringProperty()
+        prop_1 = models.StringProperty()
+        prop = models.StringProperty()
 
     m = UniqueName(name='Matt')
     m.save()
@@ -25,8 +29,10 @@ def test_unique():
     m2 = UniqueName(name='Matt')
     try:
         m2.save()
-    except:
-        pass
+    except ValueError as verr:
+        #confirms #62- uniqueness error should display correct property name.
+        mess = str(verr)
+        assert '<UniqueName>.name' in mess
     else:
         raise AssertionError('A saving second node with the same name should'
                              ' raise an error.')

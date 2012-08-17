@@ -14,6 +14,8 @@ class Neo4Django {
     static final UNIQUENESS_ERROR_MESSAGE = 'neo4django: uniqueness error'
     static final INTERNAL_ATTR='_neo4django'
     static final TYPE_ATTR=INTERNAL_ATTR + '_type'
+    static final ERROR_ATTR=INTERNAL_ATTR + '_error'
+
     static cypher(queryString, params) {
         def query, engine = new ExecutionEngine(binding.g.getRawGraph())
         if (parsedCypher.containsKey(queryString)) {
@@ -24,13 +26,21 @@ class Neo4Django {
         }
         return engine.execute(query, params)
     }
+
     static getModelTypes(nodes){
         /* Return a table with a node and its neo4django type name.*/
         //TODO
         //results = cypher('')
         //rv = Table()
-
     }
+
+    static getNeo4djangoErrorMap(message, map) {
+        def errorMap = ["${ERROR_ATTR}":true]
+        errorMap.putAll(map)
+        errorMap['message'] = message
+        return errorMap
+    }
+
     static queryNodeIndices(queries) {
         /**
         * Returns the intersection of multiple node index queries.
@@ -207,10 +217,10 @@ class Neo4Django {
                 }
                 if (dict.get('unique')){
                     //TODO take care of unique vs array membership indexing
-                    //eventually the prop name and index key should be decoupled
+                    //TODO eventually the prop name and index key should be decoupled
                     oldNodes = index.get(prop, valuesToIndex[0])
                     if (oldNodes.size() > 0 && !oldNodes*.id.contains(node.id)){
-                        error = UNIQUENESS_ERROR_MESSAGE
+                        error = getNeo4djangoErrorMap(UNIQUENESS_ERROR_MESSAGE, [property:prop])
                         return error
                     }
                 }
