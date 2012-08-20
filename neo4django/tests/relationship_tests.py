@@ -1,4 +1,5 @@
-from nose.tools import eq_, with_setup
+from nose.tools import eq_, with_setup, raises
+from django.core.exceptions import FieldError
 
 def setup():
     global Person, neo4django, settings, gdb, models
@@ -499,7 +500,6 @@ def test_rel_cache():
     class Knight(models.NodeModel):
         number_of_limbs = models.IntegerProperty(indexed=True)
 
-
     class Spam(models.NodeModel):
         VERY_DELICIOUS, NOT_DELICIOUS = 'v', 'n'
         DELICIOUSNESS_CHOICES = (
@@ -518,3 +518,14 @@ def test_rel_cache():
     len(list(s.on_top_of.all()))
     k.delete()
     eq_(len(list(s.on_top_of.all())), 0)
+
+@raises(FieldError)
+def test_conflicting_rel_types():
+    """
+    Tests that multiple `Relationship`s cannot be declared of the same type.
+
+    Confirms #41.
+    """
+    class ConflictedModel(models.NodeModel):
+        first_rel = models.Relationship('self', rel_type=neo4django.Outgoing.CONFLICTS_WITH)
+        second_rel = models.Relationship('self', rel_type=neo4django.Outgoing.CONFLICTS_WITH)
