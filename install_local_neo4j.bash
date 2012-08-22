@@ -6,7 +6,7 @@ DIR="neo4j-community-$VERSION"
 FILE="$DIR-unix.tar.gz"
 SERVER_PROPERTIES_FILE="lib/neo4j/conf/neo4j-server.properties"
 #set a default neo4j port if none has been set
-: {NEO4J_PORT:="7474"}
+NEO4J_PORT=${NEO4J_PORT:="7474"}
 
 if [[ ! -d lib/$DIR ]]; then
     wget http://dist.neo4j.org/$FILE
