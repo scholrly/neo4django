@@ -19,9 +19,9 @@ env:
   - NEO4J_VERSION="1.8.M07"
 matrix:
   allow_failures:
-    - env: NEO4J_VERSION="1.8.M06" #we don't support milestone releases
+    - env: NEO4J_VERSION="1.8.M07" #we don't support milestone releases
       python: "2.6"
-    - env: NEO4J_VERSION="1.8.M06"
+    - env: NEO4J_VERSION="1.8.M07"
       python: "2.7"
 notifications:
   email:
