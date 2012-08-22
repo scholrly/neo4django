@@ -19,6 +19,8 @@ INSTALLED_APPS = (
     'neo4django.tests',   
 )
 
+SECRET_KEY="shutupdjangowe'retryingtotesthere"
+
 DEBUG = True
 
 NEO4DJANGO_PROFILE_REQUESTS = False
