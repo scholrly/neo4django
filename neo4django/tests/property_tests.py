@@ -9,7 +9,9 @@ def setup():
            models, tzoffset, tzutc
 
     from neo4django.tests import Person, neo4django, gdb, neo4jrestclient, \
-            neo_constants, settings, models
+            neo_constants, settings
+    from neo4django.db import models
+
     try:
         from dateutil.tz import tzutc, tzoffset
     except ImportError:

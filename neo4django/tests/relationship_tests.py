@@ -4,7 +4,8 @@ from django.core.exceptions import FieldError
 def setup():
     global Person, neo4django, settings, gdb, models
 
-    from neo4django.tests import Person, neo4django, gdb, models
+    from neo4django.tests import Person, neo4django, gdb
+    from neo4django.db import models
 
 def teardown():
     gdb.cleandb()

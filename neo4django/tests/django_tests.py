@@ -1,7 +1,8 @@
 def setup():
     global Person, gdb, models
 
-    from neo4django.tests import Person, gdb, models
+    from neo4django.tests import Person, gdb
+    from neo4django.db import models
 
 def teardown():
     gdb.cleandb()

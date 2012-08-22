@@ -9,7 +9,8 @@ def setup():
     global Person, neo4django, gdb, neo4jrestclient, neo_constants, settings, models
 
     from neo4django.tests import Person, neo4django, gdb, neo4jrestclient, \
-            neo_constants, settings, models
+            neo_constants, settings
+    from neo4django.db import models
 
 def teardown():
     gdb.cleandb()

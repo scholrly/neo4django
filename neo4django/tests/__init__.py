@@ -1,6 +1,5 @@
 def setup():
     global neo4django, neo4jrestclient, gdb, Person, settings, neo_constants
-    global models
 
     from django.conf import settings
 

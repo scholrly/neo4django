@@ -13,8 +13,8 @@ def setup():
            DEFAULT_DB_ALIAS, return_filter_from_conditions, Condition, models,\
            RelatedCat, RelatedDog 
 
-    from neo4django.tests import Person, neo4django, gdb, models
-    from neo4django.db import DEFAULT_DB_ALIAS
+    from neo4django.tests import Person, neo4django, gdb
+    from neo4django.db import DEFAULT_DB_ALIAS, models
     from neo4django.db.models.query import Query, OPERATORS, \
             return_filter_from_conditions, Condition
 
