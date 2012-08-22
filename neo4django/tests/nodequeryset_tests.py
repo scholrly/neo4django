@@ -18,17 +18,11 @@ def setup():
     from neo4django.db.models.query import Query, OPERATORS, \
             return_filter_from_conditions, Condition
 
-    class IndexedMouse(models.NodeModel):
-        name = models.StringProperty(indexed=True)
-        age = models.IntegerProperty(indexed=True)
+    from django.db.models import get_model
 
-    class RelatedCat(models.NodeModel):
-        name = models.StringProperty()
-        chases = models.Relationship(IndexedMouse, rel_type='chases')
-
-    class RelatedDog(models.NodeModel):
-        name = models.StringProperty()
-        chases = models.Relationship(RelatedCat, rel_type='chases')
+    RelatedCat = get_model('tests','RelatedCat')
+    RelatedDog = get_model('tests','RelatedDog')
+    IndexedMouse = get_model('tests','IndexedMouse')
 
 def teardown():
     gdb.cleandb()

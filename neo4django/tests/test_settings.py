@@ -15,6 +15,10 @@ NEO4J_DATABASES = {
     },
 }
 
+INSTALLED_APPS = (
+    'neo4django.tests',   
+)
+
 DEBUG = True
 
 NEO4DJANGO_PROFILE_REQUESTS = False
