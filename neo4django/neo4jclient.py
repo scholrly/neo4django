@@ -10,7 +10,7 @@ import re as _re
 import warnings
 
 from .exceptions import GremlinLibraryCouldNotBeLoaded as LibraryCouldNotLoad
-from .rest_utils import Neo4jTable
+from .rest_utils import Neo4jTable, PrettyPath
 
 #TODO move this somewhere sane (settings?)
 LIBRARY_LOADING_RETRIES = 1
@@ -179,9 +179,7 @@ class EnhancedGraphDatabase(GraphDatabase):
 
     def cypher(self, query, **params):
         ext = self.extensions.CypherPlugin
-        ret = Neo4jTable(ext.execute_query(query=query, params=params))
-        from nose.tools import set_trace; set_trace()
-        return ret
+        return Neo4jTable(ext.execute_query(query=query, params=params))
 
 Library = namedtuple('Library', ['source', 'loaded'])
 
