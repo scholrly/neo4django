@@ -17,7 +17,7 @@ from lucenequerybuilder import Q
 from jexp import J
 
 from collections import namedtuple
-from operator import and_, itemgetter, or_
+from operator import and_, or_
 import itertools
 import re
 
@@ -311,9 +311,9 @@ def execute_select_related(models=None, query=None, index_name=None,
         raise ValueError("Either a field list or max_depth must be provided "
                          "for select_related.") #TODO
 
-    paths = sorted(results.get_columns(lambda c:c.startswith('p')), key=lambda p:p['length'])
-    nodes = results.get_columns(lambda c:c.startswith('r'))
-    types = results.get_columns(lambda c:c.startswith('t'))
+    paths = sorted(results.get_rows(lambda c:c.startswith('p')), key=lambda p:p['length'])
+    nodes = results.get_rows(lambda c:c.startswith('r'))
+    types = results.get_rows(lambda c:c.startswith('t'))
 
     #put nodes in an id-lookup dict
     nodes = [script_utils.LazyNode.from_dict(d) for d in nodes]

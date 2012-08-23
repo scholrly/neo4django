@@ -6,12 +6,11 @@ from django.core import exceptions
 
 from pkg_resources import resource_stream as _pkg_resource_stream
 from collections import namedtuple
-from operator import itemgetter
-import itertools
 import re as _re
 import warnings
 
 from .exceptions import GremlinLibraryCouldNotBeLoaded as LibraryCouldNotLoad
+from .rest_utils import Neo4jTable
 
 #TODO move this somewhere sane (settings?)
 LIBRARY_LOADING_RETRIES = 1
@@ -22,18 +21,6 @@ LIBRARY_LOADING_ERROR = 'neo4django: "%s" library not loaded!'
 LIBRARY_ERROR_REGEX = _re.compile(LIBRARY_LOADING_ERROR % '.*?')
 
 other_libraries = {}
-
-class Neo4jTable(object):
-    def __init__(self, d):
-        self.data = d['data']
-        self.column_names = d['columns']
-
-    def get_columns(self, column_name_pred):
-        columns = [i for i,c in enumerate(self.column_names) if column_name_pred(c)]
-        col_getter = itemgetter(*columns)
-        return itertools.chain(*(rc if isinstance(rc, tuple) else (rc,)
-                                 for rc in (col_getter(r)
-                                            for r in self.data)))
 
 class EnhancedGraphDatabase(GraphDatabase):
 
@@ -192,7 +179,9 @@ class EnhancedGraphDatabase(GraphDatabase):
 
     def cypher(self, query, **params):
         ext = self.extensions.CypherPlugin
-        return Neo4jTable(ext.execute_query(query=query, params=params))
+        ret = Neo4jTable(ext.execute_query(query=query, params=params))
+        from nose.tools import set_trace; set_trace()
+        return ret
 
 Library = namedtuple('Library', ['source', 'loaded'])
 
