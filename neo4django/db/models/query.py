@@ -311,15 +311,9 @@ def execute_select_related(models=None, query=None, index_name=None,
         raise ValueError("Either a field list or max_depth must be provided "
                          "for select_related.") #TODO
 
-    def get_columns(column_name_pred, table):
-        columns = [i for i,c in enumerate(table['columns']) if column_name_pred(c)]
-        col_getter = itemgetter(*columns)
-        return itertools.chain(*(rc if isinstance(rc, tuple) else (rc,)
-                                 for rc in (col_getter(r)
-                                            for r in table['data'])))
-    paths = sorted(get_columns(lambda c:c.startswith('p'), results), key=lambda p:p['length'])
-    nodes = get_columns(lambda c:c.startswith('r'), results)
-    types = get_columns(lambda c:c.startswith('t'), results)
+    paths = sorted(results.get_columns(lambda c:c.startswith('p')), key=lambda p:p['length'])
+    nodes = results.get_columns(lambda c:c.startswith('r'))
+    types = results.get_columns(lambda c:c.startswith('t'))
 
     #put nodes in an id-lookup dict
     nodes = [script_utils.LazyNode.from_dict(d) for d in nodes]
