@@ -137,14 +137,6 @@ def test_model_casting():
     imposter.save()
     #ensure the values are the same
     eq_(abe.name, imposter.name)
-    #create another model with only relationships
-    class Vierfachganger(models.NodeModel):
-        original = models.Relationship(Person,
-                                           rel_type=neo4django.Outgoing.MIMICS_1,
-                                           single=True)
-    #cast to that model, and see if it works
-    double_imposter = Vierfachganger.from_model(imposter)
-    eq_(abe, double_imposter.original)
 
 def test_model_casting_validation():
     raise NotImplementedError('Write this test!')
