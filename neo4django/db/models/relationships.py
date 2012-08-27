@@ -4,6 +4,7 @@ from django.db.models.query_utils import DeferredAttribute
 from django.db.models.query import EmptyQuerySet
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
+from django.core.exceptions import FieldError
 
 from neo4django import Incoming, Outgoing
 from neo4django.db import DEFAULT_DB_ALIAS
@@ -145,8 +146,9 @@ class Relationship(object):
             if rel_type.direction != direction:
                 raise ValueError("Incompatible direction!")
             rel_type = rel_type.type
+        
         self.__target = target
-        self.__name = rel_type
+        self.name = rel_type
         self.__single = single
         self.direction = direction
         self.__related_single = related_single
@@ -162,6 +164,7 @@ class Relationship(object):
     __is_reversed = False
 
     def reverse(self, target, name):
+        
         if self.direction is RELATIONSHIPS_IN:
             direction = RELATIONSHIPS_OUT
         elif self.direction is RELATIONSHIPS_OUT:
@@ -169,7 +172,7 @@ class Relationship(object):
         else:
             direction = RELATIONSHIPS_OUT
         relationship = Relationship(
-            target, rel_type=self.__name, direction=direction,
+            target, rel_type=self.name, direction=direction,
             single=self.__related_single, related_name=name,
             metadata=self.__related_meta, preserve_ordering=self.__ordered)
         relationship.__is_reversed = True
@@ -194,20 +197,28 @@ class Relationship(object):
         if not issubclass(source, NodeModel):
             raise TypeError("Relationships may only extend from Nodes.")
         self.creation_counter = source.creation_counter
-        
+
+        # make sure this relationship doesn't overlap with another of the same
+        # type and direction
+        if hasattr(source._meta, '_relationships'):
+            for r in source._meta._relationships.values():
+                if r.rel_type == self.name and r.direction == self.direction:
+                    raise FieldError('`%s` and `%s` cannot share a relationship'
+                                     ' type and direction.' % (r.name, name))
+
         if hasattr(self, 'Model'):
             if self.__single:
                 Bound = SingleRelationship
             else:
                 Bound = MultipleRelationships
-            bound = Bound(self, source, self.__name or name, name,
+            bound = Bound(self, source, self.name or name, name,
                             self.Model)
         else:
             if self.__single:
                 Bound = SingleNode
             else:
                 Bound = MultipleNodes
-            bound = Bound(self, source, self.__name or name, name)
+            bound = Bound(self, source, self.name or name, name)
         source._meta.add_field(bound)
         if not hasattr(source._meta, '_relationships'):
             source._meta._relationships = {}
@@ -225,7 +236,7 @@ class Relationship(object):
     ###################
 
     def __getinitargs__(self):
-        return (self.__target, self.__name, self.direction, True, self.__single,
+        return (self.__target, self.name, self.direction, True, self.__single,
                 self.__related_single, self.reversed_name, self.__ordered,
                 self.__meta, self.__related_meta)
 

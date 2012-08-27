@@ -140,7 +140,7 @@ def test_model_casting():
     #create another model with only relationships
     class Vierfachganger(models.NodeModel):
         original = models.Relationship(Person,
-                                           rel_type=neo4django.Outgoing.MIMICS,
+                                           rel_type=neo4django.Outgoing.MIMICS_1,
                                            single=True)
     #cast to that model, and see if it works
     double_imposter = Vierfachganger.from_model(imposter)

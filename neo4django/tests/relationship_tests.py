@@ -42,7 +42,7 @@ def test_basic_relationship():
 def test_basic_relationship_manager():
     class SomeOtherPaper(models.NodeModel):
         authors = models.Relationship(Person,
-                rel_type = neo4django.Outgoing.OWNED_BY,
+                rel_type = neo4django.Outgoing.OTHER_OWNED_BY,
                 related_name = 'papers'
             )
     pete = Person.objects.create(name="PETE!")
@@ -234,7 +234,7 @@ def test_multinode_setting():
 def test_rel_metadata():
     class NodeWithRelMetadata(models.NodeModel):
         contacts = models.Relationship(Person,
-                                           rel_type=neo4django.Outgoing.KNOWS,
+                                           rel_type=neo4django.Outgoing.KNOWS_1,
                                            metadata={'test':123})
     meta_fields = filter(lambda f: hasattr(f, 'meta'), NodeWithRelMetadata._meta.fields)
     eq_(len(meta_fields), 1)
@@ -268,7 +268,7 @@ def test_rel_string_target():
 
 def test_rel_string_type():
     class Child1(models.NodeModel):
-        parents = models.Relationship(Person, 'CHILD_OF')
+        parents = models.Relationship(Person, 'CHILD1_OF')
 
     child = Child1()
     child.parents.add(Person.objects.create(name='Han'))
@@ -277,7 +277,7 @@ def test_rel_string_type():
 
     eq_(('Han','Leia'), tuple(sorted(p.name for p in child.parents.all())))
 
-    childs = child.node.relationships.all(['CHILD_OF'])[:]
+    childs = child.node.relationships.all(['CHILD1_OF'])[:]
     eq_(len(childs), 2)
     #test proper direction
     for r in childs:
@@ -425,7 +425,6 @@ def test_relationship_delete():
     eq_(len(p.choices.all()), 0)
     eq_(len(ChoiceDelete.objects.all()), 0)
 
-
 @with_setup(None, teardown)
 def test_abstract_rel_inheritance():
     """
@@ -472,7 +471,6 @@ def test_rel_query_direction():
 
     eq_(len(list(m.follows.all())), 1)
     eq_(len(list(m.lettern_set.all())), 1)
-
 
 @with_setup(None, teardown)
 def test_rel_slicing():
