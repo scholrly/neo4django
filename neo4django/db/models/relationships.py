@@ -1,8 +1,9 @@
-
 from django.db import models
 from django.db.models.fields.related import add_lazy_relation
 from django.db.models.query_utils import DeferredAttribute
 from django.db.models.query import EmptyQuerySet
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 
 from neo4django import Incoming, Outgoing
 from neo4django.db import DEFAULT_DB_ALIAS
@@ -38,7 +39,7 @@ class LazyModel(object):
     __target = None
 
     @property
-    def __model(self):
+    def _model(self):
         model = self.__target
         if model is None:
             raise ValueError("Lazy model not initialized!")
@@ -51,10 +52,10 @@ class LazyModel(object):
     def __getattr__(self, attr):
         if attr in ('__deepcopy__',) and self.__target is None:
             raise AttributeError
-        return getattr(self.__model, attr)
+        return getattr(self._model, attr)
 
     def __call__(self, *args, **kwargs):
-        return self.__model(*args, **kwargs)
+        return self._model(*args, **kwargs)
 
 class RelationshipBase(type):
     """
@@ -593,15 +594,28 @@ class RelationshipInstance(models.Manager):
     A manager that keeps state for the many side (`MultipleNodes`) of relationships.
     """
     def __init__(self, rel, obj):
-        self.__rel = rel
-        self.__obj = obj
+        self._rel = rel
+        self._obj = obj
         self._added = [] # contains domain objects
         self._removed = [] # contains relationships
         #holds cached domain objects (that have been added or loaded by query)
         self._cache = None
         self._cache_unique = set([])
 
-    ordered = property(lambda self: self.__rel.ordered)
+        # sender should be the associated model (not any associated LazyModel)
+        sender = self._rel.target_model._model \
+                if hasattr(self._rel.target_model, '_model') \
+                else self._rel.target_model
+        @receiver(post_delete, sender=sender, weak=False)
+        def delete_handler(sender,**kwargs):
+            deleted_obj = kwargs.pop('instance', None)
+            if deleted_obj:
+                self._remove_from_cache(deleted_obj)
+                if deleted_obj in self._added:
+                    self._added.remove(deleted_obj)
+
+
+    ordered = property(lambda self: self._rel.ordered)
 
     def _add_to_cache(self, *relationship_neo4j_pairs):
         for pair in relationship_neo4j_pairs:
@@ -610,12 +624,13 @@ class RelationshipInstance(models.Manager):
                 self._cache_unique.add(pair)
 
     def _remove_from_cache(self, obj):
-        for r, cached_obj in self._cache[:]:
-            if cached_obj == obj:
-                pair = (r, cached_obj)
-                self._cache.remove(pair)
-                self._cache_unique.remove(pair)
-                break
+        if self._cache is not None:
+            for r, cached_obj in self._cache[:]:
+                if cached_obj == obj:
+                    pair = (r, cached_obj)
+                    self._cache.remove(pair)
+                    self._cache_unique.remove(pair)
+                    break
 
     def _has_cache(self):
         return self._cache is not None
@@ -633,16 +648,16 @@ class RelationshipInstance(models.Manager):
         for relationship in self._removed:
             relationship.delete()
         for obj in self._added:
-            new_rel = self.__rel._create_neo_relationship(node, obj)
-            self._get_or_create_cache().append((new_rel, obj))
+            new_rel = self._rel._create_neo_relationship(node, obj)
+            self._add_to_cache((new_rel, obj))
         self._removed[:] = []
         self._added[:] = []
 
     def _neo4j_relationships_and_models(self, node):
         "Returns generator of relationship, neo4j instance tuples associated with node."
         if self._cache is None:
-            self._add_to_cache(*[(r, self.__rel._neo4j_instance(node, r)) for r in 
-                           self.__rel._load_relationships(node, ordered=self.ordered)])
+            self._add_to_cache(*[(r, self._rel._neo4j_instance(node, r)) for r in 
+                           self._rel._load_relationships(node, ordered=self.ordered)])
         for tup in self._get_or_create_cache():
             if tup[0] not in self._removed:
                 yield tup
@@ -662,7 +677,7 @@ class RelationshipInstance(models.Manager):
         the relationship, these objects will all be put at the end of the line.
         """
         for obj in objs:
-            self.__rel.accept(obj)
+            self._rel.accept(obj)
         self._added.extend(objs)
 
     def remove(self, *objs):
@@ -671,13 +686,13 @@ class RelationshipInstance(models.Manager):
         remove the first relationship to this object- otherwise, remove one
         of the relationships indiscriminately.
         """
-        rel = self.__rel
-        if hasattr(self.__obj, 'node'):
-            neo_rels = list(rel._load_relationships(self.__obj.node,
+        rel = self._rel
+        if hasattr(self._obj, 'node'):
+            neo_rels = list(rel._load_relationships(self._obj.node,
                                                     ordered=self.ordered))
             rels_by_node = defaultdict(list)
             for neo_rel in neo_rels:
-                other_end = neo_rel.start if neo_rel.end == self.__obj.node\
+                other_end = neo_rel.start if neo_rel.end == self._obj.node\
                             else neo_rel.end
                 rels_by_node[other_end].append(neo_rel)
             nodes_to_remove = [o.node for o in objs if hasattr(o, 'node')]
@@ -692,7 +707,7 @@ class RelationshipInstance(models.Manager):
                     try:
                         self._added.remove(obj)
                     except ValueError:
-                        raise rel.target_model.DoesNotExist("%r is not related to %r." % (obj, self.__obj))
+                        raise rel.target_model.DoesNotExist("%r is not related to %r." % (obj, self._obj))
                 self._remove_from_cache(obj)
         else:
             for obj in objs:
@@ -702,7 +717,7 @@ class RelationshipInstance(models.Manager):
                     elif obj in self._cache:
                         self._remove_from_cache(obj)
                 except ValueError:
-                    raise rel.target_model.DoesNotExist("%r is not related to %r." % (obj, self.__obj))
+                    raise rel.target_model.DoesNotExist("%r is not related to %r." % (obj, self._obj))
 
     def clear(self):
         all_objs = list(self.all())
@@ -710,24 +725,24 @@ class RelationshipInstance(models.Manager):
 
     def clone(self):
         # Should cache be updated as well?
-        cloned = RelationshipInstance(self.__rel, self.__obj)
+        cloned = RelationshipInstance(self._rel, self._obj)
         cloned.add(*self._new)
         return cloned
 
     def create(self, **kwargs):
-        kwargs[self.__rel.rel._related_name] = self.__obj
-        new_model = self.__rel.rel.target_model(**kwargs)
+        kwargs[self._rel.rel._related_name] = self._obj
+        new_model = self._rel.rel.target_model(**kwargs)
         # TODO: saving twice, should only need
-        # to save self.__obj after #89 fix
+        # to save self._obj after #89 fix
         new_model.save()
-        self.__obj.save()
+        self._obj.save()
 
     @not_implemented
     def get_or_create(self, *args, **kwargs):
         pass
 
     def get_query_set(self):
-        return RelationshipQuerySet(self, self.__rel, self.__obj)
+        return RelationshipQuerySet(self, self._rel, self._obj)
 
     def get_empty_query_set(self):
         return EmptyQuerySet()

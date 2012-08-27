@@ -438,7 +438,7 @@ def execute_select_related(models=None, query=None, index_name=None,
             #if rel is many side
             rel_on_model = getattr(cur_m, field_name, None)
             if rel_on_model and hasattr(rel_on_model, '_cache'):
-                rel_on_model._get_or_create_cache().append((rel, new_model))
+                rel_on_model._add_to_cache((rel, new_model))
                 if field.ordered:
                     rel_on_model._cache.sort(
                         key=lambda r:r[0].properties.get(ORDER_ATTR, None))
