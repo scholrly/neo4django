@@ -10,7 +10,7 @@ import re as _re
 import warnings
 
 from .exceptions import GremlinLibraryCouldNotBeLoaded as LibraryCouldNotLoad
-from .rest_utils import Neo4jTable, PrettyPath
+from .rest_utils import Neo4jTable
 
 #TODO move this somewhere sane (settings?)
 LIBRARY_LOADING_RETRIES = 1

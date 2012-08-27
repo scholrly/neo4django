@@ -47,6 +47,11 @@ TYPE_REL = '<<TYPE>>'
 INSTANCE_REL = '<<INSTANCE>>'
 INTERNAL_RELATIONSHIPS = (TYPE_REL, INSTANCE_REL)
 
+
+#TODO move to a util module
+def not_none(it):
+    return itertools.ifilter(None, it)
+
 ######################################
 # IN-PYTHON QUERY CONDITION CHECKING #
 ######################################
@@ -229,24 +234,54 @@ def cypher_rel_str(rel_type, rel_dir):
     out = neo_constants.RELATIONSHIPS_OUT
     return dir_strings[rel_dir==out]%('[:`%s`]' % rel_type)
 
-def cypher_match_from_fields(nodetype, fields):
+def cypher_from_fields(nodetype, fields):
     """
-    Generates Cypher MATCH expressions from `select_related()` style field
-    strings.
+    Generates Cypher MATCH and RETURN expressions from `select_related()` style
+    field strings.
     """
-    #TODO docstring
-    matches = []
-    for i, f in enumerate(fields):
-        rel_matches = []
+    #TODO this function is a great example of why there should be some greater
+    # layer of abstraction between query code and script generation. a first 
+    # step would be to write some CypherPrimitive, CypherList, etc.
+    matches, returns = [], []
+    reqd_fields = (field for i, field in enumerate(fields)
+                   if not any(other_field.startswith(field) and field != other_field
+                              for other_field in fields[i:]))
+
+    for i, field in enumerate(reqd_fields):
+        path_name = 'p%d' % i
+        returns.append(path_name)
+
+        rel_match_components = []
         cur_m = nodetype
-        for step in f.split('__'):
+        for step in field.split('__'):
+            #try to propertly match a model field to the provided field string
             candidates_on_models = sorted((s for s in ((score_model_rel(step,r),r)
                 for _,r in nodetype._meta._relationships.items()) if s > 0), reverse=True)
+            #TODO provide for the case that there isn't a valid candidate
             choice = candidates_on_models[0]
-            rel_matches.append(cypher_rel_str(choice[1].rel_type, choice[1].direction))
-        matches.append('p%d=(s%d%sr%d)'  %(i, i, '()'.join(rel_matches), i))
-        matches.append('pt%d=(t%d-[:`%s`]->r%d)' % (i, i, INSTANCE_REL, i))
-    return matches
+            rel_match_components.append(
+                cypher_rel_str(choice[1].rel_type, choice[1].direction))
+        
+        node_match_components = [] # Cypher node identifiers
+        type_matches = [] # full Cypher type matching paths for return types
+        for ri in xrange(len(rel_match_components)):
+            return_node_name = '%s_r%d' % (path_name, ri)
+            return_node_type_name = '%s_t' % return_node_name
+
+            returns.extend((return_node_name, '%s.name' % return_node_type_name))
+
+            node_match_components.append(return_node_name)
+            type_matches.append('%s-[:`%s`]->%s' %
+                    (return_node_type_name, INSTANCE_REL, return_node_name))
+
+        model_match = ''.join(
+            itertools.ifilter(None, itertools.chain.from_iterable(
+                itertools.izip_longest(rel_match_components, node_match_components))))
+
+        matches.append('%s=(s%s)'  % (path_name, model_match))
+        matches.extend(type_matches)
+
+    return 'MATCH %s RETURN %s' % (','.join(matches), ','.join(returns))
 
 #XXX this will have to change significantly when issue #1 is worked on
 #TODO this can be broken into retrieval and rebuilding functions
@@ -289,31 +324,42 @@ def execute_select_related(models=None, query=None, index_name=None,
             raise ValueError("If no fields are provided for select_related, "
                                 "max_depth must be > 0.")
         #the simple depth-only case
-        cypher_query = 'START s1 = %s '\
-                       'MATCH p1=(s1-[g*%d..%d]-r1), pt1=(t1-[:`%s`]->r1) '\
-                       'RETURN p1, r1, t1.name'
+        #TODO it looks like this only works for depth=1...
+        cypher_query = 'START s = %s '\
+                       'MATCH p0=(s-[g*%d..%d]-p0_r0), p0_r0_t-[:`%s`]->p0_r0 '\
+                       'RETURN p0, p0_r0, p0_r0_t.name'
         cypher_query %= (start_expr, start_depth, max_depth, INSTANCE_REL)
-        results = conn.cypher(cypher_query)
     elif fields:
-        #get a new start point for each field
-        starts = ['s%d=%s' % (i, start_expr) for i in xrange(len(fields))]
         #build a match pattern + type check for each field
-        match_expr = ', '.join(cypher_match_from_fields(model_type, fields))
-        return_expr = ', '.join('p%d, r%d, t%d.name' % (i,i,i)
-                                for i in xrange(len(fields)))
-        cypher_query = 'START %s '\
-                       'MATCH %s '\
-                       'RETURN %s'
-        cypher_query %= (', '.join(starts), match_expr, return_expr)
-        results = conn.cypher(cypher_query)
-
+        match_and_return_expr = cypher_from_fields(model_type, fields)
+        cypher_query = 'START s=%s %s'
+        cypher_query %= (start_expr, match_and_return_expr)
     else:
         raise ValueError("Either a field list or max_depth must be provided "
-                         "for select_related.") #TODO
+                         "for select_related.")
 
-    paths = sorted(results.get_rows(lambda c:c.startswith('p')), key=lambda p:p['length'])
-    nodes = results.get_rows(lambda c:c.startswith('r'))
-    types = results.get_rows(lambda c:c.startswith('t'))
+    results = conn.cypher(cypher_query)
+
+    #TODO this is another example of needing a cypher generation abstraction.
+    paths = sorted(not_none(
+                     results.get_rows(lambda c:re.match('p\d+$', c) is not None)),
+                   key=lambda p:p['length'])
+    nodes, types = [], []
+    for path_i in itertools.count():
+        path_name = 'p%d' % path_i
+        if path_name not in results.column_names:
+            break
+        for node_i in itertools.count():
+            return_node_name = '%s_r%s' % (path_name, node_i)
+            return_node_type = '%s_t.name' % return_node_name
+            if not (return_node_name in results.column_names or
+                    return_node_type in results.column_names):
+                break
+            nodes = itertools.chain(nodes, results.get_rows(return_node_name))
+            types = itertools.chain(types, results.get_rows(return_node_type))
+
+    nodes = not_none(nodes)
+    types = not_none(types)
 
     #put nodes in an id-lookup dict
     nodes = [script_utils.LazyNode.from_dict(d) for d in nodes]
@@ -400,6 +446,7 @@ def execute_select_related(models=None, query=None, index_name=None,
                 #otherwise single side
                 field._set_cached_relationship(cur_m, new_model)
             cur_m = new_model
+
 
 
 class Query(object):

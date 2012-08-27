@@ -3,6 +3,16 @@ from abc import ABCMeta
 
 from decorators import transactional
 
+def sliding_pair(seq):
+    """
+    Return a sliding window of size 2 over the given sequence. The last pair
+    will include None, so that special action can be taken at the end of the
+    sequence.
+    """
+    s1, s2 = itertools.tee(seq)
+    s2.next()
+    return itertools.izip_longest(s1,s2)
+
 def uniqify(seq):
     seen = set()
     return [x for x in seq if x not in seen and not seen.add(x)]
@@ -220,7 +230,8 @@ class Neo4djangoIntegrationRouter(object):
 from threading import local
 from django.core import exceptions
 from django.utils.importlib import import_module
-from neo4jclient import EnhancedGraphDatabase
+
+from .neo4jclient import EnhancedGraphDatabase
 
 
 class ConnectionDoesNotExist(Exception):

@@ -1,5 +1,6 @@
 import neo4jrestclient.client as neo4j
 from .. import DEFAULT_DB_ALIAS, connections
+from ...rest_utils import id_from_url
 
 class LazyBase(object):
     """
@@ -167,13 +168,6 @@ def query_indices(name_and_query, using):
 def _add_auth(n, conn):
     n._auth = conn._auth
     return n
-
-def id_from_url(url):
-    from urlparse import urlsplit
-    from posixpath import dirname, basename
-    path = urlsplit(url).path
-    b = basename(path)
-    return int(b if b else dirname(path))
 
 class GremlinSnippet(object):
     def __init__(self, name, script, in_args=['results'], out_args=['results']):
