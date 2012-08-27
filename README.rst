@@ -15,25 +15,21 @@ The original Neo4j Django integration restricted database access to in-process. 
 Other improvements over the original integration include
 
 - A number of custom properties.
-   - ``EmailProperty``
-   - ``IntegerProperty``
-   - ``DateTimeProperty``
-   - ``URLProperty``
-   - ``AutoProperty``
 - Improved indexing support.
 - Index-based querying.
 - Fancier QuerySet usage.
 - A significant test suite to empower future development.
-- Developed to Django 1.3.
 - Built to work alongside relational models.
+
+The library is tested against Django 1.4.1, and Neo4j version 1.5.3-1.8.M07.
+
+.. image:: https://secure.travis-ci.org/scholrly/neo4django.png?branch=master
 
 What It Doesn't Do (TODO)
 =========================
 
-`thobe`_'s list of future features hasn't been impacted that much by our development. We're still working on
-
 - Relationship models and querying
-- Neo4j-specific Manager API (to enable traversal, etc).
+- Neo4j-specific Manager API, to enable easier use of native query methods like Gremlin and Cypher.
 - And, to a lesser extent, support for the Django admin interface.
 
 Getting Started
