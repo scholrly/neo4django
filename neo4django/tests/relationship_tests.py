@@ -419,7 +419,9 @@ def test_relationship_delete():
     qs = p.choices.filter(votes__gte=0) #all the rest
     qs.delete()
 
-    p = list(PollDelete.objects.all())[0]
+    eq_(len(p.choices.all()), 0)
+
+    p = list(PollDelete.objects.all())[0] #re-pull it from the database
     eq_(len(p.choices.all()), 0)
     eq_(len(ChoiceDelete.objects.all()), 0)
 
