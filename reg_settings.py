@@ -110,7 +110,8 @@ tests=[
 	'test_relationship_create',
 	'test_relationship_delete',
 	'test_rel_cache',
-	'test_conflicting_rel_types']
+	'test_conflicting_rel_types',
+    'test_rel_save_order']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
@@ -119,4 +120,5 @@ should_fail=[
 	'test_url_array_property_validator',
 	'test_type_query',
 	'test_model_casting_validation',
-	'test_array_use_strings']
+	'test_array_use_strings',
+    'test_rel_save_order']
