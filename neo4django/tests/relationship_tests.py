@@ -531,37 +531,3 @@ def test_conflicting_rel_types():
         first_rel = models.Relationship('self', rel_type=neo4django.Outgoing.CONFLICTS_WITH)
         second_rel = models.Relationship('self', rel_type=neo4django.Outgoing.CONFLICTS_WITH)
 
-@with_setup(None, teardown)
-def test_rel_save_order():
-    """
-    Exposes an issue with the order in which relationships are saved.
-
-    Confirms #89.
-    """
-    class Poll1(models.NodeModel):
-        question = models.StringProperty()
-        pub_date = models.DateTimeProperty('date published')
-        def __unicode__(self):
-            return self.question
-
-    class Choice1(models.NodeModel):
-        poll = models.Relationship(Poll1,
-                                rel_type=neo4django.Incoming.OWNS,
-                                single=True,
-                                related_name='choices')
-        choice = models.StringProperty()
-        votes = models.IntegerProperty()
-        def __unicode__(self):
-            return self.choice
-
-    from datetime import datetime
-    p = Poll1(question="Who's the first best?", pub_date=datetime.now())
-    c  = Choice1(choice='Chris', votes=1000)
-    c1 = Choice1(choice='Matt', votes=1)
-    c2 = Choice1(choice='Corbin', votes=-1)
-    c.poll = p
-    c1.poll = p
-    c2.poll = p
-    #eq_(len(list(p.choices.all())), 3)
-    p.save()
-    eq_(len(list(p.choices.all())), 3)
