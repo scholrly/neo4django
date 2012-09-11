@@ -520,14 +520,18 @@ def test_rel_cache():
     k.delete()
     eq_(len(list(s.on_top_of.all())), 0)
 
-@raises(FieldError)
 def test_conflicting_rel_types():
     """
     Tests that multiple `Relationship`s cannot be declared of the same type.
 
     Confirms #41.
     """
-    class ConflictedModel(models.NodeModel):
-        first_rel = models.Relationship('self', rel_type=neo4django.Outgoing.CONFLICTS_WITH)
-        second_rel = models.Relationship('self', rel_type=neo4django.Outgoing.CONFLICTS_WITH)
+    import warnings
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
 
+        class ConflictedModel(models.NodeModel):
+            first_rel = models.Relationship('self', rel_type=neo4django.Outgoing.CONFLICTS_WITH)
+            second_rel = models.Relationship('self', rel_type=neo4django.Outgoing.CONFLICTS_WITH)
+
+        assert len(w) > 0
