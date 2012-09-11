@@ -25,6 +25,8 @@ DATABASES = {
     }
 }
 
+DATABASE_ROUTERS = ['neo4django.utils.Neo4djangoIntegrationRouter']
+
 INSTALLED_APPS = (
     'neo4django.tests',   
 )

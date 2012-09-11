@@ -280,8 +280,9 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
         return self._type
 
     @property
-    def rel(self):
+    def relationship(self):
         return self.__rel
+
 
     def get_default(self):
         return None
@@ -743,8 +744,8 @@ class RelationshipInstance(models.Manager):
         return cloned
 
     def create(self, **kwargs):
-        kwargs[self._rel.rel._related_name] = self._obj
-        new_model = self._rel.rel.target_model(**kwargs)
+        kwargs[self._rel.relationship._related_name] = self._obj
+        new_model = self._rel.relationship.target_model(**kwargs)
         # TODO: saving twice, should only need
         # to save self._obj after #89 fix
         new_model.save()
@@ -781,7 +782,7 @@ class RelationshipQuerySet(object):
             iterable = [i for r, i in inst._neo4j_relationships_and_models(node)] if node else []
 
         for item in iterable:
-            if any(matches_condition(item.node, c) for c in conditions_from_kws(self.__rel.rel.target_model, kwargs)):
+            if any(matches_condition(item.node, c) for c in conditions_from_kws(self.__rel.relationship.target_model, kwargs)):
                 new_inst.add(item)
         return RelationshipQuerySet(new_inst, self.__rel, self.__obj)
 
