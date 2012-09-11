@@ -203,8 +203,10 @@ class Relationship(object):
         if hasattr(source._meta, '_relationships'):
             for r in source._meta._relationships.values():
                 if r.rel_type == self.name and r.direction == self.direction:
-                    raise FieldError('`%s` and `%s` cannot share a relationship'
-                                     ' type and direction.' % (r.name, name))
+                    import warnings
+                    warnings.warn('`%s` and `%s` share a relationship type and '
+                                  'direction. Is this what you meant to do?' 
+                                  % (r.name, name))
 
         if hasattr(self, 'Model'):
             if self.__single:
