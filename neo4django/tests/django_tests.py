@@ -28,7 +28,9 @@ def test_json_serialize():
     assert json_serializer.serialize(Person.objects.all())
 
 def touch_test_db():
-    os.makedirs(os.path.dirname(TEST_SQL_DB_NAME))
+    db_dir = os.path.dirname(TEST_SQL_DB_NAME)
+    if not os.path.exists(db_dir):
+        os.makedirs(db_dir)
     open(TEST_SQL_DB_NAME,'w').close()
 
 def rm_test_db():
