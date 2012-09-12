@@ -1,6 +1,17 @@
 Changes
 -------
 
+0.1.7 (2012-9-12)
+------------------
+- Updated to support Neo4j 1.7.2 & 1.8.M07 (issue #110)
+- select_related() performance improvements (issue #125)
+- More RelationshipQuerySet functionality (issues #111, #81, #91, #92, #93)
+- Better "internal" Cypher support with connection.cypher()
+- REST auth support.
+- More closely matches existing Django ORM (eg issue #103)
+- All sorts of other performance improvements (eg issue #122)
+- Bug fixes and stability improvements (issues #129, #67, #86, #62, #84, #127, #14, #88, #107, #56, #61, #66, #54, #51) helped along by integration with Travis CI.
+
 0.1.5 (2011-12-11)
 ------------------
 - select_related() and model caching (issue #42)
