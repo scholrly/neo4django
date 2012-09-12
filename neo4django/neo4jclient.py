@@ -17,6 +17,7 @@ LIBRARY_LOADING_RETRIES = 1
 
 #TODO DRY considerations
 LIBRARY_NAME = 'Neo4Django'
+#TODO issue #128 - better gremlin error passing
 LIBRARY_LOADING_ERROR = 'neo4django: "%s" library not loaded!'
 LIBRARY_ERROR_REGEX = _re.compile(LIBRARY_LOADING_ERROR % '.*?')
 

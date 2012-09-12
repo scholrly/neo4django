@@ -1,3 +1,5 @@
+VERSION = '0.1.5.1'
+
 INTERNAL_ATTR='_neo4django'
 
 #gremlin-related constants

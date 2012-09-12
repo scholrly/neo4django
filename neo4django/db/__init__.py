@@ -3,8 +3,21 @@ __all__ = ['connection', 'connections','DEFAULT_DB_ALIAS']
 from django.conf import settings as _settings
 from django.core import exceptions
 from neo4jrestclient import client as _client
-from ..utils import ConnectionHandler
 from time import time as _time
+
+from ..utils import ConnectionHandler, StubbornDict
+from ..constants import VERSION
+
+# patch the client request for a different User-Agent header
+class Neo4djangoRequest(_client.Request):
+    def _request(self, method, url, data={}, headers={}):
+        headers = headers or {}
+        headers['User-Agent'] = 'Neo4django/%s' % VERSION
+        # keep the User-Agent key from being reset
+        headers = StubbornDict(('User-Agent',), headers) 
+        return super(Neo4djangoRequest, self)._request(method, url, data,
+                                                       headers)
+_client.Request = Neo4djangoRequest
 
 if getattr(_settings, 'NEO4DJANGO_PROFILE_REQUESTS', False):
     class ProfilingRequest(_client.Request):

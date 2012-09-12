@@ -3,6 +3,16 @@ from abc import ABCMeta
 
 from decorators import transactional
 
+class StubbornDict(dict):
+    def __init__(self, stubborn_keys, d):
+        self._stubborn_keys = stubborn_keys
+        super(StubbornDict, self).__init__(d)
+
+    def __setitem__(self, key, value):
+        if key in self._stubborn_keys:
+            return
+        return super(StubbornDict, self).__setitem__(key, value)
+
 def sliding_pair(seq):
     """
     Return a sliding window of size 2 over the given sequence. The last pair
