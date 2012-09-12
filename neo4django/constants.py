@@ -1,4 +1,4 @@
-VERSION = '0.1.5.1'
+VERSION = '0.1.7'
 
 INTERNAL_ATTR='_neo4django'
 
