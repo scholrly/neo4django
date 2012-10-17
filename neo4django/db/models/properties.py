@@ -534,7 +534,7 @@ class AutoProperty(IntegerProperty):
 class DateProperty(Property):
     __format = '%Y-%m-%d'
 
-    ansi_date_re = re.compile(r'^\d{4}-\d{1,2}-\d{1,2}$')
+    ansi_date_re = r'^\d{4}-\d{1,2}-\d{1,2}$'
 
     default_error_messages = {
         'invalid': _('Enter a valid date in YYYY-MM-DD format.'),
@@ -556,7 +556,7 @@ class DateProperty(Property):
 
     @classmethod
     def __parse_date_string(cls, value):
-        if not cls.ansi_date_re.search(value):
+        if not re.search(cls.ansi_date_re, value):
             raise exceptions.ValidationError(cls.default_error_messages['invalid'])
         # Now that we have the date string in YYYY-MM-DD format, check to make
         # sure it's a valid date.
@@ -823,8 +823,7 @@ class ArrayProperty(Property):
         self.use_string = kwargs.get("use_string", False)
         self.token = kwargs.get("token", ",")
         self.escape_token = kwargs.get("escape_token", "+")
-        self.token_regex = re.compile(
-            "(?<!%s)%s" % (re.escape(self.escape_token), self.token))
+        self.token_regex = "(?<!%s)%s" % (re.escape(self.escape_token), self.token)
 
     def get_default(self):
         if self.use_string:
@@ -834,7 +833,7 @@ class ArrayProperty(Property):
 
     def from_neo(self, value):
         if value and not isinstance(value, (tuple, list)) and self.use_string:
-            array_values = self.token_regex.split(value)
+            array_values = re.split(self.token_regex, value)
             for i, v in enumerate(array_values):
                 array_values[i] = v.replace(
                     "%s%s" % (self.escape_token, self.token), self.token)
