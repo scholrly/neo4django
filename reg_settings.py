@@ -111,7 +111,8 @@ tests=[
 	'test_relationship_delete',
 	'test_rel_cache',
 	'test_conflicting_rel_types',
-    'test_syncdb']
+	'test_syncdb',
+	'test_model_pickling']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',

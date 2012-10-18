@@ -19,45 +19,6 @@ from neo4jrestclient.constants import RELATIONSHIPS_ALL, RELATIONSHIPS_IN, RELAT
 
 from collections import defaultdict
 
-class LazyModel(object):
-    """
-    A proxy class that enables relationships to have str targets, eg
-
-        actors = Relationship('Actor', ...)
-    """
-    def __init__(self, cls, field, name, setup_reversed):
-        self.__cls = cls
-        self.__field = field
-        self.__name = name
-        self.__setup_reversed = setup_reversed
-        add_lazy_relation(cls, field, name, self.__setup)
-
-    def __setup(self, field, target, source):
-        if not issubclass(target, NodeModel):
-            raise TypeError("Relationships may only extend from Nodes.")
-        self.__target = target
-        self.__setup_reversed(target)
-    __target = None
-
-    @property
-    def _model(self):
-        model = self.__target
-        if model is None:
-            raise ValueError("Lazy model not initialized!")
-        else:
-            return model
-
-    def __getinitargs__(self):
-        return (self.__cls, self.__field, self.__name, self.__setup_reversed)
-
-    def __getattr__(self, attr):
-        if attr in ('__deepcopy__',) and self.__target is None:
-            raise AttributeError
-        return getattr(self._model, attr)
-
-    def __call__(self, *args, **kwargs):
-        return self._model(*args, **kwargs)
-
 class RelationshipBase(type):
     """
     Metaclass for Relationships. Creates a RelationshipModel for each Relationship
@@ -227,8 +188,13 @@ class Relationship(object):
         source._meta._relationships[name] = bound
         setattr(source, name, bound)
         if isinstance(self.__target, basestring):
-            self.__target = LazyModel(source, self, self.__target,
-                        lambda target: bound._setup_reversed(target))
+            def setup(field, target, source):
+                if not issubclass(target, NodeModel):
+                    raise TypeError("Relationships may only extend from Nodes.")
+                # replace the string target with the real target
+                self.__target = target
+                bound._setup_reversed(target)
+            add_lazy_relation(source, self, self.__target, setup)
         target = self.__target
         if not self.__is_reversed:
             bound._setup_reversed(target)
@@ -268,7 +234,7 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
 
     def _setup_reversed(self, target):
         self.__target = target
-        if not isinstance(target, LazyModel):
+        if not isinstance(target, basestring):
             self.__rel.reverse(self.__source,
                                 self.__attname).contribute_to_class(
                 target, self.reversed_name(self.__source))

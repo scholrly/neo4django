@@ -14,5 +14,5 @@ class RelatedDog(models.NodeModel):
 
 class LazyCat(models.NodeModel):
     name = models.StringProperty()
-    chases = models.Relationship('IndexedMouse', rel_type = 'chases')
+    chases = models.Relationship('IndexedMouse', rel_type='chases_lazily')
 

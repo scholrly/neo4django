@@ -155,7 +155,10 @@ def test_model_copy():
     assert pete in list(pete3.confidantes.all()),\
             "Copying isn't commuting relationships!"
 
-def test_model_pickle():
+def test_model_pickling():
+    """
+    Covers issue #46, pickling `NodeModel`s.
+    """
 
     def pickle_and_restore(m):
         import pickle
