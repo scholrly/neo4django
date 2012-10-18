@@ -12,4 +12,7 @@ class RelatedDog(models.NodeModel):
     name = models.StringProperty()
     chases = models.Relationship(RelatedCat, rel_type='chases')
 
+class LazyCat(models.NodeModel):
+    name = models.StringProperty()
+    chases = models.Relationship('IndexedMouse', rel_type = 'chases')
 

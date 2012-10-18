@@ -155,4 +155,59 @@ def test_model_copy():
     assert pete in list(pete3.confidantes.all()),\
             "Copying isn't commuting relationships!"
 
+def test_model_pickle():
 
+    def pickle_and_restore(m):
+        import pickle
+        return pickle.loads(pickle.dumps(m))
+
+    def pickle_eq(m1, m2):
+        eq_(m1.name, m2.name)
+        eq_(m2.using, m2.using)
+        eq_(m2.id, m2.id)
+
+    # try a simple model
+    pete = Person(name="Pete")
+    restored_pete = pickle_and_restore(pete)
+
+    pickle_eq(pete, restored_pete)
+
+    # try a saved model
+
+    pete.save()
+    restored_saved_pete = pickle_and_restore(pete)
+
+    pickle_eq(pete, restored_saved_pete)
+
+    # try related models
+
+    from .models import IndexedMouse, RelatedCat, LazyCat
+    jerry = IndexedMouse.objects.create(name='Jerry')
+    tom = RelatedCat(name='Jerry')
+
+    tom.chases = jerry
+    tom.save()
+    
+    restored_tom = pickle_and_restore(tom)
+
+    pickle_eq(tom, restored_tom)
+    pickle_eq(jerry, list(restored_tom.chases.all())[0])
+
+    # try a model with a lazy relation
+    
+    garfield = LazyCat(name='Garfield')
+    garfield.chases.add(jerry)
+
+    restored_garfield = pickle_and_restore(garfield)
+
+    pickle_eq(garfield, restored_garfield)
+    pickle_eq(jerry, list(restored_garfield.chases.all())[0])
+
+    # and finally a saved model with a lazy relation
+
+    garfield.save()
+
+    restored_saved_garfield = pickle_and_restore(garfield)
+
+    pickle_eq(garfield, restored_saved_garfield)
+    pickle_eq(jerry, list(restored_saved_garfield.chases.all())[0])
