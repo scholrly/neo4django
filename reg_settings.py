@@ -112,7 +112,9 @@ tests=[
 	'test_rel_cache',
 	'test_conflicting_rel_types',
 	'test_syncdb',
-	'test_model_pickling']
+	'test_model_pickling',
+	'touch_test_db',
+	'rm_test_db']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
