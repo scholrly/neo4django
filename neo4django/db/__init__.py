@@ -66,6 +66,7 @@ class Neo4djangoRequest(_client.Request):
 _client.Request = Neo4djangoRequest
 
 if getattr(_settings, 'NEO4DJANGO_PROFILE_REQUESTS', False):
+    #add profiling callbacks
     profiling_data = {'last_print_time':_time()}
     def start_timer(req, method, url, data, *args):
         from sys import stdout

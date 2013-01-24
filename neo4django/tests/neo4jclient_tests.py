@@ -1,8 +1,8 @@
 from nose.tools import with_setup, eq_
 import random, string
 from django.conf import settings as _settings
-from neo4django.db import connections
-from neo4django.neo4jclient import EnhancedGraphDatabase
+from ..db import connections
+from ..neo4jclient import EnhancedGraphDatabase
 
 class MyGraphDatabase(EnhancedGraphDatabase):
     def do_something(self):

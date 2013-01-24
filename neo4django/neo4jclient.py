@@ -24,7 +24,6 @@ LIBRARY_ERROR_REGEX = _re.compile(LIBRARY_LOADING_ERROR % '.*?')
 other_libraries = {}
 
 class EnhancedGraphDatabase(GraphDatabase):
-
     def __init__(self, *args, **kwargs):
         cleandb_uri = kwargs.pop('CLEANDB_URI', None)
         super(EnhancedGraphDatabase, self).__init__(*args, **kwargs)

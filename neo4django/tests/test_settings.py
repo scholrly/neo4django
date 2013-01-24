@@ -15,7 +15,21 @@ NEO4J_DATABASES = {
         'PORT':7474,
         'ENDPOINT':'/db/data',
         'CLIENT': 'neo4django.tests.neo4jclient_tests.MyGraphDatabase',
+        'OPTIONS':{
+            'CLEANDB_URI': '/cleandb/supersecretdebugkey!',
+        },
     },
+}
+
+NEO4J_TEST_DATABASES = {
+    'default' : {
+        'HOST':'localhost',
+        'PORT':7474,
+        'ENDPOINT':'/db/data',
+        'OPTIONS':{
+            'CLEANDB_URI': '/cleandb/supersecretdebugkey!',
+        }
+    }
 }
 
 DATABASES = {
