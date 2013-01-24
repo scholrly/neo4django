@@ -246,9 +246,13 @@ We've put together a nose plugin_ to ensure that regression tests pass. Any chan
 Contributing
 ============
 
-All contributions, no matter how small, are greatly appreciated!
+All contributions, both money and time, are greatly appreciated.
 
-If you do decide to contribute, please test! If a pull request fails any regression tests, we won't be able to accept it.
+If you'd like to give a small weekly donation, please check out Gittip_.
+
+If you do decide to contribute code, please test! If a pull request fails any regression tests, we won't be able to accept it.
+
+.. _Gittip: https://www.gittip.com/mhluongo/
 
 Debugging & Optimization
 ========================
