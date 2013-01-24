@@ -3,7 +3,6 @@ import org.neo4j.graphdb.index.IndexManager
 import com.tinkerpop.blueprints.pgm.impls.neo4j.Neo4jIndex
 
 import org.neo4j.cypher.javacompat.ExecutionEngine
-import org.neo4j.cypher.javacompat.CypherParser
 
 class Neo4Django {
     static public binding
@@ -21,8 +20,16 @@ class Neo4Django {
         if (parsedCypher.containsKey(queryString)) {
             query = parsedCypher[queryString]
         } else {
-            def parser = new CypherParser()
-            query = parser.parse(queryString)
+            try {
+                def parser = this.class.classLoader.loadClass(
+                        "org.neo4j.cypher.javacompat.CypherParser")\
+                        .newInstance()
+                query = parser.parse(queryString)
+                parsedCypher[queryString] = query
+            }
+            catch (Exception e){
+                query = queryString
+            }
         }
         return engine.execute(query, params)
     }
