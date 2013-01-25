@@ -1,4 +1,4 @@
-from operator import itemgetter
+from operator import itemgetter, add
 from itertools import izip_longest, chain, ifilter
 
 def id_from_url(url):
@@ -19,8 +19,7 @@ def itemdropper(*ind):
     keys, due to complexity.
     """
     def func(seq):
-        return reduce(operator.add, (a[i:i+1] for i in
-                                     xrange(len(a)) if i not in ind))
+        return reduce(add, (seq[i:i+1] for i in xrange(len(seq)) if i not in ind))
     return func
 
 class Neo4jTable(object):
@@ -67,7 +66,7 @@ class Neo4jTable(object):
                              ' as existing columns.')
         self.column_names = self.column_names + [column_name]
         self.data = [ list(r) + [new_element] for r, new_element in
-                     izip(self.data, column_rows)]
+                     izip_longest(self.data, column_rows)]
 
     def to_dicts(self):
         def to_dict(row):
