@@ -324,9 +324,9 @@ def execute_select_related(models=None, query=None, index_name=None,
             raise ValueError("If no fields are provided for select_related, "
                                 "max_depth must be > 0.")
         #the simple depth-only case
-        #TODO it looks like this only works for depth=1...
         cypher_query = 'START s = %s '\
                        'MATCH p0=(s-[g*%d..%d]-p0_r0), p0_r0_t-[:`%s`]->p0_r0 '\
+                       'WHERE NONE(r in g WHERE type(r) = "<<INSTANCE>>")'\
                        'RETURN p0, p0_r0, p0_r0_t.name'
         cypher_query %= (start_expr, start_depth, max_depth, INSTANCE_REL)
     elif fields:
