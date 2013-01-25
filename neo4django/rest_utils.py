@@ -31,6 +31,14 @@ class Neo4jTable(object):
                                  for rc in (col_getter(r)
                                             for r in self.data))
 
+    def to_dicts(self):
+        def to_dict(row):
+            return dict(izip_longest(self.column_names, row))
+        return [to_dict(r) for r in self.data]
+
+    def __len__(self):
+        return len(self.data)
+
 def prettify_path(path_dict):
     nodes = ['(%d)' % id_from_url(url) for url in path_dict['nodes']]
     rels = ['[%d]' % id_from_url(url) for url in path_dict['relationships']]
