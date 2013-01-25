@@ -417,14 +417,23 @@ def execute_select_related(models=None, query=None, index_name=None,
 
         cur_m = m
         for rel_id, node_id in itertools.izip(rel_it, node_it):
+
+            if node_id not in models_so_far:
+                # we've loaded a node outside of neo4django, or of a type
+                # not yet loaded by neo4django. skip it.
+                continue
+            
             #make choice ab where it goes
             rel = rels_by_id[rel_id]
             rel.direction = neo_constants.RELATIONSHIPS_OUT if node_id == rel.end.id \
                             else neo_constants.RELATIONSHIPS_IN
-            new_model = models_so_far[node_id]
+
+
             field_candidates = [(k,v) for k,v in cur_m._meta._relationships.items()
                                 if str(v.rel_type)==str(rel.type) and v.direction == rel.direction]
             if len(field_candidates) < 1:
+                # nowhere to put the node- it's either related outside
+                # neo4django or something else is going on
                 continue
             elif len(field_candidates) > 1:
                 raise ValueError("Too many model field candidates for "
