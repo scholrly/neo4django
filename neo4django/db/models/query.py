@@ -342,7 +342,7 @@ def execute_select_related(models=None, query=None, index_name=None,
 
     #TODO this is another example of needing a cypher generation abstraction.
     paths = sorted(not_none(
-                     results.get_rows(lambda c:re.match('p\d+$', c) is not None)),
+                     results.get_all_rows(lambda c:re.match('p\d+$', c) is not None)),
                    key=lambda p:p['length'])
     nodes, types = [], []
     for path_i in itertools.count():
@@ -355,8 +355,10 @@ def execute_select_related(models=None, query=None, index_name=None,
             if not (return_node_name in results.column_names or
                     return_node_type in results.column_names):
                 break
-            nodes = itertools.chain(nodes, results.get_rows(return_node_name))
-            types = itertools.chain(types, results.get_rows(return_node_type))
+            nodes = itertools.chain(nodes,
+                                    results.get_all_rows(return_node_name))
+            types = itertools.chain(types,
+                                    results.get_all_rows(return_node_type))
 
     nodes = not_none(nodes)
     types = not_none(types)
