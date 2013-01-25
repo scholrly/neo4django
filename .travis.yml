@@ -13,16 +13,9 @@ before_install:
   - curl -X DELETE 'http://localhost:7474/cleandb/supersecretdebugkey!'
 install: pip install --use-mirrors -r requirements.txt -r test_requirements.txt
 env:
-  - NEO4J_VERSION="1.5.3"
   - NEO4J_VERSION="1.6.3"
   - NEO4J_VERSION="1.7.2"
-  - NEO4J_VERSION="1.8.M07"
-matrix:
-  allow_failures:
-    - env: NEO4J_VERSION="1.8.M07" #we don't support milestone releases
-      python: "2.6"
-    - env: NEO4J_VERSION="1.8.M07"
-      python: "2.7"
+  - NEO4J_VERSION="1.8.1"
 notifications:
   email:
     on_success: change
