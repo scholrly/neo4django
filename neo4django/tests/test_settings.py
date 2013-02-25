@@ -1,6 +1,8 @@
 import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+AUTHENTICATION_BACKENDS = ('neo4django.auth.backends.NodeModelBackend',)
+
 NEO4J_DATABASES = {
     'default' : {
         'HOST':'localhost',

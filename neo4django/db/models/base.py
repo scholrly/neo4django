@@ -12,7 +12,7 @@ from neo4django.decorators import not_implemented, alters_data, transactional,\
         not_supported, memoized
 from neo4django.constants import TYPE_ATTR
 
-from manager import NodeModelManager
+from .manager import NodeModelManager
 
 import inspect
 import itertools
@@ -330,6 +330,7 @@ class NodeModel(NeoModel):
                   force_insert=False, force_update=False,
                   using=DEFAULT_DB_ALIAS, *args, **kwargs):
         assert not (force_insert and force_update)
+        using = using or DEFAULT_DB_ALIAS
         self.__using = using
 
         if cls is None:

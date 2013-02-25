@@ -6,6 +6,7 @@ from query import NodeQuerySet
 
 class NodeModelManager(models.Manager):
     def __init__(self):
+        super(NodeModelManager, self).__init__()
         self._using = None
         self.model = None
         self._inherited = False
