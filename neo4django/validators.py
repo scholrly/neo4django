@@ -16,7 +16,7 @@ def validate_str(value):
     except:
         raise exceptions.ValidationError('Enter a valid str.')
 
-def  validate_basestring(value):
+def validate_basestring(value):
     if not isinstance(value, basestring):
         raise exceptions.ValidationError('Enter a valid str.')
 

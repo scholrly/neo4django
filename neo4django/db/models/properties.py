@@ -870,3 +870,10 @@ class IntArrayProperty(ArrayProperty):
     default_validators = [validate_int_array]
 
     member_to_neo_index = IntegerProperty.to_neo_index.im_func
+
+class BooleanProperty(Property):
+    def to_neo(self, value):
+        return bool(value)
+
+    def from_neo(self, value):
+        return bool(value)
