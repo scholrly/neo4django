@@ -524,6 +524,22 @@ def test_select_related():
     #try the hierarchy with a field-based select_related
     check_dog_hier_from_q(RelatedDog.objects.all().select_related('chases','chases__chases'))
 
+@with_setup(setup_chase, teardown)
+def test_spanning_lookup():
+    #test the regular relation
+    tom = RelatedCat.objects.get(chases__name='Jerry')
+    eq_(tom.name, 'Tom')
+
+    spike = RelatedDog.objects.get(chases__chases__name='Jerry')
+    eq_(spike.name, 'Spike')
+
+    #then test the reverse
+    tom = RelatedCat.objects.all().get(relateddog_set__name='Spike')
+    eq_(tom.name, 'Tom')
+
+    jerry = IndexedMouse.objects.all().get(relatedcat_set__relateddog_set__name='Spike')
+    eq_(jerry.name, 'Jerry')
+
 @with_setup(None, teardown)
 def test_large_query():
     ages = range(1, 151)
@@ -550,6 +566,7 @@ def test_get_or_create():
     assert created == False, "Person should not have been created, one should already exist"
     assert obj1 == obj2, "Second get_or_create() should have returned Person created by first get_or_create()"
 
+@with_setup(None, teardown)
 def test_object_index():
     class PollIdx(models.NodeModel):
             question = models.StringProperty()
