@@ -114,7 +114,8 @@ tests=[
 	'test_syncdb',
 	'test_model_pickling',
 	'touch_test_db',
-	'rm_test_db']
+	'rm_test_db',
+	'test_spanning_lookups']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
@@ -123,4 +124,5 @@ should_fail=[
 	'test_url_array_property_validator',
 	'test_type_query',
 	'test_model_casting_validation',
-	'test_array_use_strings']
+	'test_array_use_strings',
+	'test_spanning_lookups']
