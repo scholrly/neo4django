@@ -1,14 +1,3 @@
-import neo4jrestclient.client as neo4j
-import neo4jrestclient.constants as neo_constants
-
-from .. import DEFAULT_DB_ALIAS, connections
-from ...utils import Enum, uniqify
-from ...constants import ORDER_ATTR
-from ...decorators import transactional, not_supported, alters_data, \
-        not_implemented
-from . import script_utils
-from .script_utils import id_from_url
-
 from django.db.models.query import QuerySet, EmptyQuerySet
 from django.core import exceptions
 from django.db.models.loading import get_model
@@ -20,6 +9,17 @@ from collections import namedtuple
 from operator import and_, or_
 import itertools
 import re
+
+import neo4jrestclient.client as neo4j
+import neo4jrestclient.constants as neo_constants
+
+from .. import DEFAULT_DB_ALIAS, connections
+from ...utils import Enum, uniqify
+from ...constants import ORDER_ATTR
+from ...decorators import transactional, not_supported, alters_data, \
+        not_implemented
+from . import script_utils
+from .script_utils import id_from_url, LazyNode, _add_auth as add_auth
 
 #python needs a bijective map... grumble... but a reg enum is fine I guess
 #only including those operators currently being implemented
@@ -212,6 +212,50 @@ def return_filter_from_conditions(conditions):
     last_rel = pos.lastRelationship()
     exprs += [(length != 0) & (last_rel.getType().name() != "<<TYPE>>")]
     return (str(reduce(and_, exprs)) if exprs else 'true') + ';'
+
+def cypher_primitive(val):
+    if isinstance(val, basestring):
+        return '"%s"' % val
+    return str(val)
+
+def cypher_predicate_from_condition(element_name, condition):
+    """
+    Build a Cypher expression suitable for a WHERE clause from a condition.
+
+    Arguments:
+    element_name - a valid Cypher variable to filter against. This should be
+    a column representing the field, eg "name", or another expression that will
+    yield a value to filter against, like "node.name".
+    condition - the condition for which we're generating a predicate
+    """
+    cypher = None
+
+    # the neo4django field object
+    field = condition.field
+
+    #the value we're filtering against
+    value = condition.value
+
+    if condition.operator is OPERATORS.EXACT:
+        cypher = ("%s! = %s" % 
+                  (element_name, cypher_primitive(value)))
+
+    if condition.negate and cypher is not None:
+        cypher = "NOT (%s)" % cypher
+    return cypher
+
+def cypher_where_from_conditions(element_to_filter, conditions):
+    """
+    Build a Cypher WHERE clause based on a str Cypher element identifier that
+    should resolve to a node or rel column in the final query, and an iterable
+    of conditions.
+    """
+    # TODO need to change when we tackle #35 (ORs)
+    where_exps = ("(%s)" % cypher_predicate_from_condition(
+                    element_to_filter + '.' + c.field.attname, c)
+                  for c in conditions)
+    joined_exps = "AND".join(where_exps)
+    return "WHERE %s\n" % joined_exps if joined_exps else ''
 
 ###################
 # QUERY EXECUTION #
@@ -458,8 +502,6 @@ def execute_select_related(models=None, query=None, index_name=None,
                 field._set_cached_relationship(cur_m, new_model)
             cur_m = new_model
 
-
-
 class Query(object):
     def __init__(self, nodetype, conditions=tuple(), max_depth=None, 
                  select_related_fields=[]):
@@ -597,8 +639,24 @@ class Query(object):
                 index_qs.append((index_name, str(q)))
         
         if built_q:
-            result_set = script_utils.query_indices(index_qs, using)
+            # use filtered conditioned as a cypher START, then unfiltered
+            # as a WHERE
+            conn = connections[using]
+            cypher_query = ("START n=node({startIds}) %s RETURN n;" % 
+                            cypher_where_from_conditions('n', unindexed))
+            raw_result_set = conn.gremlin_tx(
+                """
+                results = []
+                startIds = Neo4Django.queryNodeIndices(startQueries)\
+                           .collect{it.id}
+                table = Neo4Django.cypher(cypherQuery, ['startIds':startIds])
+                results = table.columnAs("n")
+                """, startQueries=index_qs, cypherQuery=cypher_query)
 
+            #make the result_set not insane (properly lazy)
+            result_set = [add_auth(LazyNode.from_dict(d), conn)
+                          for d in raw_result_set._list] if raw_result_set else []
+            
             #filter for unindexed conditions, as well
             filtered_result = set(n for n in result_set \
                             if all(matches_condition(n, c) for c in conditions))

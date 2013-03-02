@@ -150,21 +150,6 @@ def batch_paths(paths, using):
         batched.append(tuple(p_list))
     return batched
 
-def query_indices(name_and_query, using):
-    """
-    Takes a list of index name/query pairs and returns the resulting nodes.
-    """
-    #send in an ordered set of index names and query pairs
-    #TODO this will change when we attempt #35, since this assumes intersection
-    #type_name = self.nodetype._type_name()
-    #return_expr = reduce(and_,
-    #                     (js_expression_from_condition(c, J('testedNode')) 
-    #                      for c in unindexed))
-    result_set = connections[using].gremlin_tx('results = Neo4Django.queryNodeIndices(queries)', queries=name_and_query)
-
-    #make the result_set not insane (properly lazy)
-    return [_add_auth(LazyNode.from_dict(dic), connections[using]) for dic in result_set._list] if result_set else []
-
 def _add_auth(n, conn):
     n._auth = conn._auth
     return n
