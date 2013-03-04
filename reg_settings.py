@@ -126,5 +126,4 @@ should_fail=[
 	'test_type_query',
 	'test_model_casting_validation',
 	'test_array_use_strings',
-	'test_spanning_lookup',
-    'test_order_by']
+	'test_spanning_lookup']

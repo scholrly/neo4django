@@ -254,6 +254,29 @@ def cypher_where_from_conditions(element_to_filter, conditions):
     joined_exps = "AND".join(where_exps)
     return "WHERE %s\n" % joined_exps if joined_exps else ''
 
+def cypher_order_by_term(element_name, field):
+    """
+    Return a term for an ORDER BY clause, like "n.name DESC", from a field like
+    "-name".
+    """
+    stripped_field = field.strip()
+    parts = stripped_field.split('-', 1)
+    desc = ''
+    field_name = parts[-1]
+    if len(parts) > 1:
+        desc = 'DESC'
+    return '`%s`.`%s`? %s' % (element_name, field_name, desc)
+
+def cypher_order_by_from_fields(element_name, ordering):
+
+    #TODO it would be better if this happened at a higher level, so fields were
+    # validated and default_ordering could be honored.
+    cypher = ''
+    if len(ordering) > 0:
+        cypher = 'ORDER BY %s' % (
+            ', '.join(cypher_order_by_term(element_name, f) for f in ordering))
+    return cypher
+
 ###################
 # QUERY EXECUTION #
 ###################
@@ -501,7 +524,8 @@ def execute_select_related(models=None, query=None, index_name=None,
 
 # we want some methods of SQLQuery but don't want the burder of inheriting
 # everything. these methods are pulled off django.db.models.sql.query.Query
-QUERY_PASSTHROUGH_METHODS = set(('set_limits','clear_limits','can_filter'))
+QUERY_PASSTHROUGH_METHODS = set(('set_limits','clear_limits','can_filter',
+                                 'add_ordering', 'clear_ordering'))
 
 class Query(object):
     def __init__(self, nodetype, conditions=tuple(), max_depth=None, 
@@ -513,6 +537,7 @@ class Query(object):
         self.select_related = bool(select_related_fields) or max_depth
 
         self.clear_limits()
+        self.clear_ordering()
 
     def add(self, prop, value, operator=OPERATORS.EXACT, negate=False):
     #TODO validate, based on prop type, etc
@@ -586,10 +611,12 @@ class Query(object):
         where_clause = cypher_where_from_conditions('n', itertools.chain(
             unindexed + indexed))
         
+        order_by_clause = cypher_order_by_from_fields('n', self.order_by) \
+                if self.order_by else ''
         limit_clause = 'SKIP %d' % self.low_mark + \
                 (' LIMIT %d' % self.high_mark 
                  if self.high_mark is not None else '')
-        return_clause = "RETURN n %s" % limit_clause
+        return_clause = "RETURN n %s %s" % (order_by_clause, limit_clause)
 
         # TODO none of these queries but the last properly take type into
         # account.
@@ -876,10 +903,6 @@ class NodeQuerySet(QuerySet):
     def annotate(self, *args, **kwargs):
         pass
 
-    def order_by(self, *field_names):
-        # TODO for now, just return a clone of the queryset
-        return self._clone()
-    
     @not_implemented
     def distinct(self, true_or_false=True):
         pass
