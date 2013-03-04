@@ -537,13 +537,12 @@ class Query(object):
         conditions = uniqify(self.conditions)
 
         #TODO exclude those that can't be evaluated against (eg exact=None, etc)
+        # TODO... those can probably be evaluated against now with Cypher!
         id_conditions = []
         indexed = []
         unindexed = []
 
         for c in conditions:
-            # if c.negate:
-            #     raise NotImplementedError('Negative conditions (eg .exclude() are not supported')
             if getattr(c.field, 'id', False):
                 id_conditions.append(c)
             elif c.field.indexed:
@@ -551,66 +550,20 @@ class Query(object):
             else:
                 unindexed.append(c)
 
+        #TODO error out or handle other id conditions (eg gt, lt)
         grouped_id_conds = itertools.groupby(id_conditions, lambda c: c.operator)
         id_lookups = dict(((k, list(l)) for k, l in grouped_id_conds))
+
         exact_id_lookups = list(id_lookups.get(OPERATORS.EXACT, []))
-        #if we have an exact lookup, do it and return
-        if len(exact_id_lookups) == 1:
-            id_val = exact_id_lookups[0].value
-            try:
-                node = connections[using].nodes[int(id_val)]
-                #TODO also check type!!
-                if all(matches_condition(node, c) for c in itertools.chain(indexed, unindexed)):
-                    #TODO DRY violation!
-                    model_results = [self.model_from_node(node)]
-                    if self.select_related:
-                        sel_fields = self.select_related_fields
-                        if not sel_fields: sel_fields = None
-                        execute_select_related(models=model_results,
-                                                fields=sel_fields,
-                                                max_depth=self.max_depth)
-                    yield model_results[0]
-            except:
-                pass
-            return
-        elif len(exact_id_lookups) > 1:
+        if len(exact_id_lookups) > 1:
             raise ValueError("Conflicting exact id lookups - a node can't have two ids.")
 
-        #if we have any id__in lookups, do the intersection and return
         in_id_lookups = list(id_lookups.get(OPERATORS.IN, []))
-        if in_id_lookups:
-            id_set = reduce(and_, (set(c.value) for c in in_id_lookups))
-            if id_set:
-                script = "results = Neo4Django.getVerticesByIds(ids)._();"
-                nodes = connections[using].gremlin_tx(script, ids=list(id_set))
-                ## TODO: HACKS: We don't know type coming out of neo4j-rest-client
-                #               so we check it hackily here.
-                if nodes == u'null':
-                    return
-                if hasattr(nodes, 'url'):
-                    nodes = [nodes]
-                model_results = [self.model_from_node(node) for node in nodes
-                                 if all(matches_condition(node, c) for c in itertools.chain(indexed, unindexed))]
-                #TODO DRY violation
-                if self.select_related:
-                    sel_fields = self.select_related_fields
-                    if not sel_fields: sel_fields = None
-                    execute_select_related(models=model_results,
-                                            fields=sel_fields,
-                                            max_depth=self.max_depth)
-                for r in model_results:
-                    yield r
-                return
-            else:
-                return ## Emulates django's behavior
-                                                      
-        #TODO order by type - check against the global type first, so that if
-        #we get an empty result set, we can return none? this kind of impedes Q
-        #objects, though- revisit
 
         index_by_name = dict((i.name, i) for i in (c.field.index(using) for c in indexed))
 
         #TODO order by type
+        # build lucene queries for index-based conditions
         cond_by_ind = itertools.groupby(indexed, lambda c:c.field.index(using).name)
         index_qs = []
         for index_name, group in cond_by_ind:
@@ -627,16 +580,44 @@ class Query(object):
             if q is not None:
                 index_qs.append((index_name, str(q)))
         
-        # use filtered conditions OR a type tree traversal as a cypher START,
-        # then unfiltered as a WHERE
+        # use filtered conditions, ids, OR a type tree traversal as a cypher
+        # START, then unfiltered as a WHERE
         conn = connections[using]
-        where_clause = cypher_where_from_conditions('n', unindexed)
+        where_clause = cypher_where_from_conditions('n', itertools.chain(
+            unindexed + indexed))
         
         limit_clause = 'SKIP %d' % self.low_mark + \
                 (' LIMIT %d' % self.high_mark 
                  if self.high_mark is not None else '')
         return_clause = "RETURN n %s" % limit_clause
-        if len(index_qs) > 0:
+
+        # TODO none of these queries but the last properly take type into
+        # account.
+        if len(in_id_lookups) > 0 or len(exact_id_lookups) > 0:
+            id_set = reduce(and_, (set(c.value) for c in in_id_lookups)) \
+                    if in_id_lookups else set([])
+            if len(exact_id_lookups) > 0:
+                exact_id = exact_id_lookups[0].value
+                if id_set and exact_id not in id_set:
+                    raise ValueError("Conflicting id__exact and id__in lookups"
+                                     " - a node can't have two ids.")
+                else:
+                    id_set = set([exact_id])
+
+            if len(id_set) < 1:
+                raw_result_set = []
+            else:
+                cypher_query = ("START n=node({startIds}) %s %s;" %
+                                (where_clause, return_clause))
+                raw_result_set = conn.gremlin_tx(
+                    """
+                    results = []
+                    existingStartIds = Neo4Django.getVerticesByIds(startIds).collect{it.id}
+                    table = Neo4Django.cypher(cypherQuery, 
+                                              ['startIds':existingStartIds])
+                    results = table.columnAs("n")
+                    """, startIds=list(id_set), cypherQuery=cypher_query)
+        elif len(index_qs) > 0:
             cypher_query = ("START n=node({startIds}) %s %s;" %
                             (where_clause, return_clause))
             raw_result_set = conn.gremlin_tx(
@@ -684,32 +665,11 @@ class Query(object):
         for r in model_results:
             yield r
 
-        #if there are any unindexed
-            #traverse for the provided types and their subtypes
-            #for each page
-                #return all nodes that match both indexed & unindexed conditions
-
-        #pull all of these nodes (batch)
-            #if any go against other, non-indexed conditions, toss them out
-            #otherwise, we can yield those immediately
-        #if there are any non-indexed fields, traverse
-            #send a paged traversal filter with the current conditions
-            #and with the list of ids, so we don't get overlap
-
         #TODO type stuff
 
-        #TODO optimizations
-        #group them by whether they share an index
-        #get a list of ids that match for each group
-            #memoize this (requires hashable Qs)
-            #realize that some queries won't work (eg exact = None)
-            #if one of the lists is zero, we can short-circuit to 0 elements returned
-
-        #inner join the list together
-        #return set.intersection(*results)
-
     def clone(self):
-         return type(self)(self.nodetype, self.conditions, self.max_depth, self.select_related_fields)
+         return type(self)(self.nodetype, self.conditions, self.max_depth,
+                           self.select_related_fields)
 
 for method_name in QUERY_PASSTHROUGH_METHODS:
     django_method = getattr(SQLQuery, method_name)
@@ -856,6 +816,7 @@ class NodeQuerySet(QuerySet):
     def values_list(self, *fields, **kwargs):
         pass
 
+    @not_implemented
     def dates(self, field_name, kind, order='ASC'):
         """
         Returns a list of datetime objects representing all available dates for
@@ -931,10 +892,6 @@ class NodeQuerySet(QuerySet):
     def reverse(self):
         pass
 
-    #TODO can defer or only do anything useful? I think so...
-    #using gremlin and some other magic in query, we might be able to swing
-    #retrieving only particular fields.
-
     @not_implemented
     def defer(self, *fields):
         pass
@@ -951,14 +908,6 @@ class NodeQuerySet(QuerySet):
     def db(self):
         "Return the database that will be used if this query is executed now"
         return self._db
-
-    #################
-    #  OLD COMMENTS #
-    #################
-
-    # filter TODO get should be based off this method somehow...
-    #TODO should any non-indexed fields even be *allowed* to be used here? hm...
-    # select_related  TODO explore implementing this with the traversal lib
 
     ###################
     # PRIVATE METHODS #
