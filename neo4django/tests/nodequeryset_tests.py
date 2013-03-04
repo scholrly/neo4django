@@ -646,3 +646,13 @@ def test_object_index():
     p1 = qsall[1]
     p2 = qsall[2]
     eq_(len(set([p0, p1, p2, p0, p1, p2])), 3, "There should still be 3 different polls")
+
+@with_setup(setup_people, teardown)
+def test_order_by():
+    people = Person.objects.all().order_by('age')
+    eq_(len(people), 5)
+    eq_(list(people), sorted(list(people), key=lambda p:p.age))
+    
+    # check the reverse order
+    people = Person.objects.all().order_by('-age')
+    eq_(list(people), sorted(list(people), key=lambda p:p.age, reverse=True))
