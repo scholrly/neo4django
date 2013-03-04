@@ -1,4 +1,5 @@
 from django.db.models.query import QuerySet, EmptyQuerySet
+from django.db.models.sql.query import Query as SQLQuery
 from django.core import exceptions
 from django.db.models.loading import get_model
 
@@ -498,6 +499,10 @@ def execute_select_related(models=None, query=None, index_name=None,
                 field._set_cached_relationship(cur_m, new_model)
             cur_m = new_model
 
+# we want some methods of SQLQuery but don't want the burder of inheriting
+# everything. these methods are pulled off django.db.models.sql.query.Query
+QUERY_PASSTHROUGH_METHODS = set(('set_limits','clear_limits','can_filter'))
+
 class Query(object):
     def __init__(self, nodetype, conditions=tuple(), max_depth=None, 
                  select_related_fields=[]):
@@ -506,6 +511,8 @@ class Query(object):
         self.max_depth = max_depth
         self.select_related_fields = []
         self.select_related = bool(select_related_fields) or max_depth
+
+        self.clear_limits()
 
     def add(self, prop, value, operator=OPERATORS.EXACT, negate=False):
     #TODO validate, based on prop type, etc
@@ -519,13 +526,6 @@ class Query(object):
     def add_select_related(self, fields):
         self.select_related = True
         self.select_related_fields.extend(fields)
-
-    def can_filter(self):
-        return False #TODO not sure how we should handle this
-
-    def set_limits(self, start, stop):
-        #TODO will this ever be useful, given the tools the REST api gives us?
-        pass
 
     def model_from_node(self, node):
         return self.nodetype._neo4j_instance(node)
@@ -631,10 +631,14 @@ class Query(object):
         # then unfiltered as a WHERE
         conn = connections[using]
         where_clause = cypher_where_from_conditions('n', unindexed)
-                        
+        
+        limit_clause = 'SKIP %d' % self.low_mark + \
+                (' LIMIT %d' % self.high_mark 
+                 if self.high_mark is not None else '')
+        return_clause = "RETURN n %s" % limit_clause
         if len(index_qs) > 0:
-            cypher_query = ("START n=node({startIds}) %s RETURN n;" %
-                            where_clause)
+            cypher_query = ("START n=node({startIds}) %s %s;" %
+                            (where_clause, return_clause))
             raw_result_set = conn.gremlin_tx(
                 """
                 results = []
@@ -651,8 +655,8 @@ class Query(object):
                 MATCH n<-[:`<<INSTANCE>>`]-typeNode
                 WITH n
                 %s
-                RETURN n;
-                """ % where_clause)
+                %s;
+                """ % (where_clause, return_clause))
             raw_result_set = conn.gremlin_tx(
                 """
                 results = []
@@ -706,6 +710,10 @@ class Query(object):
 
     def clone(self):
          return type(self)(self.nodetype, self.conditions, self.max_depth, self.select_related_fields)
+
+for method_name in QUERY_PASSTHROUGH_METHODS:
+    django_method = getattr(SQLQuery, method_name)
+    setattr(Query, method_name, django_method.im_func)
 
 #############
 # QUERYSETS #
@@ -822,6 +830,7 @@ class NodeQuerySet(QuerySet):
         # the batch api or some clever traversal deletion type stuff
         #TODO When new batch delete is put in place, will need to call pre_
         # and post_delete signals here; now they are covered in model delete()
+        # XXX disregard that - the django docs seem to disagree.
         clone = self._clone()
         for obj in clone:
             obj.delete()
@@ -906,9 +915,9 @@ class NodeQuerySet(QuerySet):
     def annotate(self, *args, **kwargs):
         pass
 
-    @not_implemented
     def order_by(self, *field_names):
-        pass
+        # TODO for now, just return a clone of the queryset
+        return self._clone()
     
     @not_implemented
     def distinct(self, true_or_false=True):

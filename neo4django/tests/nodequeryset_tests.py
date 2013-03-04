@@ -7,7 +7,6 @@ import itertools
 import sys, datetime
 stdout = sys.stdout
 
-
 def setup():
     global Person, neo4django, gdb, Query, OPERATORS, IndexedMouse, \
            DEFAULT_DB_ALIAS, Condition, models, RelatedCat, RelatedDog 
@@ -626,7 +625,7 @@ def test_object_index():
     p0 = PollIdx.objects.all()[0]
     p1 = PollIdx.objects.all()[1]
     p2 = PollIdx.objects.all()[2]
-    assert len(set([p0, p1, p2, p0])) == 3, "There should be 3 different polls"
+    eq_(len(set([p0, p1, p2, p0])), 3, "There should be 3 different polls")
 
     qsall = PollIdx.objects.all()
     # Should fill up cache one by one
@@ -637,7 +636,7 @@ def test_object_index():
     eq_(len(qsall._result_cache), 2)
     p2 = qsall[2]
     eq_(len(qsall._result_cache), 3)
-    assert len(set([p0, p1, p2, p0, p1])) == 3, "There should be 3 different polls"
+    eq_(len(set([p0, p1, p2, p0, p1])), 3, "There should be 3 different polls")
 
     qsall = PollIdx.objects.all()
     # Filling up the cache first
@@ -646,4 +645,4 @@ def test_object_index():
     p0 = qsall[0]
     p1 = qsall[1]
     p2 = qsall[2]
-    assert len(set([p0, p1, p2, p0, p1, p2])) == 3, "There should still be 3 different polls"
+    eq_(len(set([p0, p1, p2, p0, p1, p2])), 3, "There should still be 3 different polls")
