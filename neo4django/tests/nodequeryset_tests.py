@@ -656,3 +656,19 @@ def test_order_by():
     # check the reverse order
     people = Person.objects.all().order_by('-age')
     eq_(list(people), sorted(list(people), key=lambda p:p.age, reverse=True))
+
+@with_setup(setup_people, teardown)
+def test_count():
+    eq_(Person.objects.all().count(), 5)
+    eq_(Person.objects.all().filter(name='Candleja-').count(), 1)
+    eq_(Person.objects.all().filter(age__gt=10).count(), 3)
+
+@with_setup(setup_people, teardown)
+def test_aggregate_count():
+    from django.db.models import Count
+
+    eq_(Person.objects.all().aggregate(Count('age')).get('age__count', None), 5)
+    eq_(Person.objects.all().filter(name='Candleja-').aggregate(Count('age')).get('age__count', None), 1)
+    eq_(Person.objects.filter(age__gt=10).aggregate(Count('name')).get('name__count', None), 3)
+
+
