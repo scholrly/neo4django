@@ -118,7 +118,8 @@ tests=[
 	'test_spanning_lookup',
 	'test_order_by',
 	'test_count',
-	'test_aggregate_count']
+	'test_aggregate_count',
+	'test_exists']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',

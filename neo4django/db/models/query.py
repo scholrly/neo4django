@@ -278,6 +278,25 @@ def cypher_order_by_from_fields(element_name, ordering):
             ', '.join(cypher_order_by_term(element_name, f) for f in ordering))
     return cypher
 
+class With(object):
+    cypher_template = 'WITH %(fields)s %(limit)s %(match)s %(where)s'
+    def __init__(self, field_dict, limit=None, where=None, match=None):
+        self.field_dict = field_dict
+        self.limit = limit
+        self.where = where
+        self.match = match
+
+    def as_cypher(self):
+        params = {
+            'fields':','.join('%s AS %s' % (alias, field)
+                              for alias, field in self.field_dict.iteritems()),
+            'limit': 'LIMIT %s' % str(self.limit) \
+                    if self.limit is not None else '',
+            'match': 'MATCH %s' % self.match if self.match else '',
+            'where': 'WHERE %s' % self.where if self.where else '',
+        }
+        return self.cypher_template % params
+
 def cypher_rel_str(rel_type, rel_dir):
     dir_strings = ('<-%s-','-%s->')
     out = neo_constants.RELATIONSHIPS_OUT
@@ -543,6 +562,8 @@ class Query(object):
         self.aggregates = {}
         self.distinct_fields = []
 
+        self.with_clauses = []
+
         self.clear_limits()
         self.clear_ordering()
 
@@ -573,6 +594,9 @@ class Query(object):
         aggregate.add_to_query(self, alias, col=field_alias, source=source,
                                is_summary=is_summary)
 
+    def add_with(self, field_dict, **kwargs):
+        self.with_clauses.append(With(field_dict, **kwargs))
+
     def model_from_node(self, node):
         return self.nodetype._neo4j_instance(node)
 
@@ -584,6 +608,7 @@ class Query(object):
         clone.aggregates = self.aggregates
         clone.high_mark = self.high_mark
         clone.low_mark = self.low_mark
+        clone.with_clauses = self.with_clauses
         return clone
 
     def get_aggregation(self, using):
@@ -607,7 +632,6 @@ class Query(object):
         # TODO HACK this only works for one aggregate
         return {query.return_fields.keys()[0]:result_set[0]}
 
-
     def as_groovy(self, using):
         conditions = uniqify(self.conditions)
 
@@ -616,6 +640,7 @@ class Query(object):
         id_conditions = []
         indexed = []
         unindexed = []
+
         for c in conditions:
             if getattr(c.field, 'id', False):
                 id_conditions.append(c)
@@ -634,11 +659,13 @@ class Query(object):
 
         in_id_lookups = list(id_lookups.get(OPERATORS.IN, []))
 
-        index_by_name = dict((i.name, i) for i in (c.field.index(using) for c in indexed))
+        index_by_name = dict((i.name, i) for i in 
+                             (c.field.index(using) for c in indexed))
 
         #TODO order by type
         # build lucene queries for index-based conditions
-        cond_by_ind = itertools.groupby(indexed, lambda c:c.field.index(using).name)
+        cond_by_ind = itertools.groupby(indexed,
+                                        lambda c:c.field.index(using).name)
         index_qs = []
         for index_name, group in cond_by_ind:
             index = index_by_name[index_name]
@@ -659,6 +686,9 @@ class Query(object):
         where_clause = cypher_where_from_conditions('n', itertools.chain(
             unindexed + indexed))
         
+        with_clauses = ' '.join(clause.as_cypher()
+                                for clause in self.with_clauses)
+
         order_by_clause = cypher_order_by_from_fields('n', self.order_by) \
                 if self.order_by else ''
         limit_clause = 'SKIP %d' % self.low_mark + \
@@ -686,8 +716,8 @@ class Query(object):
                     id_set = set([exact_id])
 
             if len(id_set) >= 1:
-                cypher_query = ("START n=node({startIds}) %s %s;" %
-                                (where_clause, return_clause))
+                cypher_query = ("START n=node({startIds}) %s %s %s;" %
+                                (where_clause, with_clauses, return_clause))
                 groovy_script = """
                     results = []
                     existingStartIds = Neo4Django.getVerticesByIds(startIds).collect{it.id}
@@ -705,8 +735,8 @@ class Query(object):
                 # XXX None is returned, meaning an empty result set
                 pass
         elif len(index_qs) > 0:
-            cypher_query = ("START n=node({startIds}) %s %s;" %
-                            (where_clause, return_clause))
+            cypher_query = ("START n=node({startIds}) %s %s %s;" %
+                            (where_clause, with_clauses, return_clause))
             groovy_script = """
                 results = []
                 startIds = Neo4Django.queryNodeIndices(startQueries)\
@@ -727,9 +757,8 @@ class Query(object):
                 START typeNode=node({typeNodeId})
                 MATCH n<-[:`<<INSTANCE>>`]-typeNode
                 WITH n
-                %s
-                %s;
-                """ % (where_clause, return_clause))
+                %s %s %s;
+                """ % (where_clause, with_clauses, return_clause))
             groovy_script = """
                 results = []
                 table = Neo4Django.cypher(cypherQuery, ['typeNodeId':typeNodeId])
@@ -779,6 +808,11 @@ class Query(object):
         obj.add_aggregate(Count('*'), self.nodetype, 'count', True)
         aggregation = obj.get_aggregation(using)
         return aggregation.get('count', None)
+
+    def has_results(self, using):
+        obj = self.clone()
+        obj.add_with({'n':'n'}, limit=1)
+        return obj.get_count(using) > 0
 
 for method_name in QUERY_PASSTHROUGH_METHODS:
     django_method = getattr(SQLQuery, method_name)
@@ -903,10 +937,6 @@ class NodeQuerySet(QuerySet):
     @not_implemented
     @alters_data
     def update(self, **kwargs):
-        pass
-
-    @not_implemented
-    def exists(self):
         pass
 
     ##################################################
