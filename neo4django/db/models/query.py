@@ -5,7 +5,7 @@ from django.db.models.loading import get_model
 
 from lucenequerybuilder import Q
 
-from collections import namedtuple, Iterable
+from collections import namedtuple, Iterable, OrderedDict
 from operator import and_, or_
 import itertools
 import re
@@ -20,6 +20,7 @@ from ...decorators import transactional, not_supported, alters_data, \
         not_implemented
 from . import script_utils
 from .script_utils import id_from_url, LazyNode, _add_auth as add_auth
+from . import aggregates
 
 #python needs a bijective map... grumble... but a reg enum is fine I guess
 #only including those operators currently being implemented
@@ -277,22 +278,6 @@ def cypher_order_by_from_fields(element_name, ordering):
             ', '.join(cypher_order_by_term(element_name, f) for f in ordering))
     return cypher
 
-###################
-# QUERY EXECUTION #
-###################
-
-def score_model_rel(field_name, bound_rel):
-    """
-    Scores a model's bound relationship on how likely it is to be the referrent
-    of a user's select_related field.
-    """
-    score = 0
-    if bound_rel.attname == field_name:
-        score += 1
-    if bound_rel.rel_type == field_name:
-        score += .5
-    return score
-
 def cypher_rel_str(rel_type, rel_dir):
     dir_strings = ('<-%s-','-%s->')
     out = neo_constants.RELATIONSHIPS_OUT
@@ -346,6 +331,22 @@ def cypher_from_fields(nodetype, fields):
         matches.extend(type_matches)
 
     return 'MATCH %s RETURN %s' % (','.join(matches), ','.join(returns))
+
+###################
+# QUERY EXECUTION #
+###################
+
+def score_model_rel(field_name, bound_rel):
+    """
+    Scores a model's bound relationship on how likely it is to be the referrent
+    of a user's select_related field.
+    """
+    score = 0
+    if bound_rel.attname == field_name:
+        score += 1
+    if bound_rel.rel_type == field_name:
+        score += .5
+    return score
 
 #XXX this will have to change significantly when issue #1 is worked on
 #TODO this can be broken into retrieval and rebuilding functions
@@ -528,13 +529,19 @@ QUERY_PASSTHROUGH_METHODS = set(('set_limits','clear_limits','can_filter',
                                  'add_ordering', 'clear_ordering'))
 
 class Query(object):
+    aggregates_module = aggregates
     def __init__(self, nodetype, conditions=tuple(), max_depth=None, 
                  select_related_fields=[]):
         self.conditions = conditions
         self.nodetype = nodetype
         self.max_depth = max_depth
-        self.select_related_fields = []
+        self.select_related_fields = list(select_related_fields)
         self.select_related = bool(select_related_fields) or max_depth
+
+        self.return_fields = {'n':'n'}
+
+        self.aggregates = {}
+        self.distinct_fields = []
 
         self.clear_limits()
         self.clear_ordering()
@@ -552,13 +559,56 @@ class Query(object):
         self.select_related = True
         self.select_related_fields.extend(fields)
 
+    def add_aggregate(self, aggregate, model, alias, is_summary):
+        opts = model._meta
+        if '__' in aggregate.lookup:
+            raise NotImplementedError('Only simple field aggregates are'
+                                      ' currently supported.')
+        field_alias = aggregate.lookup
+        try:
+            source = opts.get_field(field_alias)
+        except: #TODO fix bare except (FieldDoesNotExist)
+            source = field_alias
+
+        aggregate.add_to_query(self, alias, col=field_alias, source=source,
+                               is_summary=is_summary)
+
     def model_from_node(self, node):
         return self.nodetype._neo4j_instance(node)
 
-    #TODO optimize query by using type info, instead of just returning the
-    #proper type
-    #TODO when does a returned index query of len 0 mean we're done?
-    def execute(self, using):
+    def clone(self):
+        clone = type(self)(self.nodetype, self.conditions, self.max_depth,
+                           self.select_related_fields)
+        clone.order_by = self.order_by
+        clone.return_fields = self.return_fields
+        clone.aggregates = self.aggregates
+        clone.high_mark = self.high_mark
+        clone.low_mark = self.low_mark
+        return clone
+
+    def get_aggregation(self, using):
+        query = self.clone()
+        def make_aggregate_of_n(agg):
+            from .properties import BoundProperty, Property
+            #TODO HACK when we start adding more columns this will get messy
+            #TODO HACK this should resolve the field, then use field.attname
+            # or similar to get the actual db prop name
+            #TODO HACK this is just to cover weird cases like '*'...
+            agged_over = 'n.%s' % agg.prop_name \
+                    if isinstance(agg.source, (BoundProperty, Property)) \
+                    else agg.prop_name
+            return type(agg)(agged_over, source=agg.source,
+                             is_summary=agg.is_summary)
+        query.return_fields = OrderedDict(
+            (alias, make_aggregate_of_n(agg).as_cypher())
+            for alias, agg in query.aggregates.iteritems())
+        groovy, params = query.as_groovy(using)
+        result_set = connections[using].gremlin_tx(groovy, raw=True, **params)
+        # TODO HACK this only works for one aggregate
+        return {query.return_fields.keys()[0]:result_set[0]}
+
+
+    def as_groovy(self, using):
         conditions = uniqify(self.conditions)
 
         #TODO exclude those that can't be evaluated against (eg exact=None, etc)
@@ -607,7 +657,6 @@ class Query(object):
         
         # use filtered conditions, ids, OR a type tree traversal as a cypher
         # START, then unfiltered as a WHERE
-        conn = connections[using]
         where_clause = cypher_where_from_conditions('n', itertools.chain(
             unindexed + indexed))
         
@@ -616,7 +665,13 @@ class Query(object):
         limit_clause = 'SKIP %d' % self.low_mark + \
                 (' LIMIT %d' % self.high_mark 
                  if self.high_mark is not None else '')
-        return_clause = "RETURN n %s %s" % (order_by_clause, limit_clause)
+        return_exp = ','.join('%s AS %s' % (val, alias) for alias, val
+                              in self.return_fields.iteritems())
+        return_clause = "RETURN %s %s %s" % (return_exp, order_by_clause,
+                                             limit_clause)
+
+        groovy_script = ''
+        params = {}
 
         # TODO none of these queries but the last properly take type into
         # account.
@@ -636,25 +691,35 @@ class Query(object):
             else:
                 cypher_query = ("START n=node({startIds}) %s %s;" %
                                 (where_clause, return_clause))
-                raw_result_set = conn.gremlin_tx(
-                    """
+                groovy_script = """
                     results = []
                     existingStartIds = Neo4Django.getVerticesByIds(startIds).collect{it.id}
                     table = Neo4Django.cypher(cypherQuery, 
                                               ['startIds':existingStartIds])
-                    results = table.columnAs("n")
-                    """, startIds=list(id_set), cypherQuery=cypher_query)
+                    results = table.columnAs(returnColumn)
+                    """
+                params = {
+                    'startIds':list(id_set),
+                    'cypherQuery':cypher_query,
+                    #TODO HACK HACK need a generalization
+                    'returnColumn':self.return_fields.keys()[0],
+                }
         elif len(index_qs) > 0:
             cypher_query = ("START n=node({startIds}) %s %s;" %
                             (where_clause, return_clause))
-            raw_result_set = conn.gremlin_tx(
-                """
+            groovy_script = """
                 results = []
                 startIds = Neo4Django.queryNodeIndices(startQueries)\
                             .collect{it.id}
                 table = Neo4Django.cypher(cypherQuery, ['startIds':startIds])
-                results = table.columnAs("n")
-                """, startQueries=index_qs, cypherQuery=cypher_query)
+                results = table.columnAs(returnColumn)
+                """
+            params = {
+                'startQueries':index_qs,
+                'cypherQuery':cypher_query,
+                #TODO HACK HACK need a generalization
+                'returnColumn':self.return_fields.keys()[0],
+            }
         else:
             #TODO move this to being index-based
             cypher_query = (
@@ -665,22 +730,35 @@ class Query(object):
                 %s
                 %s;
                 """ % (where_clause, return_clause))
-            raw_result_set = conn.gremlin_tx(
-                """
+            groovy_script = """
                 results = []
                 table = Neo4Django.cypher(cypherQuery, ['typeNodeId':typeNodeId])
-                results = table.columnAs("n")
-                """,
-                typeNodeId=self.nodetype._type_node(using).id,
-                cypherQuery=cypher_query)
+                results = table.columnAs(returnColumn)
+                """
+            params = {
+                'typeNodeId':self.nodetype._type_node(using).id,
+                'cypherQuery':cypher_query,
+                #TODO HACK HACK need a generalization
+                'returnColumn':self.return_fields.keys()[0],
+            }
+        return groovy_script, params
+
+    #TODO optimize query by using type info, instead of just returning the
+    #proper type
+    #TODO when does a returned index query of len 0 mean we're done?
+    def execute(self, using):
+        conn = connections[using]
+
+        groovy, params = self.as_groovy(using)
+
+        raw_result_set = conn.gremlin_tx(groovy, **params)
 
         #make the result_set not insane (properly lazy)
         result_set = [add_auth(LazyNode.from_dict(d), conn)
                         for d in raw_result_set._list] if raw_result_set else []
         
-        filtered_result = result_set
         model_results = [self.model_from_node(n)
-                            for n in filtered_result]
+                            for n in result_set]
 
         if self.select_related:
             sel_fields = self.select_related_fields
@@ -694,9 +772,12 @@ class Query(object):
 
         #TODO type stuff
 
-    def clone(self):
-         return type(self)(self.nodetype, self.conditions, self.max_depth,
-                           self.select_related_fields)
+    def get_count(self, using):
+        from django.db.models import Count
+        obj = self.clone()
+        obj.add_aggregate(Count('*'), self.nodetype, 'count', True)
+        aggregation = obj.get_aggregation(using)
+        return aggregation.get('count', None)
 
 for method_name in QUERY_PASSTHROUGH_METHODS:
     django_method = getattr(SQLQuery, method_name)
@@ -782,10 +863,6 @@ class NodeQuerySet(QuerySet):
 
     @not_implemented
     def aggegrate(self, *args, **kwargs):
-        pass
-
-    @not_implemented
-    def count(self, *args, **kwargs):
         pass
 
     #TODO leaving this todo for later transaction work

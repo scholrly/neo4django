@@ -116,7 +116,9 @@ tests=[
 	'touch_test_db',
 	'rm_test_db',
 	'test_spanning_lookup',
-    'test_order_by']
+	'test_order_by',
+	'test_count',
+	'test_aggregate_count']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
