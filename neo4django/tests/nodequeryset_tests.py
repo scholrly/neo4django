@@ -678,4 +678,25 @@ def test_aggregate_count():
     eq_(Person.objects.all().filter(name='Candleja-').aggregate(Count('age')).get('age__count', None), 1)
     eq_(Person.objects.filter(age__gt=10).aggregate(Count('name')).get('name__count', None), 3)
 
+@with_setup(setup_people, teardown)
+def test_aggregate_max_min():
+    from django.db.models import Max, Min
+
+    eq_(Person.objects.all().aggregate(Min('age')).get('age__min', None), 5)
+    eq_(Person.objects.all().aggregate(Max('age')).get('age__max', None), 30)
+    eq_(Person.objects.all().filter(name='Candleja-').aggregate(Min('age')).get('age__min', None), 30)
+
+@with_setup(setup_people, teardown)
+def test_aggregate_sum():
+    from django.db.models import Sum
+
+    eq_(Person.objects.all().aggregate(Sum('age')).get('age__sum', None), 75)
+    eq_(Person.objects.all().filter(name='Candleja-').aggregate(Sum('age')).get('age__sum', None), 30)
+
+@with_setup(setup_people, teardown)
+def test_aggregate_avg():
+    from django.db.models import Avg
+
+    eq_(Person.objects.all().aggregate(Avg('age')).get('age__avg', None), 15)
+    eq_(Person.objects.all().filter(name='Candleja-').aggregate(Avg('age')).get('age__avg', None), 30)
 
