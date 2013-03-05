@@ -616,7 +616,6 @@ class Query(object):
         id_conditions = []
         indexed = []
         unindexed = []
-
         for c in conditions:
             if getattr(c.field, 'id', False):
                 id_conditions.append(c)
@@ -670,8 +669,8 @@ class Query(object):
         return_clause = "RETURN %s %s %s" % (return_exp, order_by_clause,
                                              limit_clause)
 
-        groovy_script = ''
-        params = {}
+        groovy_script = None
+        params = None
 
         # TODO none of these queries but the last properly take type into
         # account.
@@ -686,9 +685,7 @@ class Query(object):
                 else:
                     id_set = set([exact_id])
 
-            if len(id_set) < 1:
-                raw_result_set = []
-            else:
+            if len(id_set) >= 1:
                 cypher_query = ("START n=node({startIds}) %s %s;" %
                                 (where_clause, return_clause))
                 groovy_script = """
@@ -704,6 +701,9 @@ class Query(object):
                     #TODO HACK HACK need a generalization
                     'returnColumn':self.return_fields.keys()[0],
                 }
+            else:
+                # XXX None is returned, meaning an empty result set
+                pass
         elif len(index_qs) > 0:
             cypher_query = ("START n=node({startIds}) %s %s;" %
                             (where_clause, return_clause))
@@ -751,7 +751,8 @@ class Query(object):
 
         groovy, params = self.as_groovy(using)
 
-        raw_result_set = conn.gremlin_tx(groovy, **params)
+        raw_result_set = conn.gremlin_tx(groovy, **params) \
+                if groovy is not None else []
 
         #make the result_set not insane (properly lazy)
         result_set = [add_auth(LazyNode.from_dict(d), conn)
