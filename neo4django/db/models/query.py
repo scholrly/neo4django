@@ -2,10 +2,11 @@ from django.db.models.query import QuerySet, EmptyQuerySet
 from django.db.models.sql.query import Query as SQLQuery
 from django.core import exceptions
 from django.db.models.loading import get_model
+from django.utils.datastructures import SortedDict
 
 from lucenequerybuilder import Q
 
-from collections import namedtuple, Iterable, OrderedDict
+from collections import namedtuple, Iterable
 from operator import and_, or_
 import itertools
 import re
@@ -624,7 +625,7 @@ class Query(object):
                     else agg.prop_name
             return type(agg)(agged_over, source=agg.source,
                              is_summary=agg.is_summary)
-        query.return_fields = OrderedDict(
+        query.return_fields = SortedDict(
             (alias, make_aggregate_of_n(agg).as_cypher())
             for alias, agg in query.aggregates.iteritems())
         groovy, params = query.as_groovy(using)
