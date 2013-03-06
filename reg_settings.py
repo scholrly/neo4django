@@ -115,7 +115,14 @@ tests=[
 	'test_model_pickling',
 	'touch_test_db',
 	'rm_test_db',
-	'test_spanning_lookups']
+	'test_spanning_lookup',
+	'test_order_by',
+	'test_count',
+	'test_aggregate_count',
+	'test_exists',
+    'test_aggregate_avg',
+    'test_aggregate_sum',
+    'test_aggregate_max_min']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
@@ -125,4 +132,4 @@ should_fail=[
 	'test_type_query',
 	'test_model_casting_validation',
 	'test_array_use_strings',
-	'test_spanning_lookups']
+	'test_spanning_lookup']

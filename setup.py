@@ -15,10 +15,9 @@ setup(
     platforms=['posix'],
     install_requires=[
         'decorator>=3.3.1',
-        'jexp>=0.1.2',
         'python-dateutil>=2.0',
         'neo4jrestclient>=1.6.2-dev',
-        'Django>=1.3',
+        'Django>=1.3,<=1.4.4',
         'lucene-querybuilder>=0.1.6'
     ],
     tests_require=[

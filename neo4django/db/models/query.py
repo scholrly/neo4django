@@ -1,3 +1,16 @@
+from django.db.models.query import QuerySet, EmptyQuerySet
+from django.db.models.sql.query import Query as SQLQuery
+from django.core import exceptions
+from django.db.models.loading import get_model
+from django.utils.datastructures import SortedDict
+
+from lucenequerybuilder import Q
+
+from collections import namedtuple, Iterable
+from operator import and_, or_
+import itertools
+import re
+
 import neo4jrestclient.client as neo4j
 import neo4jrestclient.constants as neo_constants
 
@@ -7,19 +20,8 @@ from ...constants import ORDER_ATTR
 from ...decorators import transactional, not_supported, alters_data, \
         not_implemented
 from . import script_utils
-from .script_utils import id_from_url
-
-from django.db.models.query import QuerySet, EmptyQuerySet
-from django.core import exceptions
-from django.db.models.loading import get_model
-
-from lucenequerybuilder import Q
-from jexp import J
-
-from collections import namedtuple
-from operator import and_, or_
-import itertools
-import re
+from .script_utils import id_from_url, LazyNode, _add_auth as add_auth
+from . import aggregates
 
 #python needs a bijective map... grumble... but a reg enum is fine I guess
 #only including those operators currently being implemented
@@ -100,11 +102,13 @@ def q_from_condition(condition):
     q = None
     field = condition.field
     attname = field.attname
+    def escape_wilds(s):
+        return str(s).replace('*','\*').replace('?','\?')
     if condition.operator is OPERATORS.EXACT:
         q = Q(attname, field.to_neo_index(condition.value))
     elif condition.operator is OPERATORS.STARTSWITH:
-        def escape_wilds(s):
-            return str(s).replace('*','\*').replace('?','\?')
+        q = Q(attname, '%s*' % escape_wilds(condition.value), wildcard=True)
+    elif condition.operator is OPERATORS.CONTAINS:
         q = Q(attname, '*%s*' % escape_wilds(condition.value), wildcard=True)
     elif condition.operator is OPERATORS.MEMBER:
         q = Q(attname, field.member_to_neo_index(condition.value))
@@ -155,79 +159,144 @@ def q_from_condition(condition):
         q = ~q
     return q
 
-def js_expression_from_condition(condition, js_node):
-    field, val, op, neg = condition
-    name = field.attname
+def cypher_primitive(val):
+    if isinstance(val, basestring):
+        return '"%s"' % val
+    elif isinstance(val, Iterable):
+        return "[%s]" % ','.join(cypher_primitive(v) for v in val)
+    return str(val)
 
-    #XXX assumption that attname is how the prop is stored (will change with
-    #issue #30
-    has_prop = js_node.hasProperty(name)
-    get_prop = js_node.getProperty(name)
-    if op == OPERATORS.EXACT:
-        correct_val = get_prop == val
-    elif op == OPERATORS.CONTAINS:
-        correct_val = get_prop.indexOf(val) > -1
-        pass
-    elif op == OPERATORS.IN:
-        correct_val = J('false')
-        for v in val:
-            correct_val |= get_prop == v
-    elif op == OPERATORS.MEMBER:
-        correct_val = get_prop.find(J('function(m){return %s;}' % str(J('m') == val))) == 1
-    elif op == OPERATORS.MEMBER_IN:
-        member_in = J('false')
-        for v in val:
-            member_in |= J('m') == v
-        correct_val = get_prop.find(J('function(m){return %s;}' % str(member_in))) == 1
-    elif op == OPERATORS.LT:
-        correct_val = get_prop < val
-    elif op == OPERATORS.LTE:
-        correct_val = get_prop <= val
-    elif op == OPERATORS.GT:
-        correct_val = get_prop > val
-    elif op == OPERATORS.GTE:
-        correct_val = get_prop >= val
-    elif op == OPERATORS.RANGE:
-        correct_val = (get_prop <= val[0]) & (get_prop >= val[1])
-    elif op == OPERATORS.STARTSWITH:
-        correct_val = get_prop.lastIndexOf(val, 0) == 0
-        pass
+def cypher_predicate_from_condition(element_name, condition):
+    """
+    Build a Cypher expression suitable for a WHERE clause from a condition.
+
+    Arguments:
+    element_name - a valid Cypher variable to filter against. This should be
+    a column representing the field, eg "name", or another expression that will
+    yield a value to filter against, like "node.name".
+    condition - the condition for which we're generating a predicate
+    """
+    from .properties import StringProperty, ArrayProperty
+
+    cypher = None
+
+    # the neo4django field object
+    field = condition.field
+
+    #the value we're filtering against
+    value = condition.value
+
+    if condition.operator is OPERATORS.EXACT:
+        cypher = ("%s! = %s" % 
+                  (element_name, cypher_primitive(value)))
+    elif condition.operator is OPERATORS.GT:
+        cypher = ("%s! > %s" %
+                  (element_name, cypher_primitive(value)))
+    elif condition.operator is OPERATORS.GTE:
+        cypher = ("%s! >= %s" %
+                  (element_name, cypher_primitive(value)))
+    elif condition.operator is OPERATORS.LT:
+        cypher = ("%s! < %s" %
+                  (element_name, cypher_primitive(value)))
+    elif condition.operator is OPERATORS.LTE:
+        cypher = ("%s! <= %s" %
+                  (element_name, cypher_primitive(value)))
+    elif condition.operator is OPERATORS.RANGE:
+        if len(condition.value) != 2:
+            raise exceptions.ValidationError('Range queries need upper and'
+                                            ' lower bounds.')
+        cypher = ("(%s! >= %s) AND (%s! <= %s)" %
+                  (element_name, cypher_primitive(value[0]), element_name,
+                   cypher_primitive(value[1])))
+    elif condition.operator is OPERATORS.MEMBER or \
+            (isinstance(field._property, ArrayProperty) and 
+             condition.operator is OPERATORS.CONTAINS):
+        cypher = ("%s IN %s!" %
+                  (cypher_primitive(value), element_name))
+    elif condition.operator is OPERATORS.IN:
+        cypher = ("%s! IN %s" % 
+                  (element_name, cypher_primitive(value)))
+    elif condition.operator is OPERATORS.MEMBER_IN:
+        cypher = ('ANY(someVar IN %s! WHERE someVar IN %s)' % 
+                  (element_name, cypher_primitive(value)))
+    elif condition.operator is OPERATORS.CONTAINS:
+        if isinstance(field._property, StringProperty):
+            #TODO this is a poor man's excuse for Java regex escaping. we need
+            # a better solution
+            regex = ('.*%s.*' % re.escape(value))
+            cypher = '%s! =~ %s' % (element_name, cypher_primitive(regex))
+        else:
+            raise exceptions.ValidationError('The contains operator is only'
+                                             ' valid against string and array'
+                                             ' properties.')
+    elif condition.operator is OPERATORS.STARTSWITH:
+        if not isinstance(field._property, StringProperty):
+            raise exceptions.ValidationError(
+                'The startswith operator is only valid against string '
+                'properties.')
+        cypher = ("LEFT(%s!, %d) = %s" %
+                  (element_name, len(value), cypher_primitive(value)))
     else:
         raise NotImplementedError('Other operators are not yet implemented.')
-    filter_exp = has_prop & correct_val
-    if neg:
-        filter_exp = ~filter_exp
-    return filter_exp
 
-def filter_expression_from_condition(condition):
-    end_node = J('position').endNode()
-    return js_expression_from_condition(condition, end_node)
-    
-def return_filter_from_conditions(conditions):
-    exprs = [filter_expression_from_condition(c) for c in conditions]
-    #construct an expr to exclude the first node and type nodes. consider
-    #refactoring
-    pos = J('position')
-    length = pos.length()
-    last_rel = pos.lastRelationship()
-    exprs += [(length != 0) & (last_rel.getType().name() != "<<TYPE>>")]
-    return (str(reduce(and_, exprs)) if exprs else 'true') + ';'
+    if condition.negate:
+        cypher = "NOT (%s)" % cypher
+    return cypher
 
-###################
-# QUERY EXECUTION #
-###################
-
-def score_model_rel(field_name, bound_rel):
+def cypher_where_from_conditions(element_to_filter, conditions):
     """
-    Scores a model's bound relationship on how likely it is to be the referrent
-    of a user's select_related field.
+    Build a Cypher WHERE clause based on a str Cypher element identifier that
+    should resolve to a node or rel column in the final query, and an iterable
+    of conditions.
     """
-    score = 0
-    if bound_rel.attname == field_name:
-        score += 1
-    if bound_rel.rel_type == field_name:
-        score += .5
-    return score
+    # TODO need to change when we tackle #35 (ORs)
+    where_exps = ("(%s)" % cypher_predicate_from_condition(
+                    element_to_filter + '.' + c.field.attname, c)
+                  for c in conditions)
+    joined_exps = "AND".join(where_exps)
+    return "WHERE %s\n" % joined_exps if joined_exps else ''
+
+def cypher_order_by_term(element_name, field):
+    """
+    Return a term for an ORDER BY clause, like "n.name DESC", from a field like
+    "-name".
+    """
+    stripped_field = field.strip()
+    parts = stripped_field.split('-', 1)
+    desc = ''
+    field_name = parts[-1]
+    if len(parts) > 1:
+        desc = 'DESC'
+    return '`%s`.`%s`? %s' % (element_name, field_name, desc)
+
+def cypher_order_by_from_fields(element_name, ordering):
+
+    #TODO it would be better if this happened at a higher level, so fields were
+    # validated and default_ordering could be honored.
+    cypher = ''
+    if len(ordering) > 0:
+        cypher = 'ORDER BY %s' % (
+            ', '.join(cypher_order_by_term(element_name, f) for f in ordering))
+    return cypher
+
+class With(object):
+    cypher_template = 'WITH %(fields)s %(limit)s %(match)s %(where)s'
+    def __init__(self, field_dict, limit=None, where=None, match=None):
+        self.field_dict = field_dict
+        self.limit = limit
+        self.where = where
+        self.match = match
+
+    def as_cypher(self):
+        params = {
+            'fields':','.join('%s AS %s' % (alias, field)
+                              for alias, field in self.field_dict.iteritems()),
+            'limit': 'LIMIT %s' % str(self.limit) \
+                    if self.limit is not None else '',
+            'match': 'MATCH %s' % self.match if self.match else '',
+            'where': 'WHERE %s' % self.where if self.where else '',
+        }
+        return self.cypher_template % params
 
 def cypher_rel_str(rel_type, rel_dir):
     dir_strings = ('<-%s-','-%s->')
@@ -282,6 +351,22 @@ def cypher_from_fields(nodetype, fields):
         matches.extend(type_matches)
 
     return 'MATCH %s RETURN %s' % (','.join(matches), ','.join(returns))
+
+###################
+# QUERY EXECUTION #
+###################
+
+def score_model_rel(field_name, bound_rel):
+    """
+    Scores a model's bound relationship on how likely it is to be the referrent
+    of a user's select_related field.
+    """
+    score = 0
+    if bound_rel.attname == field_name:
+        score += 1
+    if bound_rel.rel_type == field_name:
+        score += .5
+    return score
 
 #XXX this will have to change significantly when issue #1 is worked on
 #TODO this can be broken into retrieval and rebuilding functions
@@ -458,16 +543,30 @@ def execute_select_related(models=None, query=None, index_name=None,
                 field._set_cached_relationship(cur_m, new_model)
             cur_m = new_model
 
-
+# we want some methods of SQLQuery but don't want the burder of inheriting
+# everything. these methods are pulled off django.db.models.sql.query.Query
+QUERY_PASSTHROUGH_METHODS = set(('set_limits','clear_limits','can_filter',
+                                 'add_ordering', 'clear_ordering'))
 
 class Query(object):
+    aggregates_module = aggregates
     def __init__(self, nodetype, conditions=tuple(), max_depth=None, 
                  select_related_fields=[]):
         self.conditions = conditions
         self.nodetype = nodetype
         self.max_depth = max_depth
-        self.select_related_fields = []
+        self.select_related_fields = list(select_related_fields)
         self.select_related = bool(select_related_fields) or max_depth
+
+        self.return_fields = {'n':'n'}
+
+        self.aggregates = {}
+        self.distinct_fields = []
+
+        self.with_clauses = []
+
+        self.clear_limits()
+        self.clear_ordering()
 
     def add(self, prop, value, operator=OPERATORS.EXACT, negate=False):
     #TODO validate, based on prop type, etc
@@ -482,30 +581,68 @@ class Query(object):
         self.select_related = True
         self.select_related_fields.extend(fields)
 
-    def can_filter(self):
-        return False #TODO not sure how we should handle this
+    def add_aggregate(self, aggregate, model, alias, is_summary):
+        opts = model._meta
+        if '__' in aggregate.lookup:
+            raise NotImplementedError('Only simple field aggregates are'
+                                      ' currently supported.')
+        field_alias = aggregate.lookup
+        try:
+            source = opts.get_field(field_alias)
+        except: #TODO fix bare except (FieldDoesNotExist)
+            source = field_alias
 
-    def set_limits(self, start, stop):
-        #TODO will this ever be useful, given the tools the REST api gives us?
-        pass
+        aggregate.add_to_query(self, alias, col=field_alias, source=source,
+                               is_summary=is_summary)
+
+    def add_with(self, field_dict, **kwargs):
+        self.with_clauses.append(With(field_dict, **kwargs))
 
     def model_from_node(self, node):
         return self.nodetype._neo4j_instance(node)
 
-    #TODO optimize query by using type info, instead of just returning the
-    #proper type
-    #TODO when does a returned index query of len 0 mean we're done?
-    def execute(self, using):
+    def clone(self):
+        clone = type(self)(self.nodetype, self.conditions, self.max_depth,
+                           self.select_related_fields)
+        clone.order_by = self.order_by
+        clone.return_fields = self.return_fields
+        clone.aggregates = self.aggregates
+        clone.high_mark = self.high_mark
+        clone.low_mark = self.low_mark
+        clone.with_clauses = self.with_clauses
+        return clone
+
+    def get_aggregation(self, using):
+        query = self.clone()
+        def make_aggregate_of_n(agg):
+            from .properties import BoundProperty, Property
+            #TODO HACK when we start adding more columns this will get messy
+            #TODO HACK this should resolve the field, then use field.attname
+            # or similar to get the actual db prop name
+            #TODO HACK this is just to cover weird cases like '*'...
+            agged_over = 'n.%s' % agg.prop_name \
+                    if isinstance(agg.source, (BoundProperty, Property)) \
+                    else agg.prop_name
+            return type(agg)(agged_over, source=agg.source,
+                             is_summary=agg.is_summary)
+        query.return_fields = SortedDict(
+            (alias, make_aggregate_of_n(agg).as_cypher())
+            for alias, agg in query.aggregates.iteritems())
+        groovy, params = query.as_groovy(using)
+        result_set = connections[using].gremlin_tx(groovy, raw=True, **params)
+        # TODO HACK this only works for one aggregate
+        return {query.return_fields.keys()[0]:result_set[0]}
+
+    def as_groovy(self, using):
         conditions = uniqify(self.conditions)
 
         #TODO exclude those that can't be evaluated against (eg exact=None, etc)
+        # TODO... those can probably be evaluated against now with Cypher!
         id_conditions = []
         indexed = []
         unindexed = []
 
         for c in conditions:
-            # if c.negate:
-            #     raise NotImplementedError('Negative conditions (eg .exclude() are not supported')
             if getattr(c.field, 'id', False):
                 id_conditions.append(c)
             elif c.field.indexed:
@@ -513,72 +650,23 @@ class Query(object):
             else:
                 unindexed.append(c)
 
+        #TODO error out or handle other id conditions (eg gt, lt)
         grouped_id_conds = itertools.groupby(id_conditions, lambda c: c.operator)
         id_lookups = dict(((k, list(l)) for k, l in grouped_id_conds))
+
         exact_id_lookups = list(id_lookups.get(OPERATORS.EXACT, []))
-        #if we have an exact lookup, do it and return
-        if len(exact_id_lookups) == 1:
-            id_val = exact_id_lookups[0].value
-            try:
-                node = connections[using].nodes[int(id_val)]
-                #TODO also check type!!
-                if all(matches_condition(node, c) for c in itertools.chain(indexed, unindexed)):
-                    #TODO DRY violation!
-                    model_results = [self.model_from_node(node)]
-                    if self.select_related:
-                        sel_fields = self.select_related_fields
-                        if not sel_fields: sel_fields = None
-                        execute_select_related(models=model_results,
-                                                fields=sel_fields,
-                                                max_depth=self.max_depth)
-                    yield model_results[0]
-            except:
-                pass
-            return
-        elif len(exact_id_lookups) > 1:
+        if len(exact_id_lookups) > 1:
             raise ValueError("Conflicting exact id lookups - a node can't have two ids.")
 
-        #if we have any id__in lookups, do the intersection and return
         in_id_lookups = list(id_lookups.get(OPERATORS.IN, []))
-        if in_id_lookups:
-            id_set = reduce(and_, (set(c.value) for c in in_id_lookups))
-            if id_set:
-                script = "results = Neo4Django.getVerticesByIds(ids)._();"
-                nodes = connections[using].gremlin_tx(script, ids=list(id_set))
-                ## TODO: HACKS: We don't know type coming out of neo4j-rest-client
-                #               so we check it hackily here.
-                if nodes == u'null':
-                    return
-                if hasattr(nodes, 'url'):
-                    nodes = [nodes]
-                model_results = [self.model_from_node(node) for node in nodes
-                                 if all(matches_condition(node, c) for c in itertools.chain(indexed, unindexed))]
-                #TODO DRY violation
-                if self.select_related:
-                    sel_fields = self.select_related_fields
-                    if not sel_fields: sel_fields = None
-                    execute_select_related(models=model_results,
-                                            fields=sel_fields,
-                                            max_depth=self.max_depth)
 
-                for r in model_results:
-                    yield r
-                return
-            else:
-                return ## Emulates django's behavior
-                                                      
-        #TODO order by type - check against the global type first, so that if
-        #we get an empty result set, we can return none? this kind of impedes Q
-        #objects, though- revisit
-
-        results = {} #TODO this could perhaps be cached - think about it
-        filtered_results = set()
-
-        index_by_name = dict((i.name, i) for i in (c.field.index(using) for c in indexed))
+        index_by_name = dict((i.name, i) for i in 
+                             (c.field.index(using) for c in indexed))
 
         #TODO order by type
-        built_q = False
-        cond_by_ind = itertools.groupby(indexed, lambda c:c.field.index(using).name)
+        # build lucene queries for index-based conditions
+        cond_by_ind = itertools.groupby(indexed,
+                                        lambda c:c.field.index(using).name)
         index_qs = []
         for index_name, group in cond_by_ind:
             index = index_by_name[index_name]
@@ -587,8 +675,6 @@ class Query(object):
                 new_q = q_from_condition(condition)
                 if not new_q:
                     break
-                else:
-                    built_q = True
                 if q:
                     q &= new_q
                 else:
@@ -596,75 +682,142 @@ class Query(object):
             if q is not None:
                 index_qs.append((index_name, str(q)))
         
-        if built_q:
-            result_set = script_utils.query_indices(index_qs, using)
+        # use filtered conditions, ids, OR a type tree traversal as a cypher
+        # START, then unfiltered as a WHERE
+        where_clause = cypher_where_from_conditions('n', itertools.chain(
+            unindexed + indexed))
+        
+        with_clauses = ' '.join(clause.as_cypher()
+                                for clause in self.with_clauses)
 
-            #filter for unindexed conditions, as well
-            filtered_result = set(n for n in result_set \
-                            if all(matches_condition(n, c) for c in conditions))
-            model_results = [self.model_from_node(n)
-                                for n in filtered_result]
-            #TODO DRY violation
-            if self.select_related:
-                sel_fields = self.select_related_fields
-                if not sel_fields: sel_fields = None
-                execute_select_related(models=model_results,
-                                        fields=sel_fields,
-                                        max_depth=self.max_depth)
+        order_by_clause = cypher_order_by_from_fields('n', self.order_by) \
+                if self.order_by else ''
+        limit_clause = 'SKIP %d' % self.low_mark + \
+                (' LIMIT %d' % self.high_mark 
+                 if self.high_mark is not None else '')
+        return_exp = ','.join('%s AS %s' % (val, alias) for alias, val
+                              in self.return_fields.iteritems())
+        return_clause = "RETURN %s %s %s" % (return_exp, order_by_clause,
+                                             limit_clause)
 
-            for r in model_results:
-                yield r
+        groovy_script = None
+        params = None
+
+        # TODO none of these queries but the last properly take type into
+        # account.
+        if len(in_id_lookups) > 0 or len(exact_id_lookups) > 0:
+            id_set = reduce(and_, (set(c.value) for c in in_id_lookups)) \
+                    if in_id_lookups else set([])
+            if len(exact_id_lookups) > 0:
+                exact_id = exact_id_lookups[0].value
+                if id_set and exact_id not in id_set:
+                    raise ValueError("Conflicting id__exact and id__in lookups"
+                                     " - a node can't have two ids.")
+                else:
+                    id_set = set([exact_id])
+
+            if len(id_set) >= 1:
+                cypher_query = ("START n=node({startIds}) %s %s %s;" %
+                                (where_clause, with_clauses, return_clause))
+                groovy_script = """
+                    results = []
+                    existingStartIds = Neo4Django.getVerticesByIds(startIds).collect{it.id}
+                    table = Neo4Django.cypher(cypherQuery, 
+                                              ['startIds':existingStartIds])
+                    results = table.columnAs(returnColumn)
+                    """
+                params = {
+                    'startIds':list(id_set),
+                    'cypherQuery':cypher_query,
+                    #TODO HACK HACK need a generalization
+                    'returnColumn':self.return_fields.keys()[0],
+                }
+            else:
+                # XXX None is returned, meaning an empty result set
+                pass
+        elif len(index_qs) > 0:
+            cypher_query = ("START n=node({startIds}) %s %s %s;" %
+                            (where_clause, with_clauses, return_clause))
+            groovy_script = """
+                results = []
+                startIds = Neo4Django.queryNodeIndices(startQueries)\
+                            .collect{it.id}
+                table = Neo4Django.cypher(cypherQuery, ['startIds':startIds])
+                results = table.columnAs(returnColumn)
+                """
+            params = {
+                'startQueries':index_qs,
+                'cypherQuery':cypher_query,
+                #TODO HACK HACK need a generalization
+                'returnColumn':self.return_fields.keys()[0],
+            }
         else:
-            return_filter = return_filter_from_conditions(unindexed + indexed)
-            rel_types = [neo4j.Outgoing.get('<<TYPE>>'),
-                         neo4j.Outgoing.get('<<INSTANCE>>')]
-            type_node = self.nodetype._type_node(using)
-            pages = type_node.traverse(types=rel_types,
-                                            returnable=return_filter,
-                                            page_size=QUERY_CHUNK_SIZE)
-            for result_set in pages:
-                filtered_result = set(n for n in result_set \
-                                     if n not in filtered_results)
-                filtered_results |= filtered_result
-                model_results = [self.model_from_node(n)
-                                 for n in filtered_result]
-                #TODO DRY violation
-                if self.select_related:
-                    sel_fields = self.select_related_fields
-                    if not sel_fields: sel_fields = None
-                    execute_select_related(models=model_results,
-                                           fields=sel_fields,
-                                           max_depth=self.max_depth)
-                for r in model_results:
-                    yield r
+            #TODO move this to being index-based
+            cypher_query = (
+                """
+                START typeNode=node({typeNodeId})
+                MATCH n<-[:`<<INSTANCE>>`]-typeNode
+                WITH n
+                %s %s %s;
+                """ % (where_clause, with_clauses, return_clause))
+            groovy_script = """
+                results = []
+                table = Neo4Django.cypher(cypherQuery, ['typeNodeId':typeNodeId])
+                results = table.columnAs(returnColumn)
+                """
+            params = {
+                'typeNodeId':self.nodetype._type_node(using).id,
+                'cypherQuery':cypher_query,
+                #TODO HACK HACK need a generalization
+                'returnColumn':self.return_fields.keys()[0],
+            }
+        return groovy_script, params
 
-        #if there are any unindexed
-            #traverse for the provided types and their subtypes
-            #for each page
-                #return all nodes that match both indexed & unindexed conditions
+    #TODO optimize query by using type info, instead of just returning the
+    #proper type
+    #TODO when does a returned index query of len 0 mean we're done?
+    def execute(self, using):
+        conn = connections[using]
 
+        groovy, params = self.as_groovy(using)
 
-        #pull all of these nodes (batch)
-            #if any go against other, non-indexed conditions, toss them out
-            #otherwise, we can yield those immediately
-        #if there are any non-indexed fields, traverse
-            #send a paged traversal filter with the current conditions
-            #and with the list of ids, so we don't get overlap
+        raw_result_set = conn.gremlin_tx(groovy, **params) \
+                if groovy is not None else []
+
+        #make the result_set not insane (properly lazy)
+        result_set = [add_auth(LazyNode.from_dict(d), conn)
+                        for d in raw_result_set._list] if raw_result_set else []
+        
+        model_results = [self.model_from_node(n)
+                            for n in result_set]
+
+        if self.select_related:
+            sel_fields = self.select_related_fields
+            if not sel_fields: sel_fields = None
+            execute_select_related(models=model_results,
+                                    fields=sel_fields,
+                                    max_depth=self.max_depth)
+
+        for r in model_results:
+            yield r
 
         #TODO type stuff
 
-        #TODO optimizations
-        #group them by whether they share an index
-        #get a list of ids that match for each group
-            #memoize this (requires hashable Qs)
-            #realize that some queries won't work (eg exact = None)
-            #if one of the lists is zero, we can short-circuit to 0 elements returned
+    def get_count(self, using):
+        from django.db.models import Count
+        obj = self.clone()
+        obj.add_aggregate(Count('*'), self.nodetype, 'count', True)
+        aggregation = obj.get_aggregation(using)
+        return aggregation.get('count', None)
 
-        #inner join the list together
-        #return set.intersection(*results)
+    def has_results(self, using):
+        obj = self.clone()
+        obj.add_with({'n':'n'}, limit=1)
+        return obj.get_count(using) > 0
 
-    def clone(self):
-         return type(self)(self.nodetype, self.conditions, self.max_depth, self.select_related_fields)
+for method_name in QUERY_PASSTHROUGH_METHODS:
+    django_method = getattr(SQLQuery, method_name)
+    setattr(Query, method_name, django_method.im_func)
 
 #############
 # QUERYSETS #
@@ -748,10 +901,6 @@ class NodeQuerySet(QuerySet):
     def aggegrate(self, *args, **kwargs):
         pass
 
-    @not_implemented
-    def count(self, *args, **kwargs):
-        pass
-
     #TODO leaving this todo for later transaction work
     @transactional
     def create(self, **kwargs):
@@ -781,6 +930,7 @@ class NodeQuerySet(QuerySet):
         # the batch api or some clever traversal deletion type stuff
         #TODO When new batch delete is put in place, will need to call pre_
         # and post_delete signals here; now they are covered in model delete()
+        # XXX disregard that - the django docs seem to disagree.
         clone = self._clone()
         for obj in clone:
             obj.delete()
@@ -788,10 +938,6 @@ class NodeQuerySet(QuerySet):
     @not_implemented
     @alters_data
     def update(self, **kwargs):
-        pass
-
-    @not_implemented
-    def exists(self):
         pass
 
     ##################################################
@@ -806,6 +952,7 @@ class NodeQuerySet(QuerySet):
     def values_list(self, *fields, **kwargs):
         pass
 
+    @not_implemented
     def dates(self, field_name, kind, order='ASC'):
         """
         Returns a list of datetime objects representing all available dates for
@@ -866,10 +1013,6 @@ class NodeQuerySet(QuerySet):
         pass
 
     @not_implemented
-    def order_by(self, *field_names):
-        pass
-    
-    @not_implemented
     def distinct(self, true_or_false=True):
         pass
 
@@ -880,10 +1023,6 @@ class NodeQuerySet(QuerySet):
     @not_implemented
     def reverse(self):
         pass
-
-    #TODO can defer or only do anything useful? I think so...
-    #using gremlin and some other magic in query, we might be able to swing
-    #retrieving only particular fields.
 
     @not_implemented
     def defer(self, *fields):
@@ -901,14 +1040,6 @@ class NodeQuerySet(QuerySet):
     def db(self):
         "Return the database that will be used if this query is executed now"
         return self._db
-
-    #################
-    #  OLD COMMENTS #
-    #################
-
-    # filter TODO get should be based off this method somehow...
-    #TODO should any non-indexed fields even be *allowed* to be used here? hm...
-    # select_related  TODO explore implementing this with the traversal lib
 
     ###################
     # PRIVATE METHODS #

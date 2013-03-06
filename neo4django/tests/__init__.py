@@ -9,7 +9,7 @@ def setup():
     import neo4jrestclient.constants as neo_constants
 
     class Person(models.NodeModel):
-        name = models.Property()
+        name = models.StringProperty()
         age = models.IntegerProperty(indexed=True)
 
 def teardown():

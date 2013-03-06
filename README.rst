@@ -21,7 +21,7 @@ Other improvements over the original integration include
 - A significant test suite to empower future development.
 - Built to work alongside relational models.
 
-The library is tested against Django 1.4.1, and Neo4j version 1.5.3-1.8.M07.
+The library is tested against Django 1.4.4 and Neo4j version 1.8.2.
 
 .. image:: https://secure.travis-ci.org/scholrly/neo4django.png?branch=master
 

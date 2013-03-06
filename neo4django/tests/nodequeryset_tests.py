@@ -7,16 +7,14 @@ import itertools
 import sys, datetime
 stdout = sys.stdout
 
-
 def setup():
     global Person, neo4django, gdb, Query, OPERATORS, IndexedMouse, \
-           DEFAULT_DB_ALIAS, return_filter_from_conditions, Condition, models,\
-           RelatedCat, RelatedDog 
+           DEFAULT_DB_ALIAS, Condition, models, RelatedCat, RelatedDog 
 
     from neo4django.tests import Person, neo4django, gdb
     from neo4django.db import DEFAULT_DB_ALIAS, models
     from neo4django.db.models.query import Query, OPERATORS, \
-            return_filter_from_conditions, Condition
+            Condition
 
     from django.db.models import get_model
 
@@ -315,6 +313,10 @@ def test_filter_gt():
     assert len(teens_and_up) > 0, 'No one returned!'
     assert not any(p.name == 'Tiny Tim' for p in teens_and_up),\
             "Tiny Tim was included, but he's too young!"
+    # now check an unindexed property
+    all_named_after_t = Person.objects.filter(name__gt='T')
+    eq_(len(all_named_after_t), 3)
+
 
 @with_setup(setup_teens, teardown)
 def test_filter_gte():
@@ -323,6 +325,9 @@ def test_filter_gte():
     assert len(teens_and_up) > 0, 'No one returned!'
     assert any(p.name == 'Tiny Tim' for p in teens_and_up),\
             "Tiny Tim was excluded! That sucks, he's 12!"
+    # now check an unindexed property
+    all_named_after_tiny_tim = Person.objects.filter(name__gte='Tiny Tim')
+    eq_(len(all_named_after_tiny_tim), 1)
 
 @with_setup(setup_teens, teardown)
 def test_filter_lt():
@@ -331,6 +336,9 @@ def test_filter_lt():
     assert len(kids_only) > 0, 'No one returned!'
     assert any(p.name == 'Tiny Tim' for p in kids_only),\
             "Tiny Tim was excluded! That sucks, he's 12!"
+    # now check an unindexed property
+    all_named_before_d = Person.objects.filter(name__lt='D')
+    eq_(len(all_named_before_d), 1)
 
 @with_setup(setup_teens, teardown)
 def test_filter_lte():
@@ -339,6 +347,9 @@ def test_filter_lte():
     assert len(kids_only) > 0, 'No one returned!'
     assert any(p.name == 'Tiny Tim' for p in kids_only),\
             "Tiny Tim was excluded! That sucks, he's 12!"
+    # now check an unindexed property
+    all_named_before_candle = Person.objects.filter(name__lte='Candleja-')
+    eq_(len(all_named_before_candle), 1)
 
 alphabet = [chr(i + 97) for i in range(26)]
 def test_filter_range():
@@ -347,6 +358,11 @@ def test_filter_range():
     make_people(*ages_and_names)
     octogenarians = Person.objects.filter(age__range=(80, 89))
     assert all(80 <= p.age <= 89 for p in octogenarians), "These guys aren't all in their 80's!"
+
+    # now check an unindexed property
+    make_people(['Tom'], [25])
+    all_between_s_u = Person.objects.filter(name__range=('S','U'))
+    assert len(all_between_s_u) >= 1, "There's at least one 'T' name!"
 
 @with_setup(None, teardown)
 def test_filter_date_range():
@@ -382,11 +398,13 @@ def test_filter_array_member():
     Tests the new `field__member` array membership field lookup.
     """
     class TooManyAccounts(Person):
+        names = models.StringArrayProperty()
         emails = models.StringArrayProperty(indexed=True)
 
+    names = ['Test1','Rob','Bill']
     emails = ['test1@example.com','test2@example.com','test3@example.com']
-    p1 = TooManyAccounts.objects.create(emails=emails[:2])
-    p2 = TooManyAccounts.objects.create(emails=emails[1:])
+    p1 = TooManyAccounts.objects.create(names=names[:2], emails=emails[:2])
+    p2 = TooManyAccounts.objects.create(names=names[1:], emails=emails[1:])
 
     q_1only = TooManyAccounts.objects.filter(emails__member=emails[0])
     q_both = TooManyAccounts.objects.filter(emails__member=emails[1])
@@ -396,6 +414,15 @@ def test_filter_array_member():
 
     eq_(set(p.id for p in q_both), set((p1.id, p2.id)))
 
+    # now check an unindexed property
+    q_both = TooManyAccounts.objects.filter(names__member=names[1])
+    eq_(len(q_both), 2)
+    eq_(set(p.id for p in q_both), set((p1.id, p2.id)))
+
+    q_1only = TooManyAccounts.objects.filter(names__member=names[0])
+    eq_(len(q_1only), 1)
+    eq_(list(q_1only)[0].id, p1.id)
+
 @with_setup(setup_teens, teardown)
 def test_filter_in():
     q = Person.objects.filter(age__in=[15, 12])
@@ -403,17 +430,23 @@ def test_filter_in():
     eq_(len(q), 4)
     assert all(p.age in [15,12] for p in q)
 
+    # now check an unindexed property
+    tim_and_rob = Person.objects.filter(name__in=['Tiny Tim','Rob'])
+    eq_(len(tim_and_rob), 2)
+
 @with_setup(None, teardown)
 def test_filter_array_member_in():
     """
     Tests the `field__member_in` array membership field lookup.
     """
     class TooManyAccounts(Person):
+        names = models.StringArrayProperty()
         emails = models.StringArrayProperty(indexed=True)
 
+    names = ['Test1','Rob','Bill']
     emails = ['test1@example.com','test2@example.com','test3@example.com']
-    p1 = TooManyAccounts.objects.create(emails=emails[:2])
-    p2 = TooManyAccounts.objects.create(emails=emails[1:])
+    p1 = TooManyAccounts.objects.create(names=names[:2], emails=emails[:2])
+    p2 = TooManyAccounts.objects.create(names=names[1:], emails=emails[1:])
 
     q_1only = TooManyAccounts.objects.filter(emails__member_in=[emails[0]])
     q_both = TooManyAccounts.objects.filter(emails__member_in=emails)
@@ -422,6 +455,15 @@ def test_filter_array_member_in():
     eq_(list(q_1only)[0].id, p1.id)
 
     eq_(set(p.id for p in q_both), set((p1.id, p2.id)))
+
+    # now check an unindexed property
+    q_both = TooManyAccounts.objects.filter(names__member_in=names)
+    eq_(len(q_both), 2)
+    eq_(set(p.id for p in q_both), set((p1.id, p2.id)))
+
+    q_1only = TooManyAccounts.objects.filter(names__member_in=[names[0]])
+    eq_(len(q_1only), 1)
+    eq_(list(q_1only)[0].id, p1.id)
 
 #test isnull
 
@@ -454,7 +496,7 @@ def test_in_bulk():
 @with_setup(setup_people, teardown)
 def test_in_bulk_not_found():
     """
-    Tests QuerySet.in_builk() with items not found.
+    Tests QuerySet.in_bulk() with items not found.
     """
     people = Person.objects.in_bulk([999999])
     eq_(people, {})
@@ -583,7 +625,7 @@ def test_object_index():
     p0 = PollIdx.objects.all()[0]
     p1 = PollIdx.objects.all()[1]
     p2 = PollIdx.objects.all()[2]
-    assert len(set([p0, p1, p2, p0])) == 3, "There should be 3 different polls"
+    eq_(len(set([p0, p1, p2, p0])), 3, "There should be 3 different polls")
 
     qsall = PollIdx.objects.all()
     # Should fill up cache one by one
@@ -594,7 +636,7 @@ def test_object_index():
     eq_(len(qsall._result_cache), 2)
     p2 = qsall[2]
     eq_(len(qsall._result_cache), 3)
-    assert len(set([p0, p1, p2, p0, p1])) == 3, "There should be 3 different polls"
+    eq_(len(set([p0, p1, p2, p0, p1])), 3, "There should be 3 different polls")
 
     qsall = PollIdx.objects.all()
     # Filling up the cache first
@@ -603,4 +645,58 @@ def test_object_index():
     p0 = qsall[0]
     p1 = qsall[1]
     p2 = qsall[2]
-    assert len(set([p0, p1, p2, p0, p1, p2])) == 3, "There should still be 3 different polls"
+    eq_(len(set([p0, p1, p2, p0, p1, p2])), 3, "There should still be 3 different polls")
+
+@with_setup(setup_people, teardown)
+def test_order_by():
+    people = Person.objects.all().order_by('age')
+    eq_(len(people), 5)
+    eq_(list(people), sorted(list(people), key=lambda p:p.age))
+    
+    # check the reverse order
+    people = Person.objects.all().order_by('-age')
+    eq_(list(people), sorted(list(people), key=lambda p:p.age, reverse=True))
+
+@with_setup(setup_people, teardown)
+def test_exists():
+    eq_(Person.objects.all().exists(), True)
+    eq_(Person.objects.all().filter(name='Candleja-').exists(), True)
+    eq_(Person.objects.all().filter(age__gt=80).exists(), False)
+    eq_(Person.objects.all().filter(age__lt=80).exists(), True)
+
+@with_setup(setup_people, teardown)
+def test_count():
+    eq_(Person.objects.all().count(), 5)
+    eq_(Person.objects.all().filter(name='Candleja-').count(), 1)
+    eq_(Person.objects.all().filter(age__gt=10).count(), 3)
+
+@with_setup(setup_people, teardown)
+def test_aggregate_count():
+    from django.db.models import Count
+
+    eq_(Person.objects.all().aggregate(Count('age')).get('age__count', None), 5)
+    eq_(Person.objects.all().filter(name='Candleja-').aggregate(Count('age')).get('age__count', None), 1)
+    eq_(Person.objects.filter(age__gt=10).aggregate(Count('name')).get('name__count', None), 3)
+
+@with_setup(setup_people, teardown)
+def test_aggregate_max_min():
+    from django.db.models import Max, Min
+
+    eq_(Person.objects.all().aggregate(Min('age')).get('age__min', None), 5)
+    eq_(Person.objects.all().aggregate(Max('age')).get('age__max', None), 30)
+    eq_(Person.objects.all().filter(name='Candleja-').aggregate(Min('age')).get('age__min', None), 30)
+
+@with_setup(setup_people, teardown)
+def test_aggregate_sum():
+    from django.db.models import Sum
+
+    eq_(Person.objects.all().aggregate(Sum('age')).get('age__sum', None), 75)
+    eq_(Person.objects.all().filter(name='Candleja-').aggregate(Sum('age')).get('age__sum', None), 30)
+
+@with_setup(setup_people, teardown)
+def test_aggregate_avg():
+    from django.db.models import Avg
+
+    eq_(Person.objects.all().aggregate(Avg('age')).get('age__avg', None), 15)
+    eq_(Person.objects.all().filter(name='Candleja-').aggregate(Avg('age')).get('age__avg', None), 30)
+
