@@ -13,9 +13,16 @@ before_install:
   - curl -X DELETE 'http://localhost:7474/cleandb/supersecretdebugkey!'
 install: pip install --use-mirrors -r requirements.txt -r test_requirements.txt
 env:
+  - NEO4J_VERSION="1.7.2"
   - NEO4J_VERSION="1.8.2"
+  - NEO4J_VERSION="1.9.M04"
 matrix:
   allow_failures:
+    #we no longer support 1.7.2, but it's good to see which tests break in travis
+    - env: NEO4J_VERSION="1.7.2" 
+      python: "2.6"
+    - env: NEO4J_VERSION="1.7.2"
+      python: "2.7"
     - env: NEO4J_VERSION="1.9.M04" #we don't support milestone releases
       python: "2.6"
     - env: NEO4J_VERSION="1.9.M04"
