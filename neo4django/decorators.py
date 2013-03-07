@@ -75,3 +75,22 @@ def memoized(func, *args, **kwargs):
             pass
         return new_val
 
+def borrows_methods(target_cls, method_names):
+    """
+    Copy methods from a target class onto this one.
+
+    Expected to be used as a decorator- eg
+
+        @borrows_methods(SomeClass, ('__str__','__hash__'))
+        class MyClass(object):
+            pass
+
+    Use this in situations where you'd like to use a class as a mixin, but it
+    find it has a bit too much baggage.
+    """
+    def wrapped(cls):
+        for method_name in set(method_names):
+            target_method = getattr(target_cls, method_name)
+            setattr(cls, method_name, target_method.im_func)
+        return cls
+    return wrapped

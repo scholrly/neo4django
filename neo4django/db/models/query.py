@@ -18,7 +18,7 @@ from .. import DEFAULT_DB_ALIAS, connections
 from ...utils import Enum, uniqify
 from ...constants import ORDER_ATTR
 from ...decorators import transactional, not_supported, alters_data, \
-        not_implemented
+        not_implemented, borrows_methods
 from . import script_utils
 from .script_utils import id_from_url, LazyNode, _add_auth as add_auth
 from . import aggregates
@@ -545,9 +545,10 @@ def execute_select_related(models=None, query=None, index_name=None,
 
 # we want some methods of SQLQuery but don't want the burder of inheriting
 # everything. these methods are pulled off django.db.models.sql.query.Query
-QUERY_PASSTHROUGH_METHODS = set(('set_limits','clear_limits','can_filter',
-                                 'add_ordering', 'clear_ordering'))
+QUERY_PASSTHROUGH_METHODS = ('set_limits','clear_limits','can_filter',
+                             'add_ordering', 'clear_ordering')
 
+@borrows_methods(SQLQuery, QUERY_PASSTHROUGH_METHODS)
 class Query(object):
     aggregates_module = aggregates
     def __init__(self, nodetype, conditions=tuple(), max_depth=None, 
@@ -814,10 +815,6 @@ class Query(object):
         obj = self.clone()
         obj.add_with({'n':'n'}, limit=1)
         return obj.get_count(using) > 0
-
-for method_name in QUERY_PASSTHROUGH_METHODS:
-    django_method = getattr(SQLQuery, method_name)
-    setattr(Query, method_name, django_method.im_func)
 
 #############
 # QUERYSETS #
