@@ -1,6 +1,6 @@
 **neo4django** is an Object Graph Mapper that let's you use familiar Django model definitions and queries against the Neo4j graph database.
 
-The library is tested against Django 1.4.4 and Neo4j version 1.8.2.
+The library is tested against Django 1.4.4 and Neo4j version 1.8.2. Docs are on `ReadTheDocs <https://neo4django.readthedocs.org/en/latest/>`_.
 
 .. image:: https://secure.travis-ci.org/scholrly/neo4django.png?branch=master
 
@@ -18,4 +18,4 @@ or straight from GitHub::
 Documentation
 =============
 
-Detailed documentation can be found in the docs folder.
+Detailed documentation can be found in the docs folder or on `ReadTheDocs <https://neo4django.readthedocs.org/en/latest/>`_.
