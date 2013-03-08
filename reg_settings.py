@@ -122,7 +122,8 @@ tests=[
 	'test_exists',
     'test_aggregate_avg',
     'test_aggregate_sum',
-    'test_aggregate_max_min']
+    'test_aggregate_max_min',
+    'test_auth']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',

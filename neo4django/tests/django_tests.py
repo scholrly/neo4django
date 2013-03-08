@@ -1,4 +1,4 @@
-from nose.tools import with_setup
+from nose.tools import with_setup, eq_
 
 from django.conf import settings
 TEST_SQL_DB_NAME = settings.DATABASES.get('default',{}).get('NAME','')
@@ -40,3 +40,10 @@ def rm_test_db():
 def test_syncdb():
     from django.core.management import call_command
     call_command('syncdb', interactive=False)
+
+def test_auth():
+    from neo4django.auth.models import User
+    user = User.objects.create_user('john', 'lennon@thebeatles.com', 'johnpassword')
+
+    from django.contrib.auth import authenticate
+    eq_(authenticate(username='john', password='johnpassword'), user)
