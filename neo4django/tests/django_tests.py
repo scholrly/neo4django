@@ -47,3 +47,15 @@ def test_auth():
 
     from django.contrib.auth import authenticate
     eq_(authenticate(username='john', password='johnpassword'), user)
+
+def test_modelform():
+    from django.forms import ModelForm
+
+    class PersonForm(ModelForm):
+        class Meta:
+            model = Person
+
+    person_form = PersonForm()
+    as_p = person_form.as_p()
+    assert 'id_age' in as_p
+    assert 'id_name' in as_p
