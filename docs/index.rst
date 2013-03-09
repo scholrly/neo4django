@@ -36,6 +36,10 @@ Define models to interact with the database.
 
 Query against models in Neo4j.
 
+:doc:`auth`
+
+Storing and interacting with users in Neo4j.
+
 :doc:`writing-django-tests`
 
 :doc:`migrations`
@@ -52,6 +56,7 @@ Query against models in Neo4j.
    getting-started
    writing-models
    querying
+   auth
    writing-django-tests
    debugging-and-optimization
    multiple-databases-and-concurrency
