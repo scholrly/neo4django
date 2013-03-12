@@ -41,8 +41,7 @@ class Condition(ConditionTuple):
                     args[1] = tuple(args[1])
         super(Condition, self).__init__( *args, **kwargs)
 
-#TODO move this to settings.py
-QUERY_CHUNK_SIZE = 50
+QUERY_CHUNK_SIZE = 100
 
 #TODO these should be moved to constants
 TYPE_REL = '<<TYPE>>'
@@ -694,7 +693,7 @@ class Query(object):
         order_by_clause = cypher_order_by_from_fields('n', self.order_by) \
                 if self.order_by else ''
         limit_clause = 'SKIP %d' % self.low_mark + \
-                (' LIMIT %d' % self.high_mark 
+                (' LIMIT %d' % (self.high_mark - self.low_mark)
                  if self.high_mark is not None else '')
         return_exp = ','.join('%s AS %s' % (val, alias) for alias, val
                               in self.return_fields.iteritems())
@@ -875,9 +874,9 @@ class NodeQuerySet(QuerySet):
         Otherwise, iterate over the queryset, loading items into the cache
         one by one, and return last element of the cache.
         """
-        if not isinstance(k, (int, long)) or (k < 0) or self._result_cache is not None:
+        if not isinstance(k, (int, long)) or (k < 0) or \
+           self._result_cache is not None:
             return super(NodeQuerySet, self).__getitem__(k)
-
         try:
             # ._fill_cache would be handy, but doesn't work when ._iter is None
             self._result_cache = []
@@ -891,8 +890,22 @@ class NodeQuerySet(QuerySet):
 
     def iterator(self):
         using = self.db
-        for model in self.query.execute(using):
-            yield model
+        if not self.query.can_filter():
+            for model in self.query.execute(using):
+                yield model
+        else:
+            start = 0
+            stop = QUERY_CHUNK_SIZE
+            while True:
+                clone = self.query.clone()
+                clone.set_limits(start, stop)
+                piece = list(clone.execute(using))
+                for model in piece:
+                    yield model
+                if len(piece) < QUERY_CHUNK_SIZE:
+                    break
+                start = stop
+                stop += QUERY_CHUNK_SIZE
 
     @not_implemented
     def aggegrate(self, *args, **kwargs):
