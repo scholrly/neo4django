@@ -5,9 +5,11 @@ import time
 from abc import ABCMeta
 
 from django.utils.translation import ugettext_lazy as _
+from django.db.models import fields
 from django.db.models.fields import NOT_PROVIDED
 from django.core import exceptions, validators
 from django.utils.encoding import force_unicode
+from django.forms import fields as formfields
 
 from neo4jrestclient.client import NotFoundError
 
@@ -18,6 +20,7 @@ from .. import connections
 from neo4django.validators import validate_array, validate_str_array,\
         validate_int_array, ElementValidator
 from neo4django.utils import AttrRouter, write_through
+from neo4django.decorators import borrows_methods
 from neo4django.constants import ERROR_ATTR
 
 from dateutil.tz import tzutc, tzoffset
@@ -25,6 +28,9 @@ from dateutil.tz import tzutc, tzoffset
 MIN_INT = -9223372036854775808
 MAX_INT = 9223372036854775807
 
+FIELD_PASSTHROUGH_METHODS = ('formfield',)
+
+@borrows_methods(fields.Field, FIELD_PASSTHROUGH_METHODS)
 class Property(object):
     """Extend to create properties of specific types."""
     # This class borrows heavily from Django 1.3's django.db.models.field.Field
@@ -38,13 +44,13 @@ class Property(object):
         'blank': _(u'This property cannot be blank.'),
     }
 
-    def __init__(self, indexed=False, indexed_fulltext=False,
-                 indexed_range=False, indexed_by_member=False,
-                 has_own_index=False, unique=False, name=None, editable=True,
-                 null=True, blank=True, validators=[], choices=None,
-                 error_messages=None, required=False, serialize=True,
-                 auto=False, metadata={}, auto_default=NOT_PROVIDED,
-                 default=NOT_PROVIDED, **kwargs):
+    def __init__(self, verbose_name=None, name=None, help_text=None,
+                 indexed=False, indexed_fulltext=False, indexed_range=False,
+                 indexed_by_member=False, has_own_index=False, unique=False,
+                 editable=True, null=True, blank=True, validators=[],
+                 choices=None, error_messages=None, required=False,
+                 serialize=True, auto=False, metadata={},
+                 auto_default=NOT_PROVIDED, default=NOT_PROVIDED, **kwargs):
         if unique and not indexed:
             raise ValueError('A unique property must be indexed.')
         if auto and auto_default == NOT_PROVIDED:
@@ -56,6 +62,10 @@ class Property(object):
         self.indexed_by_member = indexed_by_member
         self.has_own_index = has_own_index
         self.unique = unique
+        # we don't support this uniqueness granularity
+        self.unique_for_date = False
+        self.unique_for_month = False
+        self.unique_for_year = False
         self.editable = editable
         self.blank = blank
         self.null = null
@@ -65,7 +75,9 @@ class Property(object):
         self.meta = metadata
         self._default = default
 
-        self.__name = name
+        self.name = self.__name = name
+        self.verbose_name = verbose_name
+        self.help_text = help_text
 
         self.choices = choices or []
 
@@ -205,6 +217,7 @@ class Property(object):
     def pre_save(self, model_instance, add, attname):
         pass
 
+@borrows_methods(fields.Field, ('save_form_data',))
 class BoundProperty(AttrRouter):
     rel = None
     primary_key = False
@@ -243,6 +256,13 @@ class BoundProperty(AttrRouter):
                      'meta',
                      'MAX',
                      'MIN',
+                     #form-related properties
+                     'editable',
+                     'blank',
+                     'formfield',
+                     'unique_for_date',
+                     'unique_for_month',
+                     'unique_for_year',
                     ], self._property)
 
         self.__class = cls
@@ -413,6 +433,9 @@ class BoundProperty(AttrRouter):
     def _get_val_from_obj(self, obj):
         return self.__get__(obj)
 
+    def value_from_object(self, obj):
+        return self._get_val_from_obj(obj)
+
     def value_to_string(self, obj):
         #TODO not sure if this method plays a bigger role in django
         return str(self.__get__(obj))
@@ -441,7 +464,6 @@ class BoundProperty(AttrRouter):
         return (old, value)
 
 class StringProperty(Property):
-
     #since strings don't have a natural max, this is an arbitrarily high utf-8
     #string. this is necessary for gt string queries, since Lucene range
     #queries (prior 4.0) don't support open-ended ranges
@@ -453,6 +475,8 @@ class StringProperty(Property):
             kwargs.setdefault('indexed_fulltext', True)
             kwargs.setdefault('indexed_range', True)
         super(StringProperty, self).__init__(**kwargs)
+        self.max_length = max_length
+        self.min_length = min_length
         if max_length is not None:
             self.validators.append(validators.MaxLengthValidator(max_length))
         if min_length is not None:
@@ -461,9 +485,17 @@ class StringProperty(Property):
     def to_neo(cls, value):
         return unicode(value)
 
+    def formfield(self, **kwargs):
+        defaults = dict(kwargs)
+        if self.max_length is not None:
+            defaults['max_length'] = self.max_length
+        return super(StringProperty, self).formfield(**defaults)
+
 class EmailProperty(StringProperty):
     #TODO docstring
     default_validators = [validators.validate_email]
+
+    formfield = formfields.EmailField
 
 class URLProperty(StringProperty):
     #TODO docstring
@@ -471,6 +503,11 @@ class URLProperty(StringProperty):
         kwargs['max_length'] = kwargs.get('max_length', 2083)
         super(URLProperty, self).__init__(**kwargs)
         self.validators.append(validators.URLValidator(verify_exists=verify_exists))
+
+    def formfield(self, **kwargs):
+        defaults = {'form_class':formfields.URLField}
+        defaults.update(kwargs)
+        return super(URLProperty, self).formfield(**defaults)
 
 class IntegerProperty(Property):
     """
@@ -510,7 +547,14 @@ class IntegerProperty(Property):
         """
         return """{ i -> (i < 0?'-':'0') + String.format('%019d',i)} """
 
+    def formfield(self, **kwargs):
+        defaults = {'form_class':formfields.IntegerField}
+        defaults.update(kwargs)
+        return super(IntegerProperty, self).formfield(**defaults)
+
 class AutoProperty(IntegerProperty):
+    editable = False
+
     def __init__(self, *args, **kwargs):
         kwargs['auto'] = True
         kwargs['auto_default'] = 1
@@ -530,6 +574,9 @@ class AutoProperty(IntegerProperty):
         increment.
         """
         return """{ i -> i + 1}"""
+
+    def formfield(self, **kwargs):
+        return None
 
 class DateProperty(Property):
     __format = '%Y-%m-%d'
