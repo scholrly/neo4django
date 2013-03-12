@@ -59,3 +59,14 @@ def test_modelform():
     as_p = person_form.as_p()
     assert 'id_age' in as_p
     assert 'id_name' in as_p
+
+    rick = Person.objects.create(name='Rick', age=20)
+    new_rick_data = {'name':'Rick','age':21}
+
+    bound_person_form = PersonForm(new_rick_data, instance=rick)
+    assert bound_person_form.is_valid()
+
+    bound_person_form.save()
+
+    new_rick = Person.objects.get(id__exact=rick.id)
+    eq_(new_rick.age, new_rick_data['age'])
