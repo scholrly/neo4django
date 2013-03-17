@@ -359,7 +359,7 @@ def test_relationship_filter():
     eq_(len(choices.filter(choice__contains='C')), 3)
     eq_(len(choices.filter(choice__contains='c')), 0)
     eq_(len(choices.filter(votes__gte=3)), 3)
-    eq_(len(choices.filter(votes__gte=3, choice='Matt')), 4)
+    eq_(len(choices.filter(votes__gte=3, choice='Matt')), 0)
     eq_(len(choices.filter(votes__gte=3).filter(choice='Matt')), 0)
     eq_(len(p.choices.filter(votes__gte=3).filter(choice='Matt')), 0)
 
@@ -489,8 +489,6 @@ def test_rel_slicing():
         eq_(toc.contains.all()[i].value, str(i))
 
     eq_([n.value for n in toc.contains.all()[0:2]], ['0','1'])
-    eq_([n.value for n in toc.contains.all()[1:-1]], ['1','2', '3'])
-    eq_(toc.contains.all()[-1].value, '4')
 
 @with_setup(None, teardown)
 def test_rel_cache():
