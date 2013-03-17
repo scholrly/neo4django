@@ -3,6 +3,9 @@ from django.db.models.fields.related import add_lazy_relation
 from django.db.models.query_utils import DeferredAttribute
 from django.db.models.query import EmptyQuerySet
 from django.db.models.signals import post_delete
+from django.db.models import fields
+from django.forms import ModelChoiceField, ModelMultipleChoiceField
+from django.utils.text import capfirst
 from django.dispatch import receiver
 from django.core.exceptions import FieldError
 
@@ -18,6 +21,7 @@ from neo4django.db.models.query import conditions_from_kws, matches_condition
 from neo4jrestclient.constants import RELATIONSHIPS_ALL, RELATIONSHIPS_IN, RELATIONSHIPS_OUT
 
 from collections import defaultdict
+from functools import partial
 
 class RelationshipBase(type):
     """
@@ -92,7 +96,9 @@ class Relationship(object):
 
     def __init__(self, target, rel_type=None, direction=None, optional=True,
                  single=False, related_single=False, related_name=None,
-                 preserve_ordering=False, metadata={}, rel_metadata={},
+                 editable=True, verbose_name=None, help_text=None, 
+                 preserve_ordering=False, metadata={},
+                 rel_metadata={},
                 ):
         if direction is Outgoing:
             direction = RELATIONSHIPS_OUT
@@ -117,10 +123,15 @@ class Relationship(object):
         self.__ordered = preserve_ordering
         self.__meta = metadata
         self.__related_meta = rel_metadata
+        self.editable = editable
+        self.optional = optional
+        self.verbose_name = verbose_name
+        self.help_text = help_text
 
     target_model = property(lambda self: self.__target)
     ordered = property(lambda self: self.__ordered)
     meta = property(lambda self: self.__meta)
+    single = property(lambda self: self.__single)
 
     __is_reversed = False
 
@@ -199,6 +210,23 @@ class Relationship(object):
         if not self.__is_reversed:
             bound._setup_reversed(target)
 
+    def formfield(self, **kwargs):
+        defaults = {
+                    'required': not self.optional,
+                    'label': capfirst(self.verbose_name),
+                    'help_text': self.help_text,
+                    'queryset':self.target_model.objects
+                   }
+        if self.single:
+            defaults['form_class'] = ModelChoiceField
+        else:
+            defaults['form_class'] = ModelMultipleChoiceField
+        defaults.update(kwargs)      
+
+        form_class = defaults['form_class']
+        del defaults['form_class']
+        return form_class(**defaults)
+
     ###################
     # SPECIAL METHODS #
     ###################
@@ -230,6 +258,9 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
                      'target_model',
                      'ordered',
                      'meta',
+                     # form handling
+                     'editable',
+                     'formfield'
                     ],self.__rel)
 
     def _setup_reversed(self, target):
@@ -248,7 +279,6 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
     @property
     def relationship(self):
         return self.__rel
-
 
     def get_default(self):
         return None
@@ -417,6 +447,9 @@ class SingleNode(BoundRelationship):
         state[self.name] = False, result
         return result
 
+    def value_from_object(self, obj):
+        return self.__get__(obj)
+
     @transactional
     def _load_related(self, node):
         relationships = self._load_relationships(node)
@@ -495,6 +528,9 @@ class MultipleNodes(BoundRelationship):
         if state is None:
             states[self.name] = state = RelationshipInstance(self, obj)
         return state
+
+    def value_from_object(self, obj):
+        return self.__get__(obj).all()
 
     def _set_relationship(self, obj, state, value):
         if value is not None:
@@ -727,77 +763,135 @@ class RelationshipInstance(models.Manager):
     def get_empty_query_set(self):
         return EmptyQuerySet()
 
-class RelationshipQuerySet(object):
-    def __init__(self, inst, rel, obj):
-        self.__inst = inst
-        self.__rel = rel
-        self.__obj = obj
+from .query import NodeQuerySet, Query, cypher_rel_str
 
-    def filter(self, **kwargs):
-        "Returns RelationshipQuerySet with filtered items"
-        inst = self.__inst
-        added = list(inst._new)
+class RelationshipQuerySet(NodeQuerySet):
+    def __init__(self, rel_instance, rel, model_instance, model=None,
+                 query=None, using=DEFAULT_DB_ALIAS):
+        # TODO will cause issues with #138 - multi-typed relationships
+        target_model = model or rel.relationship.target_model
+        super(RelationshipQuerySet, self).__init__(
+            model=target_model, query=query or Query(target_model),
+    
+            using=using)
+        self._rel_instance = rel_instance
+        self._rel = rel
+        self._model_instance = model_instance
 
-        new_inst = self.__inst.clone()
-        new_inst.clear()
-        if added:
-            iterable = added
-        else:
-            # TODO: is wrapping in getattr necessary?
-            node = getattr(self.__obj, 'node', None)
-            iterable = [i for r, i in inst._neo4j_relationships_and_models(node)] if node else []
+        order_clause = """
+            ORDER BY r.`%s`
+            WITH n
+        """ % ORDER_ATTR if self._rel_instance.ordered else ''
 
-        for item in iterable:
-            if any(matches_condition(item.node, c) for c in conditions_from_kws(self.__rel.relationship.target_model, kwargs)):
-                new_inst.add(item)
-        return RelationshipQuerySet(new_inst, self.__rel, self.__obj)
+        rel_str = cypher_rel_str(self._rel.rel_type, self._rel.direction,
+                                 identifier='r')
 
-    def __saved_instances(self, node):
-        for rel, item in self.__inst._neo4j_relationships_and_models(node):
-            if self.__keep_relationship(rel) and self.__keep_instance(item):
-                yield item
+        self.query.set_start_clause("""
+            START m=node({start_param})
+            MATCH (m)%s(n)
+            WITH n,r
+            %s
+        """ % (rel_str,
+               order_clause), lambda : {'start_param':self._model_instance.id})
 
-    def __iter__(self):
-        removed = list(self.__inst._old)
-        added = list(self.__inst._new)
-        try:
-            node = self.__obj.node
-        except:
-            pass
-        else:
-            for item in self.__saved_instances(node):
-                yield item
+    def iterator(self):
+        removed = list(self._rel_instance._old)
+        added = list(self._rel_instance._new)
+        if self._model_instance.id is not None:
+            for m in super(RelationshipQuerySet, self).iterator():
+                yield m
         for item in added:
-            if self.__keep_instance(item):
-                yield item
+            yield item
 
-    def __len__(self):
-        return sum(1 for _ in self)
-
-    # Taken from Django's QuerySet repr
-    def __repr__(self):
-        REPR_OUTPUT_SIZE = 4
-        data = list(self[:REPR_OUTPUT_SIZE + 1])
-        if len(data) > REPR_OUTPUT_SIZE:
-            data[-1] = "...(remaining elements truncated)..."
-        return repr(data)
-
-    def __getitem__(self, key):
-        return list(self)[key]
-
-    def __keep_instance(self, obj):
-        return True # TODO: filtering
-
-    def __keep_relationship(self, rel):
-        return True # TODO: filtering
-
-    @not_implemented
-    def get(self, **lookup):
-        pass
-
-    def delete(self):
-        for obj in self:
-            obj.delete()
+    def _clone(self, klass=None, setup=False, **kwargs):
+        klass = klass or self.__class__
+        klass = partial(klass, self._rel_instance, self._rel,
+                        self._model_instance)
+        return super(RelationshipQuerySet, self)._clone(klass=klass,
+                                                        setup=setup, **kwargs)
 
     def count(self):
-        return len(self)
+        removed = list(self._rel_instance._old)
+        added = list(self._rel_instance._new)
+        diff_len = max(len(added) - len(removed), 0)
+        if self._model_instance.id is not None:
+            return super(RelationshipQuerySet, self).count() + diff_len
+        else:
+            return diff_len
+
+
+
+#class RelationshipQuerySet(object):
+#    def __init__(self, inst, rel, obj):
+#        self.__inst = inst
+#        self.__rel = rel
+#        self.__obj = obj
+#
+#    def filter(self, **kwargs):
+#        "Returns RelationshipQuerySet with filtered items"
+#        inst = self.__inst
+#        added = list(inst._new)
+#
+#        new_inst = self.__inst.clone()
+#        new_inst.clear()
+#        if added:
+#            iterable = added
+#        else:
+#            # TODO: is wrapping in getattr necessary?
+#            node = getattr(self.__obj, 'node', None)
+#            iterable = [i for r, i in inst._neo4j_relationships_and_models(node)] if node else []
+#
+#        for item in iterable:
+#            if any(matches_condition(item.node, c) for c in conditions_from_kws(self.__rel.relationship.target_model, kwargs)):
+#                new_inst.add(item)
+#        return RelationshipQuerySet(new_inst, self.__rel, self.__obj)
+#
+#    def __saved_instances(self, node):
+#        for rel, item in self.__inst._neo4j_relationships_and_models(node):
+#            if self.__keep_relationship(rel) and self.__keep_instance(item):
+#                yield item
+#
+#    def __iter__(self):
+#        removed = list(self.__inst._old)
+#        added = list(self.__inst._new)
+#        try:
+#            node = self.__obj.node
+#        except:
+#            pass
+#        else:
+#            for item in self.__saved_instances(node):
+#                yield item
+#        for item in added:
+#            if self.__keep_instance(item):
+#                yield item
+#
+#    def __len__(self):
+#        return sum(1 for _ in self)
+#
+#    # Taken from Django's QuerySet repr
+#    def __repr__(self):
+#        REPR_OUTPUT_SIZE = 4
+#        data = list(self[:REPR_OUTPUT_SIZE + 1])
+#        if len(data) > REPR_OUTPUT_SIZE:
+#            data[-1] = "...(remaining elements truncated)..."
+#        return repr(data)
+#
+#    def __getitem__(self, key):
+#        return list(self)[key]
+#
+#    def __keep_instance(self, obj):
+#        return True # TODO: filtering
+#
+#    def __keep_relationship(self, rel):
+#        return True # TODO: filtering
+#
+#    @not_implemented
+#    def get(self, **lookup):
+#        pass
+#
+#    def delete(self):
+#        for obj in self:
+#            obj.delete()
+#
+#    def count(self):
+#        return len(self)

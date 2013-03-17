@@ -297,10 +297,11 @@ class With(object):
         }
         return self.cypher_template % params
 
-def cypher_rel_str(rel_type, rel_dir):
+def cypher_rel_str(rel_type, rel_dir,identifier=None):
     dir_strings = ('<-%s-','-%s->')
     out = neo_constants.RELATIONSHIPS_OUT
-    return dir_strings[rel_dir==out]%('[:`%s`]' % rel_type)
+    id_str = '`%s`' % identifier if identifier is not None else ''
+    return dir_strings[rel_dir==out]%('[%s:`%s`]' % (id_str, rel_type))
 
 def cypher_from_fields(nodetype, fields):
     """
@@ -563,6 +564,8 @@ class Query(object):
         self.aggregates = {}
         self.distinct_fields = []
 
+        self.start_clause = None
+        self.start_clause_param_func = lambda : {}
         self.with_clauses = []
 
         self.clear_limits()
@@ -598,6 +601,22 @@ class Query(object):
     def add_with(self, field_dict, **kwargs):
         self.with_clauses.append(With(field_dict, **kwargs))
 
+    def set_start_clause(self, clause, param_dict_or_func=None):
+        # TODO instead of abusing the idea of a "start" (which in practice
+        # we sometimes fill with MATCH clauses, etc), there should be an
+        # explicit way to connect queries together
+        self.start_clause = clause
+        if param_dict_or_func is None:
+            param_dict_or_func = {}
+        self.start_clause_param_func = param_dict_or_func if \
+                callable(param_dict_or_func) else lambda:param_dict_or_func
+
+    def get_start_clause_and_param_dict(self):
+        # TODO if a clause has been set, return that
+        # otherwise, compute it from conditions
+        # (requires a refactors from execute())
+        return self.start_clause, self.start_clause_param_func()
+
     def model_from_node(self, node):
         return self.nodetype._neo4j_instance(node)
 
@@ -609,6 +628,8 @@ class Query(object):
         clone.aggregates = self.aggregates
         clone.high_mark = self.high_mark
         clone.low_mark = self.low_mark
+        clone.start_clause = self.start_clause
+        clone.start_clause_param_func = self.start_clause_param_func
         clone.with_clauses = self.with_clauses
         return clone
 
@@ -684,6 +705,8 @@ class Query(object):
         
         # use filtered conditions, ids, OR a type tree traversal as a cypher
         # START, then unfiltered as a WHERE
+        start_clause, cypher_params = self.get_start_clause_and_param_dict()
+
         where_clause = cypher_where_from_conditions('n', itertools.chain(
             unindexed + indexed))
         
@@ -717,18 +740,22 @@ class Query(object):
                     id_set = set([exact_id])
 
             if len(id_set) >= 1:
-                cypher_query = ("START n=node({startIds}) %s %s %s;" %
-                                (where_clause, with_clauses, return_clause))
+                start_clause = start_clause or "START n=node({start_param})"
+                cypher_query = ("%s %s %s %s;" %
+                                (start_clause, where_clause, with_clauses,
+                                 return_clause))
                 groovy_script = """
                     results = []
-                    existingStartIds = Neo4Django.getVerticesByIds(startIds).collect{it.id}
-                    table = Neo4Django.cypher(cypherQuery, 
-                                              ['startIds':existingStartIds])
+                    existingStartIds = Neo4Django.getVerticesByIds(start).\
+                            collect{it.id}
+                    cypherParams['start_param'] = existingStartIds
+                    table = Neo4Django.cypher(cypherQuery,cypherParams)
                     results = table.columnAs(returnColumn)
                     """
                 params = {
-                    'startIds':list(id_set),
+                    'start':list(id_set),
                     'cypherQuery':cypher_query,
+                    'cypherParams':cypher_params,
                     #TODO HACK HACK need a generalization
                     'returnColumn':self.return_fields.keys()[0],
                 }
@@ -736,38 +763,43 @@ class Query(object):
                 # XXX None is returned, meaning an empty result set
                 pass
         elif len(index_qs) > 0:
-            cypher_query = ("START n=node({startIds}) %s %s %s;" %
-                            (where_clause, with_clauses, return_clause))
+            start_clause = start_clause or "START n=node({start_param})"
+            cypher_query = ("%s %s %s %s;" % (start_clause, where_clause,
+                                              with_clauses, return_clause))
             groovy_script = """
                 results = []
                 startIds = Neo4Django.queryNodeIndices(startQueries)\
                             .collect{it.id}
-                table = Neo4Django.cypher(cypherQuery, ['startIds':startIds])
+                cypherParams['start_param'] = startIds
+                table = Neo4Django.cypher(cypherQuery, cypherParams)
                 results = table.columnAs(returnColumn)
                 """
             params = {
                 'startQueries':index_qs,
                 'cypherQuery':cypher_query,
+                'cypherParams':cypher_params,
                 #TODO HACK HACK need a generalization
                 'returnColumn':self.return_fields.keys()[0],
             }
         else:
             #TODO move this to being index-based
-            cypher_query = (
+            if start_clause is None:
+                start_clause = """
+                    START typeNode=node({typeNodeId})
+                    MATCH n<-[:`<<INSTANCE>>`]-typeNode
+                    WITH n
                 """
-                START typeNode=node({typeNodeId})
-                MATCH n<-[:`<<INSTANCE>>`]-typeNode
-                WITH n
-                %s %s %s;
-                """ % (where_clause, with_clauses, return_clause))
+                cypher_params['typeNodeId'] = self.nodetype._type_node(using).id
+            cypher_query = ( "%s %s %s %s;" % (start_clause, where_clause,
+                                                   with_clauses, return_clause))
             groovy_script = """
                 results = []
-                table = Neo4Django.cypher(cypherQuery, ['typeNodeId':typeNodeId])
+                table = Neo4Django.cypher(cypherQuery, cypherParams)
                 results = table.columnAs(returnColumn)
                 """
             params = {
-                'typeNodeId':self.nodetype._type_node(using).id,
                 'cypherQuery':cypher_query,
+                'cypherParams':cypher_params,
                 #TODO HACK HACK need a generalization
                 'returnColumn':self.return_fields.keys()[0],
             }
@@ -887,6 +919,19 @@ class NodeQuerySet(QuerySet):
 
         except self.model.DoesNotExist, e:
             raise IndexError(e.args)
+
+    def __contains__(self, value):
+        if self._result_cache is None:
+            while True:
+                i = 0
+                try:
+                    if self[i] == value:
+                        return True
+                    i+=1
+                except IndexError:
+                    return False
+            pass
+        return super(NodeQuerySet, self).__contains__(value)
 
     def iterator(self):
         using = self.db
