@@ -14,9 +14,9 @@ from neo4django.db import DEFAULT_DB_ALIAS
 from neo4django.decorators import not_implemented, transactional
 from neo4django.utils import buffer_iterator, AssignableList, AttrRouter
 from neo4django.constants import INTERNAL_ATTR, ORDER_ATTR
-from base import NodeModel
-from neo4django.db.models.query import conditions_from_kws, matches_condition
-
+from .base import NodeModel
+from .query import (NodeQuerySet, Query, cypher_rel_str, conditions_from_kws, 
+                    matches_condition)
 
 from neo4jrestclient.constants import RELATIONSHIPS_ALL, RELATIONSHIPS_IN, RELATIONSHIPS_OUT
 
@@ -763,8 +763,6 @@ class RelationshipInstance(models.Manager):
     def get_empty_query_set(self):
         return EmptyQuerySet()
 
-from .query import NodeQuerySet, Query, cypher_rel_str
-
 class RelationshipQuerySet(NodeQuerySet):
     def __init__(self, rel_instance, rel, model_instance, model=None,
                  query=None, using=DEFAULT_DB_ALIAS):
@@ -819,79 +817,3 @@ class RelationshipQuerySet(NodeQuerySet):
         else:
             return diff_len
 
-
-
-#class RelationshipQuerySet(object):
-#    def __init__(self, inst, rel, obj):
-#        self.__inst = inst
-#        self.__rel = rel
-#        self.__obj = obj
-#
-#    def filter(self, **kwargs):
-#        "Returns RelationshipQuerySet with filtered items"
-#        inst = self.__inst
-#        added = list(inst._new)
-#
-#        new_inst = self.__inst.clone()
-#        new_inst.clear()
-#        if added:
-#            iterable = added
-#        else:
-#            # TODO: is wrapping in getattr necessary?
-#            node = getattr(self.__obj, 'node', None)
-#            iterable = [i for r, i in inst._neo4j_relationships_and_models(node)] if node else []
-#
-#        for item in iterable:
-#            if any(matches_condition(item.node, c) for c in conditions_from_kws(self.__rel.relationship.target_model, kwargs)):
-#                new_inst.add(item)
-#        return RelationshipQuerySet(new_inst, self.__rel, self.__obj)
-#
-#    def __saved_instances(self, node):
-#        for rel, item in self.__inst._neo4j_relationships_and_models(node):
-#            if self.__keep_relationship(rel) and self.__keep_instance(item):
-#                yield item
-#
-#    def __iter__(self):
-#        removed = list(self.__inst._old)
-#        added = list(self.__inst._new)
-#        try:
-#            node = self.__obj.node
-#        except:
-#            pass
-#        else:
-#            for item in self.__saved_instances(node):
-#                yield item
-#        for item in added:
-#            if self.__keep_instance(item):
-#                yield item
-#
-#    def __len__(self):
-#        return sum(1 for _ in self)
-#
-#    # Taken from Django's QuerySet repr
-#    def __repr__(self):
-#        REPR_OUTPUT_SIZE = 4
-#        data = list(self[:REPR_OUTPUT_SIZE + 1])
-#        if len(data) > REPR_OUTPUT_SIZE:
-#            data[-1] = "...(remaining elements truncated)..."
-#        return repr(data)
-#
-#    def __getitem__(self, key):
-#        return list(self)[key]
-#
-#    def __keep_instance(self, obj):
-#        return True # TODO: filtering
-#
-#    def __keep_relationship(self, rel):
-#        return True # TODO: filtering
-#
-#    @not_implemented
-#    def get(self, **lookup):
-#        pass
-#
-#    def delete(self):
-#        for obj in self:
-#            obj.delete()
-#
-#    def count(self):
-#        return len(self)
