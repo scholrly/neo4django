@@ -297,6 +297,52 @@ class With(object):
         }
         return self.cypher_template % params
 
+class Clause(object):
+    def as_cypher(self):
+        return self.cypher_template % self.get_params()
+
+class Return(Clause):
+    cypher_template = 'RETURN %(fields)s %(order_by)s %(skip)s %(limit)s'
+    def __init__(self, field_dict, limit=None, skip=None, order_by_terms=None):
+        self.field_dict = field_dict
+        self.limit = limit
+        self.skip = skip
+        self.order_by_terms = order_by_terms
+
+    def get_params(self):
+        return {
+            'fields':','.join('%s AS %s' % (field, alias)
+                              for alias, field in self.field_dict.iteritems()),
+            'limit': 'LIMIT %s' % str(self.limit) \
+                    if self.limit is not None else '',
+            'skip': 'SKIP %d' % self.skip if self.skip else '',
+            'order_by':'ORDER BY %s' % ','.join(self.order_by_terms) \
+                       if self.order_by_terms else ''
+        }
+
+class Delete(Clause):
+    cypher_template = 'DELETE %(fields)s'
+    def __init__(self, fields):
+        self.fields = fields
+
+    def get_params(self):
+        return {
+            'fields':','.join(self.fields)
+        }
+
+class DeleteNode(Delete):
+    cypher_template = 'WITH %(fields)s MATCH %(field_matches)s '\
+                      'DELETE %(fields_and_rels)s'
+    def get_params(self):
+        field_rels = ['%s_r' % f for f in self.fields]
+        params = {
+            'fields':','.join(self.fields),
+            'fields_and_rels':','.join(self.fields + field_rels),
+            'field_matches':','.join('(%s)-[%s]-()' % (f, r)
+                                     for f, r in zip(self.fields, field_rels))
+        }
+        return params
+
 def cypher_rel_str(rel_type, rel_dir,identifier=None):
     dir_strings = ('<-%s-','-%s->')
     out = neo_constants.RELATIONSHIPS_OUT
@@ -567,6 +613,7 @@ class Query(object):
         self.start_clause = None
         self.start_clause_param_func = lambda : {}
         self.with_clauses = []
+        self.end_clause = None
 
         self.clear_limits()
         self.clear_ordering()
@@ -631,6 +678,7 @@ class Query(object):
         clone.start_clause = self.start_clause
         clone.start_clause_param_func = self.start_clause_param_func
         clone.with_clauses = self.with_clauses
+        clone.end_clause = self.end_clause
         return clone
 
     def get_aggregation(self, using):
@@ -710,21 +758,21 @@ class Query(object):
         where_clause = cypher_where_from_conditions('n', itertools.chain(
             unindexed + indexed))
         
-        with_clauses = ' '.join(clause.as_cypher()
-                                for clause in self.with_clauses)
+        with_clauses = self.with_clauses
 
-        order_by_clause = cypher_order_by_from_fields('n', self.order_by) \
-                if self.order_by else ''
-        limit_clause = 'SKIP %d' % self.low_mark + \
-                (' LIMIT %d' % (self.high_mark - self.low_mark)
-                 if self.high_mark is not None else '')
-        return_exp = ','.join('%s AS %s' % (val, alias) for alias, val
-                              in self.return_fields.iteritems())
-        return_clause = "RETURN %s %s %s" % (return_exp, order_by_clause,
-                                             limit_clause)
+        order_by = [cypher_order_by_term('n', field) for field in self.order_by] \
+                or None
+        limit = self.high_mark - self.low_mark if self.high_mark is not None \
+                else None
+        return_clause = Return(self.return_fields, skip=self.low_mark,
+                               limit=limit, order_by_terms=order_by)\
+                if self.end_clause is None else self.end_clause
 
         groovy_script = None
-        params = None
+        params = {
+            #TODO HACK need a generalization
+            'returnColumn':self.return_fields.keys()[0]
+        }
 
         # TODO none of these queries but the last properly take type into
         # account.
@@ -741,9 +789,6 @@ class Query(object):
 
             if len(id_set) >= 1:
                 start_clause = start_clause or "START n=node({start_param})"
-                cypher_query = ("%s %s %s %s;" %
-                                (start_clause, where_clause, with_clauses,
-                                 return_clause))
                 groovy_script = """
                     results = []
                     existingStartIds = Neo4Django.getVerticesByIds(start).\
@@ -752,20 +797,12 @@ class Query(object):
                     table = Neo4Django.cypher(cypherQuery,cypherParams)
                     results = table.columnAs(returnColumn)
                     """
-                params = {
-                    'start':list(id_set),
-                    'cypherQuery':cypher_query,
-                    'cypherParams':cypher_params,
-                    #TODO HACK HACK need a generalization
-                    'returnColumn':self.return_fields.keys()[0],
-                }
+                params['start'] = list(id_set)
             else:
                 # XXX None is returned, meaning an empty result set
-                pass
+                return (None, None)
         elif len(index_qs) > 0:
             start_clause = start_clause or "START n=node({start_param})"
-            cypher_query = ("%s %s %s %s;" % (start_clause, where_clause,
-                                              with_clauses, return_clause))
             groovy_script = """
                 results = []
                 startIds = Neo4Django.queryNodeIndices(startQueries)\
@@ -774,13 +811,7 @@ class Query(object):
                 table = Neo4Django.cypher(cypherQuery, cypherParams)
                 results = table.columnAs(returnColumn)
                 """
-            params = {
-                'startQueries':index_qs,
-                'cypherQuery':cypher_query,
-                'cypherParams':cypher_params,
-                #TODO HACK HACK need a generalization
-                'returnColumn':self.return_fields.keys()[0],
-            }
+            params['startQueries'] = index_qs
         else:
             #TODO move this to being index-based
             if start_clause is None:
@@ -790,19 +821,19 @@ class Query(object):
                     WITH n
                 """
                 cypher_params['typeNodeId'] = self.nodetype._type_node(using).id
-            cypher_query = ( "%s %s %s %s;" % (start_clause, where_clause,
-                                                   with_clauses, return_clause))
             groovy_script = """
                 results = []
                 table = Neo4Django.cypher(cypherQuery, cypherParams)
                 results = table.columnAs(returnColumn)
                 """
-            params = {
-                'cypherQuery':cypher_query,
-                'cypherParams':cypher_params,
-                #TODO HACK HACK need a generalization
-                'returnColumn':self.return_fields.keys()[0],
-            }
+
+        str_clauses = [start_clause, where_clause] + \
+                [c.as_cypher() for c in with_clauses] + \
+                [return_clause.as_cypher()]
+
+        params['cypherQuery'] = ' '.join(str_clauses) + ';'
+        params['cypherParams'] = cypher_params
+
         return groovy_script, params
 
     #TODO optimize query by using type info, instead of just returning the
@@ -833,7 +864,11 @@ class Query(object):
         for r in model_results:
             yield r
 
-        #TODO type stuff
+    def delete(self, using):
+        clone = self.clone()
+        clone.end_clause = DeleteNode(['n'])
+        for m in clone.execute(using):
+            pass
 
     def get_count(self, using):
         from django.db.models import Count
@@ -981,14 +1016,7 @@ class NodeQuerySet(QuerySet):
     
     @alters_data
     def delete(self):
-        #TODO naive delete, should be seriously optimized- consider using
-        # the batch api or some clever traversal deletion type stuff
-        #TODO When new batch delete is put in place, will need to call pre_
-        # and post_delete signals here; now they are covered in model delete()
-        # XXX disregard that - the django docs seem to disagree.
-        clone = self._clone()
-        for obj in clone:
-            obj.delete()
+        self.query.delete(self.db)
 
     @not_implemented
     @alters_data
