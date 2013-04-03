@@ -43,6 +43,8 @@ DATABASES = {
 
 DATABASE_ROUTERS = ['neo4django.utils.Neo4djangoIntegrationRouter']
 
+USE_TZ = True
+
 INSTALLED_APPS = (
     'neo4django.tests',   
 )
