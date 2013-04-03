@@ -185,7 +185,7 @@ class Neo4Django {
 
     static updateNodeProperties(node, propMap) {
         def originalVal, closureString, value, lastAutoProp, autoDefault, index
-        def oldNodes, valuesToIndex, rawIndex, indexName, error = null, typeNode
+        def oldNodeIds, valuesToIndex, rawIndex, indexName, error = null, typeNode
         def types, g = binding.g
         propMap.each{prop, dict ->
             if (dict.get('auto_increment')){
@@ -225,9 +225,9 @@ class Neo4Django {
                 if (dict.get('unique')){
                     //TODO take care of unique vs array membership indexing
                     //TODO eventually the prop name and index key should be decoupled
-                    oldNodes = index.get(prop, valuesToIndex[0])
-                    if (oldNodes.size() > 0 && !oldNodes*.id.contains(node.id)){
-                        error = getNeo4djangoErrorMap(UNIQUENESS_ERROR_MESSAGE, [property:prop])
+                    oldNodeIds = index.get(prop, valuesToIndex[0])*.id
+                    if (oldNodeIds.size() > 0 && !oldNodeIds.contains(node.id)){
+                        error = getNeo4djangoErrorMap(UNIQUENESS_ERROR_MESSAGE, [property:prop, 'old':oldNodeIds])
                         return error
                     }
                 }

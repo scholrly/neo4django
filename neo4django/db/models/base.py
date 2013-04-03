@@ -337,7 +337,7 @@ class NodeModel(NeoModel):
             cls = self.__class__
         signals.pre_save.send(sender=cls, instance=self, raw=raw, using=using)
 
-        is_new = self.__node is None
+        is_new = self.id is None
         self._save_neo4j_node(using)
         self._save_properties(self, self.__node, is_new)
         self._save_neo4j_relationships(self, self.__node)
@@ -349,7 +349,7 @@ class NodeModel(NeoModel):
     @transactional
     def _save_neo4j_node(self, using):
         #if the node hasn't been created, do that
-        if self.__node is None:
+        if self.id is None:
             #TODO #244, batch optimization
             #get all the type props, in case a new type node needs to be created
             type_hier_props = [{'app_label':t._meta.app_label,
