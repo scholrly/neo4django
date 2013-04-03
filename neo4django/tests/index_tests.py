@@ -24,6 +24,9 @@ def test_unique():
     m = UniqueName(name='Matt')
     m.save()
 
+    # confirms #150 - nodes with unique properties can't be saved
+    m.save()
+
     c = UniqueName(name='Corbin')
     c.save()
 
