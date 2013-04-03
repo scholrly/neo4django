@@ -34,8 +34,8 @@ class User(NodeModel):
     is_active = BooleanProperty(default=False)
     is_superuser = BooleanProperty(default=False)
 
-    last_login = DateTimeTZProperty(default=timezone.now())
-    date_joined = DateTimeTZProperty(default=timezone.now())
+    last_login = DateTimeProperty(default=timezone.now())
+    date_joined = DateTimeProperty(default=timezone.now())
 
     objects = UserManager()
 

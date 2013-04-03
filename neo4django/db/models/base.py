@@ -185,7 +185,7 @@ class NodeModel(NeoModel):
         for key in all_properties:
             val = None
             if key in neo_node.properties:
-                val = all_properties[key].from_neo(neo_node.properties[key])
+                val = all_properties[key].to_python(neo_node.properties[key])
             else:
                 val = all_properties[key].get_default()
             setattr(instance, key, val)

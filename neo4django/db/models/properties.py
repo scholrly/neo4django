@@ -9,7 +9,9 @@ from django.db.models import fields
 from django.db.models.fields import NOT_PROVIDED
 from django.core import exceptions, validators
 from django.utils.encoding import force_unicode
+from django.utils import timezone, datetime_safe
 from django.forms import fields as formfields
+from django.conf import settings
 
 from neo4jrestclient.client import NotFoundError
 
@@ -22,8 +24,6 @@ from neo4django.validators import validate_array, validate_str_array,\
 from neo4django.utils import AttrRouter, write_through
 from neo4django.decorators import borrows_methods
 from neo4django.constants import ERROR_ATTR
-
-from dateutil.tz import tzutc, tzoffset
 
 MIN_INT = -9223372036854775808
 MAX_INT = 9223372036854775807
@@ -76,6 +76,7 @@ class Property(object):
         self._default = default
 
         self.name = self.__name = name
+        self.attname = self.name
         self.verbose_name = verbose_name
         self.help_text = help_text
 
@@ -88,10 +89,6 @@ class Property(object):
             messages.update(getattr(c, 'default_error_messages', {}))
         messages.update(error_messages or {})
         self.error_messages = messages
-
-    @property
-    def attname(self):
-        return self.__name
 
     @property
     def default(self):
@@ -268,6 +265,12 @@ class BoundProperty(AttrRouter):
         self.__class = cls
         self.__propname = propname
         self.__attname = attname
+
+        # TODO - i don't know why, but this is the final straw. properties
+        # and boundproperties need to be merged, the coupling is ridiculous
+        self._property.name = propname
+        self._property.attname = attname
+
         properties = self._properties_for(cls)
         properties[self.name] = self # XXX: weakref
 
@@ -335,13 +338,14 @@ class BoundProperty(AttrRouter):
             prop = properties.get(k, None)
             if prop:
                 #XXX duplicates __get_value()...
-                values[k] = prop.from_neo(v)
+                values[k] = prop.to_python(v)
         #XXX this relies on neo4jrestclient private implementation details
         if clear:
             instance.node._dic['data'].clear()
         instance.node._dic['data'].update(new_val_dict)
 
-    NodeModel._update_values_from_dict = staticmethod(_update_values_from_dict) #TODO this needs to be revised
+    #TODO this needs to be revised
+    NodeModel._update_values_from_dict = staticmethod(_update_values_from_dict) 
     del _update_values_from_dict
 
     def _save_(instance, node, node_is_new):
@@ -367,19 +371,20 @@ class BoundProperty(AttrRouter):
                 value = values[key]
                 prop.clean(value, instance)
                 value = prop.pre_save(node, node_is_new, prop.name) or value
-                if not value in validators.EMPTY_VALUES or getattr(prop._property, "use_string", False):
+                if (not value in validators.EMPTY_VALUES or
+                    getattr(prop._property, "use_string", False)):
                     #should already have errored if self.null==False
                     value = prop.to_neo(value)
-                values[key] = value
                 prop_dict['value'] = value
                 if prop.indexed:
                     indexed_values = prop_dict['values_to_index'] = []
                     prop_dict['unique'] = bool(prop.unique)
                     if value is not None:
-                        indexed_values.append(prop.to_neo_index(value))
+                        indexed_values.append(prop.to_neo_index(values[key]))
                         if prop.indexed_by_member:
                             for m in value:
                                 indexed_values.append(prop.member_to_neo_index(m))
+                values[key] = value
         script = '''
         node=g.v(nodeId);
         results = Neo4Django.updateNodeProperties(node, propMap);
@@ -388,16 +393,21 @@ class BoundProperty(AttrRouter):
         script_rv= conn.gremlin_tx(script, nodeId=instance.id,
                 propMap=gremlin_props, raw=True)
 
-        if isinstance(script_rv, dict) and ERROR_ATTR in script_rv and 'property' in script_rv:
-                raise ValueError( "Duplicate index entries for <%s>.%s" % 
-                                 (instance.__class__.__name__, script_rv['property']))
+        if (isinstance(script_rv, dict) and ERROR_ATTR in script_rv
+            and 'property' in script_rv):
+            raise ValueError("Duplicate index entries for <%s>.%s" % 
+                                (instance.__class__.__name__,
+                                script_rv['property']))
         elif isinstance(script_rv, dict) and 'data' in script_rv:
             #returned a node (TODO #128 error passing generalization)
-            NodeModel._update_values_from_dict(instance, script_rv['data'], clear=True)
+            NodeModel._update_values_from_dict(instance, script_rv['data'],
+                                               clear=True)
         else:
-            raise ValueError('Unexpected response from server: %s' % str(script_rv))
+            raise ValueError('Unexpected response from server: %s' %
+                             str(script_rv))
         
-    NodeModel._save_properties = staticmethod(_save_) #TODO this needs to be revised. I hope there's a better way.
+    #TODO this needs to be revised. I hope there's a better way.
+    NodeModel._save_properties = staticmethod(_save_) 
     del _save_
 
     def __get__(self, instance, cls=None):
@@ -424,7 +434,7 @@ class BoundProperty(AttrRouter):
         else:
             try:
                 values = BoundProperty._values_of(instance)
-                values[self.__propname] = val = self._property.from_neo(underlying[self.__propname])
+                values[self.__propname] = val = self._property.to_python(underlying[self.__propname])
                 return val
             except: # no value set on node
                 pass
@@ -578,10 +588,8 @@ class AutoProperty(IntegerProperty):
     def formfield(self, **kwargs):
         return None
 
+@borrows_methods(fields.DateField, ('to_python',))
 class DateProperty(Property):
-    __format = '%Y-%m-%d'
-
-    ansi_date_re = r'^\d{4}-\d{1,2}-\d{1,2}$'
 
     default_error_messages = {
         'invalid': _('Enter a valid date in YYYY-MM-DD format.'),
@@ -599,58 +607,17 @@ class DateProperty(Property):
             kwargs['blank'] = True
         if kwargs.get('indexed', False):
             kwargs['indexed_range'] = True
-        Property.__init__(self, **kwargs)
-
-    @classmethod
-    def __parse_date_string(cls, value):
-        if not re.search(cls.ansi_date_re, value):
-            raise exceptions.ValidationError(cls.default_error_messages['invalid'])
-        # Now that we have the date string in YYYY-MM-DD format, check to make
-        # sure it's a valid date.
-        # We could use time.strptime here and catch errors, but datetime.date
-        # produces much friendlier error messages.
-        year, month, day = map(int, value.split('-'))
-        try:
-            value = datetime.date(year, month, day)
-        except ValueError, e:
-            msg = cls.default_error_messages['invalid_date'] % _(str(e))
-            raise exceptions.ValidationError(msg)
-
-        return value
-
-    @classmethod
-    def _format_date(cls, value, format_string=None):
-        #TODO obviously would prefer strftime, but it couldn't do year < 1900-
-        #this should be replaced
-        if not format_string:
-            format_string = cls.__format
-        return format_string.replace('%Y', str(value.year).zfill(4))\
-                     .replace('%m', str(value.month).zfill(2))\
-                     .replace('%d', str(value.day).zfill(2))
-
-    def from_neo(self, value):
-        if value is None or value == '':
-            return None
-        if isinstance(value, datetime.datetime):
-            return value.date()
-        if isinstance(value, datetime.date):
-            return value
-
-        return self.__parse_date_string(value)
+        super(DateProperty, self).__init__(**kwargs)
 
     def to_neo(self, value):
-        result = None
-
         if value is None:
-            return ''
-        if isinstance(value, datetime.datetime):
-            result = value
+            return value
+        elif isinstance(value, datetime.datetime):
+            return value.date().isoformat()
         elif isinstance(value, datetime.date):
-            result = value
+            return value.isoformat()
         else:
-            result = self.__parse_date_string(value)
-
-        return self._format_date(result)
+            return unicode(value)
 
     def pre_save(self, model_instance, add, attname):
         if self.auto_now or (self.auto_now_add and add):
@@ -658,183 +625,43 @@ class DateProperty(Property):
             setattr(model_instance, attname, value)
             return value
         else:
-            return super(DateProperty, self).pre_save(model_instance, add, attname)
+            return super(DateProperty, self).pre_save(model_instance, add,
+                                                      attname)
 
+@borrows_methods(fields.DateTimeField, ('to_python',))
 class DateTimeProperty(DateProperty):
-    __format = '%Y-%m-%d %H:%M:%S.%f'
-
-    default_error_messages = {
-        'invalid': _(u'Enter a valid date/time in YYYY-MM-DD HH:MM[:ss[.uuuuuu]] format.'),
-    }
+    default_error_messages = fields.DateTimeField.default_error_messages
 
     MAX=datetime.datetime.max
     MIN=datetime.datetime.min
 
-    @classmethod
-    def _format_datetime(cls, value, format_string=None):
-        if not format_string:
-            format_string = cls.__format
-        time_string = cls._format_date(value, format_string)
-        return time_string.replace('%H', str(value.hour).zfill(2))\
-                          .replace('%M', str(value.minute).zfill(2))\
-                          .replace('%S', str(value.second).zfill(2))\
-                          .replace('%f', str(value.microsecond).zfill(6))\
-
-    @classmethod
-    def __parse_datetime_string(cls, value):
-        try: # Try converting with microseconds
-            result = datetime.datetime.strptime(value, cls.__format)
-        except ValueError:
-            try: # Try without microseconds.
-                result = datetime.datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
-            except ValueError: # Try without hour/minutes.
-                try: # Try without seconds.
-                    result = datetime.datetime.strptime(value, '%Y-%m-%d %H:%M')
-                except ValueError: # Try without hour/minutes/seconds.
-                    try:
-                        result = datetime.datetime.strptime(value, '%Y-%m-%d')
-                    except ValueError:
-                        raise exceptions.ValidationError(cls.default_error_messages['invalid'])
-
-        return result
-
-    def from_neo(self, value):
-        if value is None or value == '':
-            return None
-
-        if isinstance(value, datetime.datetime):
-            return value
-        if isinstance(value, datetime.date):
-            return datetime.datetime(value.year, value.month, value.day)
-
-        return self.__parse_datetime_string(value)
-
     def to_neo(self, value):
-        result = None
-
         if value is None:
-            return ''
-        if isinstance(value, datetime.datetime):
-            result = value
+            return value
         elif isinstance(value, datetime.date):
-            result = datetime.datetime(value.year, value.month, value.day)
+            if not isinstance(value, datetime.datetime):
+                value = datetime_safe.new_datetime(value)
+            if settings.USE_TZ and timezone.is_naive(value):
+                default_timezone = timezone.get_default_timezone()
+                value = timezone.make_aware(value, default_timezone)
+            return value.isoformat()
         else:
-            result = self.__parse_datetime_string(value)
-
-        return self._format_datetime(result)
+            # TODO raise error
+            pass
 
     def to_neo_index(self, value):
-        return self.to_neo(value).replace(' ','-')
+        cleaned = self.to_neo(value)
+        if cleaned is not None:
+            return cleaned.replace(' ','-')
 
     def pre_save(self, model_instance, add, attname):
         if self.auto_now or (self.auto_now_add and add):
-            value = datetime.datetime.now()
+            value = timezone.now()
             setattr(model_instance, attname, value)
             return value
         else:
-            return super(DateTimeProperty, self).pre_save(model_instance, add, attname)
-
-class DateTimeTZProperty(DateTimeProperty):
-    '''
-    DateTimeProperty that can store and retrieve timezone-aware datetimes.
-    '''
-    __format = '%Y-%m-%d %H:%M:%S.%f %z'
-
-    @classmethod
-    def _format_offset(cls, offset_timedelta):
-        '''
-        Produce a timezone offset string (+/- HHMM) from a timedelta.
-        '''
-        try:
-            seconds = offset_timedelta.total_seconds()
-        except AttributeError:
-            # total_seconds method is only available from 2.7 up
-            td = offset_timedelta
-            days_to_secs = td.days * 24 * 3600.0
-            secs_to_micro = (td.seconds + days_to_secs) * (10 ** 6)
-            seconds = (td.microseconds + secs_to_micro) / (10 ** 6)
-        mins = seconds / 60
-        hrs = mins / 60
-        mins = mins % 60
-        return '%+03d%02d' % (hrs, mins)
-
-    @classmethod
-    def _parse_tz(cls, tz_str=None):
-        '''
-        Read a timezone string of the form '+0000' and return a timezone
-        object. If not given, just return UTC.
-        '''
-        tz_str = tz_str.strip() if tz_str else ''  # Ensure no whitespace
-        if (not tz_str) or (tz_str == '+0000') or (tz_str == '-0000'):
-            # Shortcut for the common case where it's UTC, or default
-            return tzutc()
-        # Otherwise, pull out the hours and minutes and construct a
-        # tzoffset(), which requires an offset in seconds
-        hrs = int(tz_str[1:3])
-        mins = int(tz_str[3:5])
-        mult = -1 if (tz_str[0] == '-') else 1
-        offset = mult * ((hrs * 3600) + (mins * 60))
-        return tzoffset('LOCAL', offset)
-
-    @classmethod
-    def _format_datetime_with_tz(cls, value):
-        '''
-        Format a datetime (e.g. for storage in Neo4j) with a timezone offset
-        appended as +/- HHMM.
-        '''
-        formatted = cls._format_datetime(value, cls.__format)
-        if value.utcoffset() is not None:
-            offset_string = cls._format_offset(value.utcoffset())
-        else:
-            offset_string = ""
-        return formatted.replace("%z", offset_string).strip()
-
-    @classmethod
-    def __parse_datetime_string_with_tz(cls, value):
-        '''
-        Parse a stringified datetime into a datetime object, first trying to
-        read a timezone (if one is provided in our format). Uses the superclass
-        method to parse the actual string, and adds any timezone information
-        at the end.
-        '''
-        try:
-            # Try converting with timezone offset. Since strptime is decidedly
-            # inconsistent with support for '%z', this must be done manually:
-            # if a '+HHMM' is present, it'll form the last five characters of
-            # the string
-            dt_val, tz_str = value[:-5], value[-5:]
-            dt_val = dt_val.strip()  # ensure no trailing whitespace
-            tz_info = cls._parse_tz(tz_str)
-        except ValueError:
-            tz_info = None
-            dt_val = value
-        # HACK: Relies on CPython 2.x's double-underscore name-mangling!
-        dt = cls._DateTimeProperty__parse_datetime_string(dt_val)
-        return dt.replace(tzinfo=tz_info)
-
-    def from_neo(self, value):
-        if value is None or value == '':
-            return None
-        if isinstance(value, datetime.datetime):
-            return value
-        if isinstance(value, datetime.date):
-            return datetime.datetime(value.year, value.month, value.day)
-
-        return self.__parse_datetime_string_with_tz(value)
-
-    def to_neo(self, value):
-        result = None
-
-        if value is None:
-            return ''
-        if isinstance(value, datetime.datetime):
-            result = value
-        elif isinstance(value, datetime.date):
-            result = datetime.datetime(value.year, value.month, value.day)
-        else:
-            result = self.__parse_datetime_string_with_tz(value)
-
-        return self._format_datetime_with_tz(result)
+            return super(DateProperty, self).pre_save(model_instance, add,
+                                                      attname)
 
 class ArrayProperty(Property):
     __metaclass__ = ABCMeta

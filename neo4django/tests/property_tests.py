@@ -90,6 +90,14 @@ def test_date_prop():
     #TODO
     pass
 
+def disable_tz():
+    settings.USE_TZ = False
+
+def enable_tz():
+    settings.USE_TZ = True
+
+# test without TZ support, since another test covers that
+@with_setup(disable_tz, enable_tz)
 def test_datetime_constructor():
     """Confirm `DateTimeProperty`s work from a NodeModel constructor."""
     #TODO cover each part of a datetime
@@ -206,7 +214,7 @@ def test_datetime_auto_now():
 
 def test_datetimetz_constructor():
     class DateTimeTZNode(models.NodeModel):
-        datetime = models.DateTimeTZProperty()
+        datetime = models.DateTimeProperty()
 
     time = datetime.datetime.now(tzoffset('LOCAL', 3600))
     d = DateTimeTZNode(datetime=time)
@@ -217,18 +225,15 @@ def test_datetimetz_constructor():
 
 def test_datetimetz_prop():
     class DateTimeTZNode(models.NodeModel):
-        datetime = models.DateTimeTZProperty()
+        datetime = models.DateTimeProperty()
 
     time = datetime.datetime.now(tzoffset('DST', 3600))
     d = DateTimeTZNode(datetime=time)
     assert d.datetime == time
-    # Now some low-level attribute access stuff to make sure it's loading /
-    # storing correctly
-    dt_prop = DateTimeTZNode.datetime._property
-    eq_(dt_prop.to_neo(d.datetime), d.datetime.strftime(
-        models.DateTimeTZProperty._DateTimeTZProperty__format))
+    d.save()
     # Test roundtrip
-    eq_(d.datetime, dt_prop.from_neo(dt_prop.to_neo(d.datetime)))
+    new_d = DateTimeTZNode.objects.get(id=d.id)
+    eq_(new_d.datetime, time)
 
 def test_array_property_validator():
     """Tests that ArrayProperty validates properly."""
