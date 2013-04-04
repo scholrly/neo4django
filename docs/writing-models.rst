@@ -49,8 +49,8 @@ cardinality, and the name of the relationship on the target model::
                                     related_name='pets'
                                    )
 
-Note that specifying cardinality with ``single`` or ``rel_single`` is optional-
-Neo4j doesn't enforce any relational cardinality. Instead, the options are
+Note that specifying cardinality with ``single`` or ``related_single`` is optional-
+Neo4j doesn't enforce any relational cardinality. Instead, these options are
 provided as a modeling convenience.
 
 You can also target a model that has yet to be defined with a string::
