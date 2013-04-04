@@ -700,3 +700,24 @@ def test_aggregate_avg():
     eq_(Person.objects.all().aggregate(Avg('age')).get('age__avg', None), 15)
     eq_(Person.objects.all().filter(name='Candleja-').aggregate(Avg('age')).get('age__avg', None), 30)
 
+def test_query_type():
+    """
+    Confirms #151 - ensures sibling types are not returned on query, even if the
+    the related index is at the parent level.
+    """
+    class IndexedParent(models.NodeModel):
+        name = models.StringProperty(indexed=True)
+
+    class Sibling1(IndexedParent):
+        pass
+
+    class Sibling2(IndexedParent):
+        pass
+
+    s1 = Sibling1.objects.create(name='Amanda')
+    s2 = Sibling2.objects.create(name='Other Amanda')
+
+    eq_(len(Sibling1.objects.filter(name__contains='Amanda')), 1)
+    eq_(len(Sibling2.objects.filter(name__contains='Amanda')), 1)
+
+    eq_(len(IndexedParent.objects.filter(name__contains='Amanda')), 2)
