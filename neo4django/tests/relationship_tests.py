@@ -212,7 +212,7 @@ def test_relationship_model():
 def test_multinode_setting():
     """Tests setting a multi-node relationship directly instead of adding."""
     class Classroom(models.NodeModel):
-        students = models.Relationship(Person,
+        students = models.Relationship('Student',
                                 rel_type=neo4django.Outgoing.COMES_TO,
                                 related_name="school"
                                 )

@@ -16,7 +16,7 @@ from neo4django.utils import buffer_iterator, AssignableList, AttrRouter
 from neo4django.constants import INTERNAL_ATTR, ORDER_ATTR
 from .base import NodeModel
 from .query import (NodeQuerySet, Query, cypher_rel_str, conditions_from_kws, 
-                    matches_condition)
+                    matches_condition, Clauses, Start, With)
 
 from neo4jrestclient.constants import RELATIONSHIPS_ALL, RELATIONSHIPS_IN, RELATIONSHIPS_OUT
 
@@ -778,19 +778,21 @@ class RelationshipQuerySet(NodeQuerySet):
 
         order_clause = """
             ORDER BY r.`%s`
-            WITH n
         """ % ORDER_ATTR if self._rel_instance.ordered else ''
 
         rel_str = cypher_rel_str(self._rel.rel_type, self._rel.direction,
                                  identifier='r')
 
-        self.query.set_start_clause("""
-            START m=node({start_param})
-            MATCH (m)%s(n)
-            WITH n,r
-            %s
-        """ % (rel_str,
-               order_clause), lambda : {'start_param':self._model_instance.id})
+        start_clause = Clauses([
+            Start({'m':'node({startParam})'}, ['startParam']),
+            'MATCH (m)%s(n)' % rel_str,
+            With({'n':'n', 'r':'r', 'typeNode':'typeNode'}),
+            order_clause
+        ])
+
+        self.query.set_start_clause(start_clause, lambda : {
+            'startParam':self._model_instance.id
+        })
 
     def iterator(self):
         removed = list(self._rel_instance._old)

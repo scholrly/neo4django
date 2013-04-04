@@ -278,7 +278,36 @@ def cypher_order_by_from_fields(element_name, ordering):
             ', '.join(cypher_order_by_term(element_name, f) for f in ordering))
     return cypher
 
-class With(object):
+class Clause(object):
+    def as_cypher(self):
+        return self.cypher_template % self.get_params()
+
+class Clauses(list):
+    def as_cypher(self):
+        return ' '.join(c.as_cypher() if hasattr(c, 'as_cypher') else unicode(c)
+                        for c in self)
+
+class Start(Clause):
+    cypher_template = 'START %(exprs)s'
+    def __init__(self, start_assignments, cypher_params):
+        """
+        start_assignments - a dict of variable name keys and assignment
+        expression values to make up a START clause. eg, `{'n':'node(5)'}`
+        will lead to the expression `n=node(5)` in the output Cypher str
+        cypher_params - a list of all Cypher parameters used in `start_exprs`.
+        these won't affect the output, but are for later bookkeeping and
+        manipulation
+        """
+        self.start_assignments = start_assignments
+        self.cypher_params = cypher_params
+
+    def get_params(self):
+        return {
+            'exprs' : ','.join('%s=%s' % (k, v)
+                               for k, v in self.start_assignments.iteritems())
+        }
+
+class With(Clause):
     cypher_template = 'WITH %(fields)s %(limit)s %(match)s %(where)s'
     def __init__(self, field_dict, limit=None, where=None, match=None):
         self.field_dict = field_dict
@@ -286,8 +315,8 @@ class With(object):
         self.where = where
         self.match = match
 
-    def as_cypher(self):
-        params = {
+    def get_params(self):
+        return {
             'fields':','.join('%s AS %s' % (alias, field)
                               for alias, field in self.field_dict.iteritems()),
             'limit': 'LIMIT %s' % str(self.limit) \
@@ -295,11 +324,6 @@ class With(object):
             'match': 'MATCH %s' % self.match if self.match else '',
             'where': 'WHERE %s' % self.where if self.where else '',
         }
-        return self.cypher_template % params
-
-class Clause(object):
-    def as_cypher(self):
-        return self.cypher_template % self.get_params()
 
 class Return(Clause):
     cypher_template = 'RETURN %(fields)s %(order_by)s %(skip)s %(limit)s'
@@ -649,9 +673,11 @@ class Query(object):
         self.with_clauses.append(With(field_dict, **kwargs))
 
     def set_start_clause(self, clause, param_dict_or_func=None):
-        # TODO instead of abusing the idea of a "start" (which in practice
-        # we sometimes fill with MATCH clauses, etc), there should be an
-        # explicit way to connect queries together
+        """
+        clause - anything whose `as_cypher()` method returns a valid beginning
+        of a Cypher query as a str. Additional elements, like MATCH queries, can
+        be included as well.
+        """
         self.start_clause = clause
         if param_dict_or_func is None:
             param_dict_or_func = {}
@@ -661,7 +687,7 @@ class Query(object):
     def get_start_clause_and_param_dict(self):
         # TODO if a clause has been set, return that
         # otherwise, compute it from conditions
-        # (requires a refactors from execute())
+        # (requires a refactor from as_groovy())
         return self.start_clause, self.start_clause_param_func()
 
     def model_from_node(self, node):
@@ -753,7 +779,16 @@ class Query(object):
         
         # use filtered conditions, ids, OR a type tree traversal as a cypher
         # START, then unfiltered as a WHERE
+
         start_clause, cypher_params = self.get_start_clause_and_param_dict()
+
+        # add the typeNodeId param, either for type verification or initial
+        # type tree traversal
+        cypher_params['typeNodeId'] = self.nodetype._type_node(using).id
+
+        type_restriction_expr = """
+        n<-[:`<<INSTANCE>>`]-()<-[:`<<TYPE>>`*0..]-typeNode
+        """
 
         where_clause = cypher_where_from_conditions('n', itertools.chain(
             unindexed + indexed))
@@ -788,12 +823,13 @@ class Query(object):
                     id_set = set([exact_id])
 
             if len(id_set) >= 1:
-                start_clause = start_clause or "START n=node({start_param})"
+                start_clause = start_clause or Start({'n':'node({startParam})'},
+                                                 ['startParam'])
                 groovy_script = """
                     results = []
                     existingStartIds = Neo4Django.getVerticesByIds(start).\
                             collect{it.id}
-                    cypherParams['start_param'] = existingStartIds
+                    cypherParams['startParam'] = existingStartIds
                     table = Neo4Django.cypher(cypherQuery,cypherParams)
                     results = table.columnAs(returnColumn)
                     """
@@ -802,12 +838,13 @@ class Query(object):
                 # XXX None is returned, meaning an empty result set
                 return (None, None)
         elif len(index_qs) > 0:
-            start_clause = start_clause or "START n=node({start_param})"
+            start_clause = start_clause or Start({'n':'node({startParam})'},
+                                                 ['startParam'])
             groovy_script = """
                 results = []
                 startIds = Neo4Django.queryNodeIndices(startQueries)\
                             .collect{it.id}
-                cypherParams['start_param'] = startIds
+                cypherParams['startParam'] = startIds
                 table = Neo4Django.cypher(cypherQuery, cypherParams)
                 results = table.columnAs(returnColumn)
                 """
@@ -815,21 +852,39 @@ class Query(object):
         else:
             #TODO move this to being index-based
             if start_clause is None:
-                start_clause = """
-                    START typeNode=node({typeNodeId})
-                    MATCH n<-[:`<<INSTANCE>>`]-typeNode
-                    WITH n
-                """
-                cypher_params['typeNodeId'] = self.nodetype._type_node(using).id
+                match_clause = 'MATCH %s' % type_restriction_expr
+                start_clause = Clauses([Start({'typeNode':'node({typeNodeId})'},
+                                              ['typeNodeId']),
+                                        match_clause])
+                # we don't need an additional type restriction since it's
+                # handled in the start
+                type_restriction_expr = None
             groovy_script = """
                 results = []
                 table = Neo4Django.cypher(cypherQuery, cypherParams)
                 results = table.columnAs(returnColumn)
                 """
 
-        str_clauses = [start_clause, where_clause] + \
-                [c.as_cypher() for c in with_clauses] + \
-                [return_clause.as_cypher()]
+        # make sure the start clause includes the typeNode
+        if isinstance(start_clause, Clauses):
+            start_clause, extra_start_clauses = start_clause[0], start_clause[1:]
+        else:
+            extra_start_clauses = []
+        if 'typeNode' not in start_clause.start_assignments:
+            start_clause.start_assignments['typeNode'] = 'node({typeNodeId})'
+            start_clause.cypher_params += ['typeNodeId']
+        start_clause = Clauses([start_clause] + extra_start_clauses)
+
+        if type_restriction_expr:
+            if where_clause:
+                where_clause = ' AND '.join((where_clause,
+                                             type_restriction_expr))
+            else:
+                where_clause = 'WHERE ' + type_restriction_expr
+
+        str_clauses = [start_clause.as_cypher(), where_clause] + \
+                      [c.as_cypher() for c in with_clauses] + \
+                      [return_clause.as_cypher()]
 
         params['cypherQuery'] = ' '.join(str_clauses) + ';'
         params['cypherParams'] = cypher_params

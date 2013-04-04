@@ -122,7 +122,8 @@ tests=[
     'test_aggregate_sum',
     'test_aggregate_max_min',
     'test_auth',
-    'test_modelform']
+    'test_modelform',
+    'test_query_type']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
