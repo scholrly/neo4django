@@ -1,6 +1,20 @@
 Changes
 -------
 
+0.1.8 (2013-4-18)
+------------------
+
+- Now supports Neo4j 1.8.2 and 1.9.RC1. Older versions are no longer supported.
+- Docs have been expanded and moved to Sphinx for hosting by RTD (#144).
+- In-graph Django user auth is now supported (#147).
+- RelationshipQuerySet now inherits from neo4django's regular QuerySet.  `object.related.all()` can now be safely filtered against, deleted, etc, and supports all methods type-wide queries support (#141).
+- QuerySet.order_by(), exists(), and count() (#140, #60).
+- QuerySet aggregation support (Avg, Count...) (#53).
+- QuerySet.delete() now does the hard word DB-side (#79).
+- DateTimeProperty and DateTimeTZProperty were merged to handle timezones the Django way (#148).
+- NodeModels are now pickleable (#46).
+- Bug fixes - #150 and #151.
+
 0.1.7 (2012-9-12)
 ------------------
 - Updated to support Neo4j 1.7.2 & 1.8.M07 (issue #110)
