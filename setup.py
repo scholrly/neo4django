@@ -1,9 +1,8 @@
 from setuptools import setup
-from neo4django.constants import VERSION
 
 setup(
     name='neo4django',
-    version=VERSION,
+    version='0.1.8',
     author='Matt Luongo',
     author_email='mhluongo@gmail.com',
     description='A Django/Neo4j ORM layer.',
