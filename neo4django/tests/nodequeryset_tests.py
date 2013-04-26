@@ -700,6 +700,7 @@ def test_aggregate_avg():
     eq_(Person.objects.all().aggregate(Avg('age')).get('age__avg', None), 15)
     eq_(Person.objects.all().filter(name='Candleja-').aggregate(Avg('age')).get('age__avg', None), 30)
 
+@with_setup(None, teardown)
 def test_query_type():
     """
     Confirms #151 - ensures sibling types are not returned on query, even if the
@@ -721,3 +722,11 @@ def test_query_type():
     eq_(len(Sibling2.objects.filter(name__contains='Amanda')), 1)
 
     eq_(len(IndexedParent.objects.filter(name__contains='Amanda')), 2)
+
+@with_setup(setup_people, teardown)
+def test_complex_filters():
+    from django.db.models import Q
+    
+    eq_(len(Person.objects.filter(Q(age=5))), 1)
+    eq_(len(Person.objects.filter(Q(age=5) & Q(name='Jack'))), 1)
+    eq_(len(Person.objects.filter(Q(age=5) | Q(name='Jill'))), 2)
