@@ -279,6 +279,14 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
     def relationship(self):
         return self.__rel
 
+    @property
+    def target_model(self):
+        return self.__target
+
+    @property
+    def source_model(self):
+        return self.__source
+
     def get_default(self):
         return None
 

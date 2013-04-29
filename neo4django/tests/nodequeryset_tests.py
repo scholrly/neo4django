@@ -569,10 +569,10 @@ def test_select_related():
 @with_setup(setup_chase, teardown)
 def test_spanning_lookup():
     #test the regular relation
-    tom = RelatedCat.objects.get(chases__name='Jerry')
+    tom = RelatedCat.objects.get(chases__name='jerry')
     eq_(tom.name, 'Tom')
 
-    spike = RelatedDog.objects.get(chases__chases__name='Jerry')
+    spike = RelatedDog.objects.get(chases__chases__name='jerry')
     eq_(spike.name, 'Spike')
 
     #then test the reverse
@@ -580,7 +580,7 @@ def test_spanning_lookup():
     eq_(tom.name, 'Tom')
 
     jerry = IndexedMouse.objects.all().get(relatedcat_set__relateddog_set__name='Spike')
-    eq_(jerry.name, 'Jerry')
+    eq_(jerry.name, 'jerry')
 
 @with_setup(None, teardown)
 def test_large_query():

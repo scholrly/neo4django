@@ -29,7 +29,7 @@ from . import aggregates
 OPERATORS = Enum('EXACT', 'LT','LTE','GT','GTE','IN','RANGE','MEMBER','CONTAINS',
                  'STARTSWITH', 'MEMBER_IN')
 
-ConditionTuple = namedtuple('ConditionTuple', ['field','value','operator','negate'])
+ConditionTuple = namedtuple('ConditionTuple', ['field','value','operator','path'])
 class Condition(ConditionTuple):
     def __init__(self, *args, **kwargs):
         if 'value' in kwargs:
@@ -68,25 +68,62 @@ def clone_q(q):
 def condition_from_kw(nodetype, keyval):
     pattern = re.compile('__+')
     terms = pattern.split(keyval[0])
+    explicit_op = False
+
     if not terms:
         pass #TODO error out
     elif len(terms) > 1:
         try:
             #get the corresponding operator
-            op = getattr(OPERATORS, terms[1].upper())
+            op = getattr(OPERATORS, terms[-1].upper())
         except AttributeError:
-            raise NotImplementedError(
-                'The {0} operator is not yet implemented.'.format(terms[1]))
+            op = OPERATORS.EXACT
+        else:
+            explicit_op = True
     else:
         op = OPERATORS.EXACT
-    attname = terms[0]
-    field = getattr(nodetype, attname)
+
+    path = terms[:-1] if explicit_op else terms[:]
+
+    attname = None
+
+    cur_m = nodetype
+    for level, step in enumerate(path):
+        #TODO DRY violation, this needs to be refactored to share code with
+        # the select_related machinery, and possibly reuse Django methods for
+        # following these paths
+        rels = getattr(cur_m._meta, '_relationships', {}).items()
+        candidates_on_models = sorted((s for s in ((score_model_rel(step,r), r)
+                                                   for _,r in rels)
+                                       if s[0] > 0), reverse=True)
+        if len(candidates_on_models) < 1:
+            # if there's no candidate, it could be an error *OR* it could be
+            # a property at the end of the path
+            if level == len(path) - 1:
+                attname = path[-1]
+                path = path[:-1]
+                break
+            else:
+                raise exceptions.ValidationError("Cannot find referenced field "
+                                                 "`%s` from model %s." % 
+                                                 (keyval[0], nodetype.__name__))
+        rel_choice = candidates_on_models[0][-1]
+        cur_m = (rel_choice.target_model if not rel_choice.target_model is cur_m
+                 else rel_choice.source_model)
     
+    attname = attname or 'id'
+
+    try:
+        field = getattr(cur_m, attname)
+    except AttributeError:
+        raise ValidateError("Cannot find referenced field `%s` from model %s."
+                            % (keyval[0], nodetype.__name__))
+
     if op in (OPERATORS.RANGE, OPERATORS.IN, OPERATORS.MEMBER_IN):
         return Condition(field, tuple([field.to_neo(v) for v in keyval[1]]),
-                         op, False)
+                         op, path)
     else:
-        return Condition(field, field.to_neo(keyval[1]), op, False)
+        return Condition(field, field.to_neo(keyval[1]), op, path)
 
 def lucene_query_from_condition(condition):
     """
@@ -150,8 +187,6 @@ def lucene_query_from_condition(condition):
                              for v in condition.value])
     else:
         return None
-    if condition.negate:
-        lq = ~lq
     return lq
 
 def condition_tree_from_q(nodetype, q, predicate=lambda c:True):
@@ -160,12 +195,25 @@ def condition_tree_from_q(nodetype, q, predicate=lambda c:True):
     conditions that don't meet an optional predicate will be removed.
     """
     if not isinstance(q, Q):
+        if isinstance(q, Condition):
+            return q
         return condition_from_kw(nodetype, q)
     new_q = clone_q(q)
     children = [condition_tree_from_q(nodetype, child)
                 for child in new_q.children]
     new_q.children = filter(predicate, children)
     return new_q
+
+def condition_tree_leaves(q):
+    """
+    A generator to iterate through all meaningful leaves in a Q tree.
+    """
+    if not isinstance(q, Q):
+        yield q
+    else:
+        for child in q.children:
+            for leaf in condition_tree_leaves(child):
+                yield leaf
 
 def lucene_query_from_condition_tree(cond_q):
     """
@@ -174,17 +222,22 @@ def lucene_query_from_condition_tree(cond_q):
     """
     if not isinstance(cond_q, Q):
         return lucene_query_from_condition(cond_q)
-    if len(cond_q.children) == 1:
-        return lucene_query_from_condition_tree(cond_q.children[0])
-    elif len(cond_q.children) > 1:
+    if len(cond_q.children) > 0:
         children = [lucene_query_from_condition_tree(c)
                     for c in cond_q.children]
         children = filter(lambda x: bool(x), children)
         if len(children) > 0:
             op = and_ if cond_q.connector == 'AND' else or_
-            return reduce(op, children)
+            lucene_query = reduce(op, children)
+            if cond_q.negated:
+                lucene_query = ~lucene_query
+            return lucene_query
 
-def lucene_query_from_q(using, nodetype, q):
+def lucene_query_and_index_from_q(using, nodetype, q):
+    """
+    Return an index name / Lucene query pair based on a given database, node
+    type, and Q filter tree- which can have a mix of kwargs or Condition leaves.
+    """
     # crawl the Q tree and prune all non-indexed fields. cry about conflicting
     # indices
 
@@ -193,13 +246,16 @@ def lucene_query_from_q(using, nodetype, q):
     def predicate(cond):
         if isinstance(cond, Q):
             return True
-        if cond.field.indexed and not getattr(cond.field, 'id', False):
+        # make sure the field is indexed, isn't a rel-spanning field,
+        # and isn't an id field
+        if len(cond.path) < 1 and cond.field.indexed \
+           and not getattr(cond.field, 'id', False):
             index = cond.field.index(using)
             prop_indexes.add(index)
             if len(prop_indexes) > 1:
-                raise ValidationError("Complex filters cannot refer to two "
-                                      "indexed properties that don't share an "
-                                      "index.")
+                raise exceptions.ValidationError("Complex filters cannot refer "
+                                                 "to two indexed properties "
+                                                 "that don't share an index.")
             return True
     cond_q = condition_tree_from_q(nodetype, q, predicate=predicate)
     if len(prop_indexes) == 0:
@@ -289,32 +345,31 @@ def cypher_predicate_from_condition(element_name, condition):
     else:
         raise NotImplementedError('Other operators are not yet implemented.')
 
-    if condition.negate:
-        cypher = "NOT (%s)" % cypher
     return cypher
 
-def cypher_predicates_from_q(element_to_filter, q):
+def cypher_predicates_from_q(q):
     if not isinstance(q, Q):
+        identifier = '__'.join(['n'] + q.path)
         if getattr(q.field, 'id', False):
-            identifier = 'ID(%s)' % element_to_filter
+            value_exp = 'ID(%s)' % identifier
         else:
-            identifier = '%s.%s!' % (element_to_filter, q.field.attname)
-        return '(%s)' % cypher_predicate_from_condition(identifier , q)
-    children = list(not_none(cypher_predicates_from_q(element_to_filter, c)
+            value_exp = '%s.%s!' % (identifier, q.field.attname)
+        return '(%s)' % cypher_predicate_from_condition(value_exp , q)
+    children = list(not_none(cypher_predicates_from_q(c)
                               for c in q.children))
     if len(children) > 0:
         expr = (" %s " % q.connector).join(children)
         return "NOT (%s)" % expr if q.negated else expr
     return None
 
-def cypher_where_from_q(nodetype, element_to_filter, q):
+def cypher_where_from_q(nodetype, q):
     """
     Build a Cypher WHERE clause based on a str Cypher element identifier that
     should resolve to a node or rel column in the final query, and a Q tree of
     kwarg filters.
     """
     cond_q = condition_tree_from_q(nodetype, q)
-    exps = cypher_predicates_from_q(element_to_filter, cond_q)
+    exps = cypher_predicates_from_q(cond_q)
     return "WHERE %s\n" % exps if exps else ''
 
 def cypher_order_by_term(element_name, field):
@@ -340,9 +395,42 @@ def cypher_order_by_from_fields(element_name, ordering):
             ', '.join(cypher_order_by_term(element_name, f) for f in ordering))
     return cypher
 
-class Clause(object):
+class Cypher(object):
     def as_cypher(self):
         return self.cypher_template % self.get_params()
+
+class Path(Cypher):
+    cypher_template = '%(path_assignment)s%(path_expr)s'
+    def __init__(self, components, path_variable=None):
+        """
+        components - a list of alternating node identifiers and relationship
+        strs (eg, `['n','-[:friends_with]->','m']`). If a component has an 
+        `as_cypher()` method, that will be tried before calling unicode on it.
+        path_variable - a str path identifer. If included, the final Cypher
+        output will be a named path (eg, "p=(`n`)-[:`friends_with`]->(`m`)").
+        """
+        self.path_variable = path_variable
+        if len(components) % 2 == 0:
+            raise exceptions.ValidationError('Paths must have an odd number of '
+                                             'components.')
+        self.components = components
+
+    def get_params(self):
+        components = self.components[:]
+        components.append(None) # make the list even-length
+        #break components into pairs and fix the node identifiers
+        pairs = [('(`%s`)' % p[0] if p[0] else '()', p[1])
+                 for p in zip(*[iter(components)] * 2)]
+        components = list(itertools.chain.from_iterable(pairs))[:-1]
+        return {
+            'path_assignment':'%s =' % self.path_variable \
+                    if self.path_variable is not None else '',
+            'path_expr':''.join(c.as_cypher() if hasattr(c, 'as_cypher')
+                                else unicode(c) for c in components)
+        }
+
+class Clause(Cypher):
+    pass
 
 class Clauses(list):
     def as_cypher(self):
@@ -369,6 +457,25 @@ class Start(Clause):
                                for k, v in self.start_assignments.iteritems())
         }
 
+class Match(Clause):
+    cypher_template = 'MATCH %(exprs)s'
+    def __init__(self, paths):
+        """
+        paths - a list of strs of objects with as_cypher() methods that return
+        Cypher paths- eg, "n-[:FRIENDS_WITH]->friend" or "path=n-->out".
+        """
+        paths = list(paths)
+        if len(paths) < 1:
+            raise exceptions.ValidationError('MATCH clauses require at least '
+                                             'one path.')
+        self.paths = paths
+
+    def get_params(self):
+        return {
+            'exprs':','.join(p.as_cypher() if hasattr(p, 'as_cypher')
+                             else unicode(p) for p in self.paths)
+        }
+
 class With(Clause):
     cypher_template = 'WITH %(fields)s %(limit)s %(match)s %(where)s'
     def __init__(self, field_dict, limit=None, where=None, match=None):
@@ -383,8 +490,10 @@ class With(Clause):
                               for alias, field in self.field_dict.iteritems()),
             'limit': 'LIMIT %s' % str(self.limit) \
                     if self.limit is not None else '',
-            'match': 'MATCH %s' % self.match if self.match else '',
-            'where': 'WHERE %s' % self.where if self.where else '',
+            'match': ((self.match.as_cypher() if hasattr(self.match, 'as_cypher')
+                       else unicode(self.match)) if self.match else ''),
+            'where': ((self.where.as_cypher() if hasattr(self.where, 'as_cypher')
+                       else unicode(self.where)) if self.where else ''),
         }
 
 class Return(Clause):
@@ -429,11 +538,12 @@ class DeleteNode(Delete):
         }
         return params
 
-def cypher_rel_str(rel_type, rel_dir,identifier=None):
+def cypher_rel_str(rel_type, rel_dir,identifier=None, optional=False):
     dir_strings = ('<-%s-','-%s->')
     out = neo_constants.RELATIONSHIPS_OUT
     id_str = '`%s`' % identifier if identifier is not None else ''
-    return dir_strings[rel_dir==out]%('[%s:`%s`]' % (id_str, rel_type))
+    return dir_strings[rel_dir==out]%('[%s%s:`%s`]' % 
+                                      (id_str, '?' if optional else '', rel_type))
 
 def cypher_from_fields(nodetype, fields):
     """
@@ -445,7 +555,8 @@ def cypher_from_fields(nodetype, fields):
     # step would be to write some CypherPrimitive, CypherList, etc.
     matches, returns = [], []
     reqd_fields = (field for i, field in enumerate(fields)
-                   if not any(other_field.startswith(field) and field != other_field
+                   if not any(other_field.startswith(field) 
+                              and field != other_field
                               for other_field in fields[i:]))
 
     for i, field in enumerate(reqd_fields):
@@ -455,13 +566,19 @@ def cypher_from_fields(nodetype, fields):
         rel_match_components = []
         cur_m = nodetype
         for step in field.split('__'):
-            #try to propertly match a model field to the provided field string
+            #try to properly match a model field to the provided field string
+            rels = getattr(cur_m._meta, '_relationships', {}).items()
             candidates_on_models = sorted((s for s in ((score_model_rel(step,r),r)
-                for _,r in nodetype._meta._relationships.items()) if s > 0), reverse=True)
-            #TODO provide for the case that there isn't a valid candidate
-            choice = candidates_on_models[0]
+                for _,r in rels) if s > 0), reverse=True)
+            if len(candidates_on_models) < 1:
+                # give up if we can't find a valid candidate
+                break
+            rel_choice = candidates_on_models[0][-1]
             rel_match_components.append(
-                cypher_rel_str(choice[1].rel_type, choice[1].direction))
+                cypher_rel_str(rel_choice.rel_type, rel_choice.direction))
+            cur_m = (rel_choice.target_model
+                     if not rel_choice.target_model is cur_m
+                     else rel_choice.source_model)
         
         node_match_components = [] # Cypher node identifiers
         type_matches = [] # full Cypher type matching paths for return types
@@ -477,12 +594,46 @@ def cypher_from_fields(nodetype, fields):
 
         model_match = ''.join(
             itertools.ifilter(None, itertools.chain.from_iterable(
-                itertools.izip_longest(rel_match_components, node_match_components))))
+                itertools.izip_longest(rel_match_components,
+                                       node_match_components))))
 
         matches.append('%s=(s%s)'  % (path_name, model_match))
         matches.extend(type_matches)
 
     return 'MATCH %s RETURN %s' % (','.join(matches), ','.join(returns))
+
+def cypher_match_from_q(nodetype, q):
+    # TODO TODO DRY VIOLATION refactor to share common code with 
+    # select_related and Condition
+    paths = []
+    conditions = condition_tree_leaves(q)
+    for cond in conditions:
+        if len(cond.path) > 0:
+            path = ['n']
+            cur_m = nodetype
+            for level, cond_step in enumerate(cond.path):
+                rels = getattr(cur_m._meta, '_relationships', {}).items()
+                candidates_on_model = sorted((s for s in (
+                    (score_model_rel(cond_step,r), r) for _,r in rels
+                ) if s[0] > 0), reverse=True)
+                rel_choice = candidates_on_model[0][-1]
+    
+                direction = ('out'
+                             if (rel_choice.direction == 'out') != 
+                                (rel_choice.target_model is nodetype)
+                             else 'in')
+                rel_type = rel_choice.rel_type
+
+                path.append(cypher_rel_str(rel_type, direction, optional=True))
+
+                cur_m = (rel_choice.target_model
+                         if not rel_choice.target_model is cur_m
+                         else rel_choice.source_model)
+                if level != len(cond.path) - 1:
+                    path.append('')
+            path.append('__'.join(['n'] + cond.path))
+            paths.append(path)
+    return Match(Path(p) for p in paths)
 
 ###################
 # QUERY EXECUTION #
@@ -705,7 +856,8 @@ class Query(object):
         self.clear_ordering()
 
     def add_q(self, q):
-        self.filters.append(q)
+        cond_q = condition_tree_from_q(self.nodetype, q)
+        self.filters.append(cond_q)
         return self
 
     def add_select_related(self, fields):
@@ -793,10 +945,9 @@ class Query(object):
         # check all top-level children for id conditions
         for q in filters:
             if q.connector == 'AND':
-                conditions = [condition_from_kw(self.nodetype, kw)
-                              for kw in q.children if not isinstance(kw, Q)]
-                id_conditions.extend(c for c in conditions
-                                     if getattr(c.field, 'id', False))
+                id_conditions.extend(c for c in q.children
+                                     if getattr(getattr(c, 'field', False),
+                                                'id', False))
 
         grouped_id_conds = itertools.groupby(id_conditions, lambda c: c.operator)
         id_lookups = dict(((k, list(l)) for k, l in grouped_id_conds))
@@ -810,7 +961,7 @@ class Query(object):
 
         # build index queries from filters
 
-        index_qs = not_none(lucene_query_from_q(using, self.nodetype, q)
+        index_qs = not_none(lucene_query_and_index_from_q(using, self.nodetype, q)
                             for q in filters)
 
         # combine any queries headed for the same index and replace lucene
@@ -838,9 +989,29 @@ class Query(object):
         n<-[:`<<INSTANCE>>`]-()<-[:`<<TYPE>>`*0..]-typeNode
         """
 
-        where_clause = cypher_where_from_q(self.nodetype, 'n', Q(*filters))
+        # separate filters into those requiring a MATCH clause and those that
+        # don't
+        non_spanning_filters = []
+        spanning_filters = []
 
-        with_clauses = self.with_clauses
+        for q in filters:
+            if all((len(cond.path) < 1) for cond in condition_tree_leaves(q)):
+                non_spanning_filters.append(q)
+            else:
+                spanning_filters.append(q)
+        
+        where_clause = cypher_where_from_q(self.nodetype, 
+                                           Q(*non_spanning_filters))
+
+        with_clauses = self.with_clauses or []
+
+        if len(spanning_filters) > 0:
+            combined_filter = reduce(and_, spanning_filters)
+            # build match clause
+            match = cypher_match_from_q(self.nodetype, combined_filter)
+            # build where clause
+            where = cypher_where_from_q(self.nodetype, combined_filter)
+            with_clauses.append(With({'n':'n'}, match=match, where=where))
 
         order_by = [cypher_order_by_term('n', field) for field in self.order_by] \
                 or None
