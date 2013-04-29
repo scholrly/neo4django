@@ -118,12 +118,14 @@ tests=[
 	'test_count',
 	'test_aggregate_count',
 	'test_exists',
-    'test_aggregate_avg',
-    'test_aggregate_sum',
-    'test_aggregate_max_min',
-    'test_auth',
-    'test_modelform',
-    'test_query_type']
+	'test_aggregate_avg',
+	'test_aggregate_sum',
+	'test_aggregate_max_min',
+	'test_auth',
+	'test_modelform',
+	'test_query_type',
+	'test_complex_filters',
+	'test_inherited_indexed_filter']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',

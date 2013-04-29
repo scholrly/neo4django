@@ -15,8 +15,7 @@ from neo4django.decorators import not_implemented, transactional
 from neo4django.utils import buffer_iterator, AssignableList, AttrRouter
 from neo4django.constants import INTERNAL_ATTR, ORDER_ATTR
 from .base import NodeModel
-from .query import (NodeQuerySet, Query, cypher_rel_str, conditions_from_kws, 
-                    matches_condition, Clauses, Start, With)
+from .query import (NodeQuerySet, Query, cypher_rel_str, Clauses, Start, With)
 
 from neo4jrestclient.constants import RELATIONSHIPS_ALL, RELATIONSHIPS_IN, RELATIONSHIPS_OUT
 

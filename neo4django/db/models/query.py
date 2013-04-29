@@ -1,10 +1,11 @@
+from django.db.models import Q
 from django.db.models.query import QuerySet, EmptyQuerySet
 from django.db.models.sql.query import Query as SQLQuery
 from django.core import exceptions
 from django.db.models.loading import get_model
 from django.utils.datastructures import SortedDict
 
-from lucenequerybuilder import Q
+from lucenequerybuilder import Q as LQ
 
 from collections import namedtuple, Iterable
 from operator import and_, or_
@@ -48,73 +49,68 @@ TYPE_REL = '<<TYPE>>'
 INSTANCE_REL = '<<INSTANCE>>'
 INTERNAL_RELATIONSHIPS = (TYPE_REL, INSTANCE_REL)
 
-
 #TODO move to a util module
 def not_none(it):
     return itertools.ifilter(None, it)
-
-######################################
-# IN-PYTHON QUERY CONDITION CHECKING #
-######################################
-
-def matches_condition(node, condition):
-    """
-    Return whether a node matches a filtering condition.
-    """
-    field, val, op, neg = condition
-    passed = False
-    #if this is an id field, the value should be the id
-    if getattr(field, 'id', None):
-        att = node.id
-    elif node.properties.get(field.attname, None) is not None:
-        att = node.properties[field.attname]
-    else:
-        att = None
-
-    passed = (op is OPERATORS.EXACT and att == val) or \
-             (op is OPERATORS.MEMBER and val in att) or \
-             (op is OPERATORS.RANGE and val[0] < att < val[1]) or \
-             (op is OPERATORS.LT and att < val) or \
-             (op is OPERATORS.LTE and att <= val) or \
-             (op is OPERATORS.GT and att > val) or \
-             (op is OPERATORS.GTE and att >= val) or \
-             (op is OPERATORS.IN and att in val) or \
-             (op is OPERATORS.MEMBER_IN and any(a in val for a in att)) or \
-             (op is OPERATORS.CONTAINS and val in att) or \
-             (op is OPERATORS.STARTSWITH and att.startswith(val))
-    if neg:
-        passed = not passed
-    return passed
-
-def is_of_types(node, ts):
-    #TODO return true if the provided node is of type t, or of a subtype of t
-    return True
 
 #########################
 # QUERY CODE GENERATION #
 #########################
 
-def q_from_condition(condition):
+def clone_q(q):
+    children = [clone_q(child) if isinstance(child, Q) else child
+                for child in q.children]
+    new_q = Q(*children)
+    new_q.negated = q.negated
+    new_q.connector = q.connector
+    return new_q
+
+def condition_from_kw(nodetype, keyval):
+    pattern = re.compile('__+')
+    terms = pattern.split(keyval[0])
+    if not terms:
+        pass #TODO error out
+    elif len(terms) > 1:
+        try:
+            #get the corresponding operator
+            op = getattr(OPERATORS, terms[1].upper())
+        except AttributeError:
+            raise NotImplementedError(
+                'The {0} operator is not yet implemented.'.format(terms[1]))
+    else:
+        op = OPERATORS.EXACT
+    attname = terms[0]
+    field = getattr(nodetype, attname)
+    
+    if op in (OPERATORS.RANGE, OPERATORS.IN, OPERATORS.MEMBER_IN):
+        return Condition(field, tuple([field.to_neo(v) for v in keyval[1]]),
+                         op, False)
+    else:
+        return Condition(field, field.to_neo(keyval[1]), op, False)
+
+def lucene_query_from_condition(condition):
     """
-    Build a Lucene query from a filtering condition.
+    Build a Lucene query from a kw pair like those making up Q objects, eg
+    ('name__exact','Sarah').
     """
-    q = None
+    lq = None
     field = condition.field
     attname = field.attname
     def escape_wilds(s):
         return str(s).replace('*','\*').replace('?','\?')
     if condition.operator is OPERATORS.EXACT:
-        q = Q(attname, field.to_neo_index(condition.value))
+        lq = LQ(attname, field.to_neo_index(condition.value))
     elif condition.operator is OPERATORS.STARTSWITH:
-        q = Q(attname, '%s*' % escape_wilds(condition.value), wildcard=True)
+        lq = LQ(attname, '%s*' % escape_wilds(condition.value), wildcard=True)
     elif condition.operator is OPERATORS.CONTAINS:
-        q = Q(attname, '*%s*' % escape_wilds(condition.value), wildcard=True)
+        lq = LQ(attname, '*%s*' % escape_wilds(condition.value), wildcard=True)
     elif condition.operator is OPERATORS.MEMBER:
-        q = Q(attname, field.member_to_neo_index(condition.value))
+        lq = LQ(attname, field.member_to_neo_index(condition.value))
     elif condition.operator is OPERATORS.IN:
-        q = reduce(or_, (Q(attname, field.to_neo_index(v)) for v in condition.value))
+        lq = reduce(or_, (LQ(attname, field.to_neo_index(v))
+                          for v in condition.value))
     elif condition.operator is OPERATORS.MEMBER_IN:
-        q = reduce(or_, (Q(attname, field.member_to_neo_index(v)) for v in condition.value))
+        lq = reduce(or_, (LQ(attname, field.member_to_neo_index(v)) for v in condition.value))
     #FIXME OBOE with field.MAX + exrange, not sure it's easy to fix though...
     elif condition.operator in (OPERATORS.GT, OPERATORS.GTE, OPERATORS.LT,
                                 OPERATORS.LTE, OPERATORS.RANGE): 
@@ -129,38 +125,93 @@ def q_from_condition(condition):
                     'The {0} property is not configured for gt/gte '
                     'queries.'.format(field.attname))
             if condition.operator is OPERATORS.GT:
-                q = Q(attname, exrange=(field.to_neo_index(condition.value),
-                                        field.to_neo_index(fieldtype.MAX)))
+                lq = LQ(attname, exrange=(field.to_neo_index(condition.value),
+                                          field.to_neo_index(fieldtype.MAX)))
             else:
-                q = Q(attname, inrange=(field.to_neo_index(condition.value),
-                                        field.to_neo_index(fieldtype.MAX)))
+                lq = LQ(attname, inrange=(field.to_neo_index(condition.value),
+                                          field.to_neo_index(fieldtype.MAX)))
         elif condition.operator in (OPERATORS.LT, OPERATORS.LTE):
             if not hasattr(fieldtype, 'MIN'):
                 raise exceptions.FieldError(
                     'The {0} property is not configured for lt/lte '
                     'queries.'.format(field.attname))
             if condition.operator is OPERATORS.LT:
-                q = Q(attname, exrange=(field.to_neo_index(fieldtype.MIN),
-                                        field.to_neo_index(condition.value)))
+                lq = LQ(attname, exrange=(field.to_neo_index(fieldtype.MIN),
+                                          field.to_neo_index(condition.value)))
             else:
-                q = Q(attname, inrange=(field.to_neo_index(fieldtype.MIN),
-                                        field.to_neo_index(condition.value)))
+                lq = LQ(attname, inrange=(field.to_neo_index(fieldtype.MIN),
+                                          field.to_neo_index(condition.value)))
         elif condition.operator is OPERATORS.RANGE:
             if len(condition.value) != 2:
                 raise exceptions.ValidationError('Range queries need upper and'
                                                 ' lower bounds.')
-            q = Q(condition.field.attname,
-                inrange=[condition.field.to_neo_index(v)
-                         for v in condition.value])
+            lq = LQ(condition.field.attname,
+                    inrange=[condition.field.to_neo_index(v)
+                             for v in condition.value])
     else:
         return None
     if condition.negate:
-        q = ~q
-    return q
+        lq = ~lq
+    return lq
+
+def condition_tree_from_q(nodetype, q, predicate=lambda c:True):
+    """
+    Returns a new Q tree with kwargs pairs replaced by conditions. Any
+    conditions that don't meet an optional predicate will be removed.
+    """
+    if not isinstance(q, Q):
+        return condition_from_kw(nodetype, q)
+    new_q = clone_q(q)
+    children = [condition_tree_from_q(nodetype, child)
+                for child in new_q.children]
+    new_q.children = filter(predicate, children)
+    return new_q
+
+def lucene_query_from_condition_tree(cond_q):
+    """
+    Unpack a Q tree with Condition children, building a Lucene query tree as
+    we go.
+    """
+    if not isinstance(cond_q, Q):
+        return lucene_query_from_condition(cond_q)
+    if len(cond_q.children) == 1:
+        return lucene_query_from_condition_tree(cond_q.children[0])
+    elif len(cond_q.children) > 1:
+        children = [lucene_query_from_condition_tree(c)
+                    for c in cond_q.children]
+        children = filter(lambda x: bool(x), children)
+        if len(children) > 0:
+            op = and_ if cond_q.connector == 'AND' else or_
+            return reduce(op, children)
+
+def lucene_query_from_q(using, nodetype, q):
+    # crawl the Q tree and prune all non-indexed fields. cry about conflicting
+    # indices
+
+    # XXX hack to get around lack of real closure support
+    prop_indexes = set([])
+    def predicate(cond):
+        if isinstance(cond, Q):
+            return True
+        if cond.field.indexed and not getattr(cond.field, 'id', False):
+            index = cond.field.index(using)
+            prop_indexes.add(index)
+            if len(prop_indexes) > 1:
+                raise ValidationError("Complex filters cannot refer to two "
+                                      "indexed properties that don't share an "
+                                      "index.")
+            return True
+    cond_q = condition_tree_from_q(nodetype, q, predicate=predicate)
+    if len(prop_indexes) == 0:
+        return None
+    index = next(iter(prop_indexes))
+    return (index.name, lucene_query_from_condition_tree(cond_q))
 
 def cypher_primitive(val):
     if isinstance(val, basestring):
         return '"%s"' % val
+    elif val is None:
+        return 'null'
     elif isinstance(val, Iterable):
         return "[%s]" % ','.join(cypher_primitive(v) for v in val)
     return str(val)
@@ -186,44 +237,44 @@ def cypher_predicate_from_condition(element_name, condition):
     value = condition.value
 
     if condition.operator is OPERATORS.EXACT:
-        cypher = ("%s! = %s" % 
+        cypher = ("%s = %s" % 
                   (element_name, cypher_primitive(value)))
     elif condition.operator is OPERATORS.GT:
-        cypher = ("%s! > %s" %
+        cypher = ("%s > %s" %
                   (element_name, cypher_primitive(value)))
     elif condition.operator is OPERATORS.GTE:
-        cypher = ("%s! >= %s" %
+        cypher = ("%s >= %s" %
                   (element_name, cypher_primitive(value)))
     elif condition.operator is OPERATORS.LT:
-        cypher = ("%s! < %s" %
+        cypher = ("%s < %s" %
                   (element_name, cypher_primitive(value)))
     elif condition.operator is OPERATORS.LTE:
-        cypher = ("%s! <= %s" %
+        cypher = ("%s <= %s" %
                   (element_name, cypher_primitive(value)))
     elif condition.operator is OPERATORS.RANGE:
         if len(condition.value) != 2:
             raise exceptions.ValidationError('Range queries need upper and'
                                             ' lower bounds.')
-        cypher = ("(%s! >= %s) AND (%s! <= %s)" %
+        cypher = ("(%s >= %s) AND (%s <= %s)" %
                   (element_name, cypher_primitive(value[0]), element_name,
                    cypher_primitive(value[1])))
     elif condition.operator is OPERATORS.MEMBER or \
-            (isinstance(field._property, ArrayProperty) and 
-             condition.operator is OPERATORS.CONTAINS):
-        cypher = ("%s IN %s!" %
+            (condition.operator is OPERATORS.CONTAINS and 
+             isinstance(field._property, ArrayProperty)):
+        cypher = ("%s IN %s" %
                   (cypher_primitive(value), element_name))
     elif condition.operator is OPERATORS.IN:
-        cypher = ("%s! IN %s" % 
+        cypher = ("%s IN %s" % 
                   (element_name, cypher_primitive(value)))
     elif condition.operator is OPERATORS.MEMBER_IN:
-        cypher = ('ANY(someVar IN %s! WHERE someVar IN %s)' % 
+        cypher = ('ANY(someVar IN %s WHERE someVar IN %s)' % 
                   (element_name, cypher_primitive(value)))
     elif condition.operator is OPERATORS.CONTAINS:
         if isinstance(field._property, StringProperty):
             #TODO this is a poor man's excuse for Java regex escaping. we need
             # a better solution
             regex = ('.*%s.*' % re.escape(value))
-            cypher = '%s! =~ %s' % (element_name, cypher_primitive(regex))
+            cypher = '%s =~ %s' % (element_name, cypher_primitive(regex))
         else:
             raise exceptions.ValidationError('The contains operator is only'
                                              ' valid against string and array'
@@ -233,7 +284,7 @@ def cypher_predicate_from_condition(element_name, condition):
             raise exceptions.ValidationError(
                 'The startswith operator is only valid against string '
                 'properties.')
-        cypher = ("LEFT(%s!, %d) = %s" %
+        cypher = ("LEFT(%s, %d) = %s" %
                   (element_name, len(value), cypher_primitive(value)))
     else:
         raise NotImplementedError('Other operators are not yet implemented.')
@@ -242,18 +293,29 @@ def cypher_predicate_from_condition(element_name, condition):
         cypher = "NOT (%s)" % cypher
     return cypher
 
-def cypher_where_from_conditions(element_to_filter, conditions):
+def cypher_predicates_from_q(element_to_filter, q):
+    if not isinstance(q, Q):
+        if getattr(q.field, 'id', False):
+            identifier = 'ID(%s)' % element_to_filter
+        else:
+            identifier = '%s.%s!' % (element_to_filter, q.field.attname)
+        return '(%s)' % cypher_predicate_from_condition(identifier , q)
+    children = list(not_none(cypher_predicates_from_q(element_to_filter, c)
+                              for c in q.children))
+    if len(children) > 0:
+        expr = (" %s " % q.connector).join(children)
+        return "NOT (%s)" % expr if q.negated else expr
+    return None
+
+def cypher_where_from_q(nodetype, element_to_filter, q):
     """
     Build a Cypher WHERE clause based on a str Cypher element identifier that
-    should resolve to a node or rel column in the final query, and an iterable
-    of conditions.
+    should resolve to a node or rel column in the final query, and a Q tree of
+    kwarg filters.
     """
-    # TODO need to change when we tackle #35 (ORs)
-    where_exps = ("(%s)" % cypher_predicate_from_condition(
-                    element_to_filter + '.' + c.field.attname, c)
-                  for c in conditions)
-    joined_exps = "AND".join(where_exps)
-    return "WHERE %s\n" % joined_exps if joined_exps else ''
+    cond_q = condition_tree_from_q(nodetype, q)
+    exps = cypher_predicates_from_q(element_to_filter, cond_q)
+    return "WHERE %s\n" % exps if exps else ''
 
 def cypher_order_by_term(element_name, field):
     """
@@ -621,9 +683,9 @@ QUERY_PASSTHROUGH_METHODS = ('set_limits','clear_limits','can_filter',
 @borrows_methods(SQLQuery, QUERY_PASSTHROUGH_METHODS)
 class Query(object):
     aggregates_module = aggregates
-    def __init__(self, nodetype, conditions=tuple(), max_depth=None, 
+    def __init__(self, nodetype, filters=None, max_depth=None, 
                  select_related_fields=[]):
-        self.conditions = conditions
+        self.filters = filters or []
         self.nodetype = nodetype
         self.max_depth = max_depth
         self.select_related_fields = list(select_related_fields)
@@ -642,14 +704,9 @@ class Query(object):
         self.clear_limits()
         self.clear_ordering()
 
-    def add(self, prop, value, operator=OPERATORS.EXACT, negate=False):
-    #TODO validate, based on prop type, etc
-        return type(self)(self.nodetype, conditions = self.conditions +\
-                          (Condition(prop, value, operator, negate),))
-
-    def add_cond(self, cond):
-        return type(self)(self.nodetype, conditions = self.conditions +\
-                          tuple([cond]))
+    def add_q(self, q):
+        self.filters.append(q)
+        return self
 
     def add_select_related(self, fields):
         self.select_related = True
@@ -694,7 +751,7 @@ class Query(object):
         return self.nodetype._neo4j_instance(node)
 
     def clone(self):
-        clone = type(self)(self.nodetype, self.conditions, self.max_depth,
+        clone = type(self)(self.nodetype, self.filters, self.max_depth,
                            self.select_related_fields)
         clone.order_by = self.order_by
         clone.return_fields = self.return_fields
@@ -729,56 +786,47 @@ class Query(object):
         return {query.return_fields.keys()[0]:result_set[0]}
 
     def as_groovy(self, using):
-        conditions = uniqify(self.conditions)
-
-        #TODO exclude those that can't be evaluated against (eg exact=None, etc)
-        # TODO... those can probably be evaluated against now with Cypher!
+        filters = uniqify(self.filters)
+        
         id_conditions = []
-        indexed = []
-        unindexed = []
 
-        for c in conditions:
-            if getattr(c.field, 'id', False):
-                id_conditions.append(c)
-            elif c.field.indexed:
-                indexed.append(c)
-            else:
-                unindexed.append(c)
+        # check all top-level children for id conditions
+        for q in filters:
+            if q.connector == 'AND':
+                conditions = [condition_from_kw(self.nodetype, kw)
+                              for kw in q.children if not isinstance(kw, Q)]
+                id_conditions.extend(c for c in conditions
+                                     if getattr(c.field, 'id', False))
 
-        #TODO error out or handle other id conditions (eg gt, lt)
         grouped_id_conds = itertools.groupby(id_conditions, lambda c: c.operator)
         id_lookups = dict(((k, list(l)) for k, l in grouped_id_conds))
 
         exact_id_lookups = list(id_lookups.get(OPERATORS.EXACT, []))
         if len(exact_id_lookups) > 1:
-            raise ValueError("Conflicting exact id lookups - a node can't have two ids.")
+            raise ValueError("Conflicting exact id lookups - a node can't have"
+                             " two ids.")
 
         in_id_lookups = list(id_lookups.get(OPERATORS.IN, []))
 
-        index_by_name = dict((i.name, i) for i in 
-                             (c.field.index(using) for c in indexed))
+        # build index queries from filters
 
-        #TODO order by type
-        # build lucene queries for index-based conditions
-        cond_by_ind = itertools.groupby(indexed,
-                                        lambda c:c.field.index(using).name)
-        index_qs = []
-        for index_name, group in cond_by_ind:
-            index = index_by_name[index_name]
-            q = None
-            for condition in group:
-                new_q = q_from_condition(condition)
-                if not new_q:
-                    break
-                if q:
-                    q &= new_q
-                else:
-                    q = new_q
-            if q is not None:
-                index_qs.append((index_name, str(q)))
+        index_qs = not_none(lucene_query_from_q(using, self.nodetype, q)
+                            for q in filters)
+
+        # combine any queries headed for the same index and replace lucene
+        # queries with strings
         
-        # use filtered conditions, ids, OR a type tree traversal as a cypher
-        # START, then unfiltered as a WHERE
+        index_qs_dict = {}
+        for key, val in index_qs:
+            if key in index_qs_dict:
+                index_qs_dict[key] &= val
+            else:
+                index_qs_dict[key] = val
+
+        index_qs = [(key, unicode(val)) for key, val in index_qs_dict.iteritems()]
+
+        # use index lookups, ids, OR a type tree traversal as a cypher START,
+        # then unindexed conditions as a WHERE
 
         start_clause, cypher_params = self.get_start_clause_and_param_dict()
 
@@ -790,9 +838,8 @@ class Query(object):
         n<-[:`<<INSTANCE>>`]-()<-[:`<<TYPE>>`*0..]-typeNode
         """
 
-        where_clause = cypher_where_from_conditions('n', itertools.chain(
-            unindexed + indexed))
-        
+        where_clause = cypher_where_from_q(self.nodetype, 'n', Q(*filters))
+
         with_clauses = self.with_clauses
 
         order_by = [cypher_order_by_term('n', field) for field in self.order_by] \
@@ -891,9 +938,6 @@ class Query(object):
 
         return groovy_script, params
 
-    #TODO optimize query by using type info, instead of just returning the
-    #proper type
-    #TODO when does a returned index query of len 0 mean we're done?
     def execute(self, using):
         conn = connections[using]
 
@@ -940,30 +984,6 @@ class Query(object):
 #############
 # QUERYSETS #
 #############
-
-def condition_from_kw(nodetype, keyval):
-    pattern = re.compile('__+')
-    terms = pattern.split(keyval[0])
-    if not terms:
-        pass #TODO error out
-    elif len(terms) > 1:
-        try:
-            #get the corresponding operator
-            op = getattr(OPERATORS, terms[1].upper())
-        except AttributeError:
-            raise NotImplementedError('The {0} operator is not yet implemented.'.format(terms[1]))
-    else:
-        op = OPERATORS.EXACT
-    attname = terms[0]
-    field = getattr(nodetype, attname)
-    
-    if op in (OPERATORS.RANGE, OPERATORS.IN, OPERATORS.MEMBER_IN):
-        return Condition(field, tuple([field.to_neo(v) for v in keyval[1]]), op, False)
-    else:
-        return Condition(field, field.to_neo(keyval[1]), op, False)
-
-def conditions_from_kws(nodetype, kwdict):
-    return [condition_from_kw(nodetype, i) for i in kwdict.items()]
 
 class NodeQuerySet(QuerySet):
     """
@@ -1082,6 +1102,10 @@ class NodeQuerySet(QuerySet):
     # PUBLIC METHODS THAT RETURN A QUERYSET SUBCLASS #
     ##################################################
 
+    def _filter_or_exclude(self, negate, *args, **kwargs):
+        return super(NodeQuerySet, self)._filter_or_exclude(negate, *args,
+                                                            **kwargs)
+
     @not_implemented
     def values(self, *fields):
         pass
@@ -1106,14 +1130,6 @@ class NodeQuerySet(QuerySet):
     ##################################################################
     # PUBLIC METHODS THAT ALTER ATTRIBUTES AND RETURN A NEW QUERYSET #
     ##################################################################
-
-    #TODO what's that non-kw args being used for?
-    def _filter_or_exclude(self, negate, *args, **kwargs):
-        new_query = self.query.clone()
-        for c in conditions_from_kws(self.model, kwargs):
-            neg_c = Condition(*c[:-1], negate=negate)
-            new_query = new_query.add_cond(neg_c)
-        return self._clone(query=new_query)
 
     @not_implemented
     def complex_filter(self, filter_obj):

@@ -42,6 +42,4 @@ class NodeModelManager(models.Manager):
         return self.get_query_set().create(**kwargs)
     
     def filter(self, *args, **kwargs):
-        if args:
-            raise NotImplementedError('The Q operator is not currently supported')
-        return self.get_query_set().filter(**kwargs)
+        return self.get_query_set().filter(*args, **kwargs)

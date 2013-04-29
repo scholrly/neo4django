@@ -1,6 +1,7 @@
 from nose.tools import with_setup, eq_
 
 from django.core import exceptions
+from django.db.models import Q
 
 from time import time
 import itertools
@@ -138,14 +139,13 @@ def test_basic_indexed_query():
     """
     Tests a basic query over a single type. Only indexed fields are tested.
     """
-    
-    age_query = Query(IndexedMouse).add(IndexedMouse.age, 2)
+    age_query = Query(IndexedMouse).add_q(Q(age=2))
     results = list(age_query.execute(DEFAULT_DB_ALIAS))
     eq_(len(results), 2)
     assert len([m for m in results if m.name == 'Brain']) == 0, "The query"\
             " returned Brain - even though he's too old."
 
-    results = list(age_query.add(IndexedMouse.name, 'jerry')\
+    results = list(age_query.add_q(Q(name='jerry'))\
                    .execute(DEFAULT_DB_ALIAS))
     eq_(len(results), 1)
     assert len([m for m in results if m.name == 'jerry']) > 0, "The query"\
@@ -156,8 +156,8 @@ def test_negated_query():
     """
     Tests a negated query over a single type. Only indexed fields are tested.
     """
-    query = Query(IndexedMouse).add(IndexedMouse.age, 2)\
-            .add(IndexedMouse.name, 'jerry', negate=True)
+    query = Query(IndexedMouse).add_q(Q(age=2))\
+            .add_q(~Q(name='jerry'))
     results = list(query.execute(DEFAULT_DB_ALIAS))
     eq_(len(results), 1)
     assert len([m for m in results if m.name == 'jerry']) == 0, "The query"\
@@ -168,7 +168,7 @@ def test_unindexed_query():
     """
     Tests a query over a single type. Only non-indexed fields are tested.
     """
-    query = Query(Person).add(Person.name, 'Peter Pan')
+    query = Query(Person).add_q(Q(name='Peter Pan'))
     results = list(query.execute(DEFAULT_DB_ALIAS))
 
     eq_(len(results), 1)
@@ -179,7 +179,7 @@ def test_complex_query():
     """
     Tests a single-type query with both indexed and non-indexed fields.
     """
-    query = Query(Person).add(Person.name, 'Peter Pan', negate=True).add(Person.age, 15)
+    query = Query(Person).add_q(~Q(name='Peter Pan')).add_q(Q(age=15))
     results = list(query.execute(DEFAULT_DB_ALIAS))
 
     eq_(len(results), 1)
@@ -222,7 +222,7 @@ def test_get_by_id():
     except exceptions.ObjectDoesNotExist:
         pass
     else:
-        raise AssertionError('Interesting man was returned, though has has the '
+        raise AssertionError('Interesting man was returned, though he has the '
                              'wrong name.')
 
 @with_setup(None, teardown)
@@ -725,8 +725,20 @@ def test_query_type():
 
 @with_setup(setup_people, teardown)
 def test_complex_filters():
-    from django.db.models import Q
-    
     eq_(len(Person.objects.filter(Q(age=5))), 1)
     eq_(len(Person.objects.filter(Q(age=5) & Q(name='Jack'))), 1)
     eq_(len(Person.objects.filter(Q(age=5) | Q(name='Jill'))), 2)
+
+@with_setup(None, teardown)
+def test_inherited_indexed_filter():
+    class SpecializedPerson(Person):
+        position = models.StringProperty(indexed=True)
+
+    pete = SpecializedPerson.objects.create(name='Pete',
+                                            position='Assistant Manager')
+
+    pete_2 = Person.objects.create(name='Pete')
+
+    eq_(SpecializedPerson.objects.filter(name='Pete')\
+                         .get(position__contains='Manager'),
+        pete)
