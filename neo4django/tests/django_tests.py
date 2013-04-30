@@ -48,6 +48,15 @@ def test_auth():
     from django.contrib.auth import authenticate
     eq_(authenticate(username='john', password='johnpassword'), user)
 
+def test_auth_backend():
+    from neo4django.auth.models import User
+    user = User.objects.create_user('paul', 'mccartney@thebeatles.com', 'paulpassword')
+
+    from neo4django.auth.backends import NodeModelBackend
+    backend = NodeModelBackend()
+    eq_(backend.authenticate(username='paul', password='paulpassword'), user)
+    eq_(backend.get_user(user.pk), user)
+
 def test_modelform():
     from django.forms import ModelForm
 
