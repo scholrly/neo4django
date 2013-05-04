@@ -16,4 +16,4 @@ class NodeModelBackend(object):
             pass
 
     def get_user(self, user_id):
-        return User.objects.get(user_id=user_id)
+        return User.objects.get(id=user_id)

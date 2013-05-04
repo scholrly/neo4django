@@ -23,8 +23,6 @@ USER_PASSTHROUGH_METHODS = ("__unicode__", "natural_key", "get_absolute_url",
 
 @borrows_methods(django_auth_models.User, USER_PASSTHROUGH_METHODS)
 class User(NodeModel):
-    user_id = AutoProperty()
-
     username = StringProperty(indexed=True, unique=True)
     first_name = StringProperty()
     last_name = StringProperty()
