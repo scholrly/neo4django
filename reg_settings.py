@@ -122,6 +122,7 @@ tests=[
 	'test_aggregate_sum',
 	'test_aggregate_max_min',
 	'test_auth',
+	'test_auth_backend',
 	'test_modelform',
 	'test_query_type',
 	'test_complex_filters',

@@ -55,7 +55,7 @@ def test_auth_backend():
     from neo4django.auth.backends import NodeModelBackend
     backend = NodeModelBackend()
     eq_(backend.authenticate(username='paul', password='paulpassword'), user)
-    eq_(backend.get_user(user.user_id), user)
+    eq_(backend.get_user(user.id), user)
 
 def test_modelform():
     from django.forms import ModelForm
