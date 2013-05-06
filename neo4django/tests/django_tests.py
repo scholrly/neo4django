@@ -41,6 +41,7 @@ def test_syncdb():
     from django.core.management import call_command
     call_command('syncdb', interactive=False)
 
+@with_setup(None, teardown)
 def test_auth():
     from neo4django.auth.models import User
     user = User.objects.create_user('john', 'lennon@thebeatles.com', 'johnpassword')
@@ -48,6 +49,7 @@ def test_auth():
     from django.contrib.auth import authenticate
     eq_(authenticate(username='john', password='johnpassword'), user)
 
+@with_setup(None, teardown)
 def test_auth_backend():
     from neo4django.auth.models import User
     user = User.objects.create_user('paul', 'mccartney@thebeatles.com', 'paulpassword')
@@ -57,6 +59,7 @@ def test_auth_backend():
     eq_(backend.authenticate(username='paul', password='paulpassword'), user)
     eq_(backend.get_user(user.id), user)
 
+@with_setup(None, teardown)
 def test_modelform():
     from django.forms import ModelForm
 
@@ -79,3 +82,52 @@ def test_modelform():
 
     new_rick = Person.objects.get(id__exact=rick.id)
     eq_(new_rick.age, new_rick_data['age'])
+
+@with_setup(None, teardown)
+def test_related_modelform():
+    from django.forms import ModelForm
+
+    class FriendlyPerson(Person):
+        friends = models.Relationship('self', rel_type='friends_with')
+
+    class FriendlyPersonForm(ModelForm):
+        class Meta:
+            model = FriendlyPerson
+
+    friendly_person_form = FriendlyPersonForm()
+    as_p = friendly_person_form.as_p()
+    assert 'id_friends' in as_p
+    assert 'id_friendlyperson_set' in as_p
+
+    pete = FriendlyPerson.objects.create(name='Pete', age=20)
+    tom = FriendlyPerson.objects.create(name='Tom', age=30)
+    tom.friends.add(pete)
+    tom.save()
+
+    bound_friendly_form = FriendlyPersonForm(instance=tom)
+    as_p = bound_friendly_form.as_p()
+
+    friendly_person_id_strs = [str(pete.id), str(tom.id)]
+
+    from lxml import etree
+
+    parsed = etree.fromstring('<root>%s</root>' % as_p)
+
+    eq_(parsed.xpath("//select[@name='friendlyperson_set']/option/@value"),
+        friendly_person_id_strs)
+    eq_(parsed.xpath("//select[@name='friends']/option/@value"),
+        friendly_person_id_strs)
+    eq_(parsed.xpath("//select[@name='friends']/option[@selected]/@value"),
+        [str(pete.id)])
+
+    tom.friends.remove(pete)
+    tom.save()
+
+    new_data = {'friends':[pete.id]}
+
+    bound_friendly_form = FriendlyPersonForm(new_data, instance=tom)
+
+    assert bound_friendly_form.is_valid()
+    bound_friendly_form.save()
+
+    assert pete in tom.friends.all()
