@@ -8,11 +8,8 @@ into the `Cypher <http://docs.neo4j.org/chunked/milestone/cypher-query-lang.html
 graph query language, which yield :class:`~neo4django.db.models.NodeModel`
 instances on execution.
 
-Most of the `Django QuerySet API <https://docs.djangoproject.com/en/1.3/ref/models/querysets/>`_
-is implemented, with exceptions noted in the `project issues <https://github.com/scholrly/neo4django/issues>`_.
-In particular, the library doesn't yet support `relationship-spanning lookups <https://github.com/scholrly/neo4django/issues/20>`_
-or complex date handling. We've also added two field lookups- `member` and 
-`member__in`- to make searching over array properties easier. For an 
+Most of the `Django QuerySet API <https://docs.djangoproject.com/en/1.4/ref/models/querysets/>`_
+is implemented, with exceptions noted in the `project issues <https://github.com/scholrly/neo4django/issues>`_. We've added two field lookups- `member` and `member__in`- to make searching over array properties easier. For an 
 ``OnlinePerson`` instance with an ``emails`` property, query against the field
 like::
 
@@ -31,6 +28,10 @@ operations are much less expensive. Consider a more connected model::
         siblings = Relationship('self', rel_type='sibling_of')
         # hopefully this is one-to-one...
         spouse = Relationship('self', rel_type='married_to', single=True, rel_single=True)
+
+Finding a child with parents named Tom and Meagan and a stepdad named Jack is simple::
+
+    FamilyPerson.objects.filter(parents__name__in=['Tom','Meagan']).filter(stepdad__name='Jack')
 
 If we'd like to pre-load a subgraph around a particular ``FamilyPerson``, we can
 use :func:`~neo4django.db.models.query.NodeQuerySet.select_related`::
