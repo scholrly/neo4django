@@ -127,7 +127,9 @@ tests=[
 	'test_query_type',
 	'test_complex_filters',
 	'test_inherited_indexed_filter',
-    'test_spanning_lookup']
+	'test_spanning_lookup',
+	'test_related_modelform',
+	'test_relationship_models']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
@@ -136,4 +138,5 @@ should_fail=[
 	'test_url_array_property_validator',
 	'test_type_query',
 	'test_model_casting_validation',
-	'test_array_use_strings']
+	'test_array_use_strings',
+	'test_relationship_models']

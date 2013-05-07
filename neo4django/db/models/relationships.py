@@ -244,6 +244,12 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
     choices = None
     db_index = None
 
+    blank = True
+    unique = False
+    unique_for_date = False
+    unique_for_year = False
+    unique_for_month = False
+
     def __init__(self, rel, source, relname, attname, serialize=True):
         self.__rel = rel
         self.__source = source
@@ -259,8 +265,11 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
                      'meta',
                      # form handling
                      'editable',
-                     'formfield'
+                     'formfield',
                     ],self.__rel)
+
+    def clean(self, value, instance):
+        return value
 
     def _setup_reversed(self, target):
         self.__target = target
@@ -341,8 +350,7 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
                     state[key] = (False, state[key][1])
                     
     #TODO this... well, consider revising
-    NodeModel._save_neo4j_relationships = staticmethod(_save_) 
-    del _save_
+    NodeModel._save_neo4j_relationships = staticmethod(_save_)
 
     @not_implemented
     def _save_relationship(self, instance, node, state):
@@ -381,7 +389,6 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
     def _create_neo_relationship(self, node, obj, **kwargs):
         neo_rel_attrs = kwargs.get('attrs', {})
         neo_rel_attrs[INTERNAL_ATTR] = True
-        #TODO 'using' throughout relationships.py, #175
         if obj.pk is None:
             obj.save(using=obj.using)
         other = obj.node
@@ -530,14 +537,30 @@ class MultipleNodes(BoundRelationship):
     #BoundRelationship subclass for a multi-node relationship without an
     #associated relationship model.
 
+    def value_from_object(self, obj):
+        return self.__get__(obj).all()
+
+    def value_to_string(self, obj):
+       return str([item.pk for item in list(self.__get__(obj).all())])
+
+    def save_form_data(self, instance, data):
+        # TODO we need a function like _get_relationship that only takes a
+        # model instance...
+        states = self._state_for(instance)
+        self._set_relationship(instance, states, list(data))
+
+    def clean(self, value, instance):
+        # XXX HACK since we don't use a proxy object like 
+        # ForeignRelatedObjectsDescriptor (and actually return a
+        # RelationshipInstance on getattr(model, field.attname)) so we have to
+        # unpack a RelationshipInstance
+        return list(value._added)
+
     def _get_relationship(self, obj, states):
         state = states.get(self.name)
         if state is None:
             states[self.name] = state = RelationshipInstance(self, obj)
         return state
-
-    def value_from_object(self, obj):
-        return self.__get__(obj).all()
 
     def _set_relationship(self, obj, state, value):
         if value is not None:
@@ -557,9 +580,6 @@ class MultipleNodes(BoundRelationship):
             else:
                 state[self.name].add(value)
 
-    def value_to_string(self, obj):
-       return str([item.pk for item in list(self.__get__(obj).all())])
-
     def _neo4j_instance(self, this, relationship):
         if this.id == relationship.start.id:
             that = relationship.end
@@ -572,20 +592,6 @@ class MultipleNodes(BoundRelationship):
 
     def _save_relationship(self, instance, node, state):
         state.__save__(node)
-
-   # @classmethod
-   # def to_neo(cls, value):
-   #      pass
-
-   # @classmethod
-   # def from_neo(cls, value):
-   #     pass
-
-    # def _set_relationship():
-    #    #TODO diff rels and this list
-    #    #add news rels, delete old
-    #    #preserve order if we're supposed to
-    #    pass
 
     def _load_relationships(self, node, ordered=False, **kwargs):
         sup = super(MultipleNodes, self)._load_relationships(node, **kwargs)
@@ -612,9 +618,12 @@ class MultipleRelationships(BoundRelationshipModel): # WAIT!
     def add(self, obj, other):
         pass
 
+# TODO this needs to be supplanted by using somthing like django.db.models
+# .fields.related.ForeignRelatedObjectsDescriptor
 class RelationshipInstance(models.Manager):
     """
-    A manager that keeps state for the many side (`MultipleNodes`) of relationships.
+    A manager that keeps state for the many side (`MultipleNodes`) of
+    relationships.
     """
     def __init__(self, rel, obj):
         self._rel = rel
@@ -636,7 +645,6 @@ class RelationshipInstance(models.Manager):
                 self._remove_from_cache(deleted_obj)
                 if deleted_obj in self._added:
                     self._added.remove(deleted_obj)
-
 
     ordered = property(lambda self: self._rel.ordered)
 
@@ -677,7 +685,10 @@ class RelationshipInstance(models.Manager):
         self._added[:] = []
 
     def _neo4j_relationships_and_models(self, node):
-        "Returns generator of relationship, neo4j instance tuples associated with node."
+        """
+        "Returns generator of relationship, neo4j instance tuples associated 
+        with node.
+        """
         if self._cache is None:
             self._add_to_cache(*[(r, self._rel._neo4j_instance(node, r)) for r in 
                            self._rel._load_relationships(node, ordered=self.ordered)])
@@ -730,7 +741,8 @@ class RelationshipInstance(models.Manager):
                     try:
                         self._added.remove(obj)
                     except ValueError:
-                        raise rel.target_model.DoesNotExist("%r is not related to %r." % (obj, self._obj))
+                        raise rel.target_model.DoesNotExist(
+                            "%r is not related to %r." % (obj, self._obj))
                 self._remove_from_cache(obj)
         else:
             for obj in objs:
@@ -740,7 +752,8 @@ class RelationshipInstance(models.Manager):
                     elif obj in self._cache:
                         self._remove_from_cache(obj)
                 except ValueError:
-                    raise rel.target_model.DoesNotExist("%r is not related to %r." % (obj, self._obj))
+                    raise rel.target_model.DoesNotExist(
+                        "%r is not related to %r." % (obj, self._obj))
 
     def clear(self):
         all_objs = list(self.all())

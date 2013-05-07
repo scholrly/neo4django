@@ -480,6 +480,8 @@ class StringProperty(Property):
     MAX = u'\U0010FFFF' * 20
     MIN = u''
 
+    formfield = formfields.CharField
+
     def __init__(self, max_length=None, min_length=None, **kwargs):
         if kwargs.get('indexed', False):
             kwargs.setdefault('indexed_fulltext', True)
@@ -508,6 +510,8 @@ class EmailProperty(StringProperty):
     formfield = formfields.EmailField
 
 class URLProperty(StringProperty):
+    formfield = formfields.URLField
+
     #TODO docstring
     def __init__(self, verify_exists=False, **kwargs):
         kwargs['max_length'] = kwargs.get('max_length', 2083)
@@ -527,6 +531,8 @@ class IntegerProperty(Property):
 
     MAX = MAX_INT
     MIN = MIN_INT
+
+    formfield = formfields.IntegerField
 
     def __init__(self, **kwargs):
         if kwargs.get('indexed', False):
@@ -564,6 +570,7 @@ class IntegerProperty(Property):
 
 class AutoProperty(IntegerProperty):
     editable = False
+    formfield = formfields.IntegerField
 
     def __init__(self, *args, **kwargs):
         kwargs['auto'] = True
@@ -666,6 +673,8 @@ class DateTimeProperty(DateProperty):
 class ArrayProperty(Property):
     __metaclass__ = ABCMeta
 
+    formfield = fields.CharField
+
     default_validators = [validate_array]
 
     member_to_neo_index = Property.to_neo_index.im_func
@@ -746,6 +755,8 @@ class IntArrayProperty(ArrayProperty):
     member_to_neo_index = IntegerProperty.to_neo_index.im_func
 
 class BooleanProperty(Property):
+    formfield = formfields.BooleanField
+
     def to_neo(self, value):
         return bool(value)
 

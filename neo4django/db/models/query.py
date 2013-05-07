@@ -116,8 +116,9 @@ def condition_from_kw(nodetype, keyval):
     try:
         field = getattr(cur_m, attname)
     except AttributeError:
-        raise ValidateError("Cannot find referenced field `%s` from model %s."
-                            % (keyval[0], nodetype.__name__))
+        raise exceptions.ValidationError(
+            "Cannot find referenced field `%s` from model %s." % 
+                                       (keyval[0], nodetype.__name__))
 
     if op in (OPERATORS.RANGE, OPERATORS.IN, OPERATORS.MEMBER_IN):
         return Condition(field, tuple([field.to_neo(v) for v in keyval[1]]),
@@ -147,7 +148,8 @@ def lucene_query_from_condition(condition):
         lq = reduce(or_, (LQ(attname, field.to_neo_index(v))
                           for v in condition.value))
     elif condition.operator is OPERATORS.MEMBER_IN:
-        lq = reduce(or_, (LQ(attname, field.member_to_neo_index(v)) for v in condition.value))
+        lq = reduce(or_, (LQ(attname, field.member_to_neo_index(v))
+                          for v in condition.value))
     #FIXME OBOE with field.MAX + exrange, not sure it's easy to fix though...
     elif condition.operator in (OPERATORS.GT, OPERATORS.GTE, OPERATORS.LT,
                                 OPERATORS.LTE, OPERATORS.RANGE): 
@@ -1209,9 +1211,8 @@ class NodeQuerySet(QuerySet):
                     if self[i] == value:
                         return True
                     i+=1
-                except IndexError:
+                except (IndexError, StopIteration):
                     return False
-            pass
         return super(NodeQuerySet, self).__contains__(value)
 
     def iterator(self):
