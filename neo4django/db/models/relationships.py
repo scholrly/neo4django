@@ -164,6 +164,17 @@ class Relationship(object):
             name = target.__name__
         return suffix % name.lower()
 
+    def _get_bound_relationship_type(self):
+        # TODO this will change with relationship models (#1)
+        if self.__single:
+            return SingleNode
+        else:
+            return MultipleNodes
+    
+    def _get_new_bound_relationship(self, source, name):
+        return self._get_bound_relationship_type()(
+                self, source, self.name or name, name)
+
     def contribute_to_class(self, source, name):
         if not issubclass(source, NodeModel):
             raise TypeError("Relationships may only extend from Nodes.")
@@ -178,20 +189,8 @@ class Relationship(object):
                     warnings.warn('`%s` and `%s` share a relationship type and '
                                   'direction. Is this what you meant to do?' 
                                   % (r.name, name))
-
-        if hasattr(self, 'Model'):
-            if self.__single:
-                Bound = SingleRelationship
-            else:
-                Bound = MultipleRelationships
-            bound = Bound(self, source, self.name or name, name,
-                            self.Model)
-        else:
-            if self.__single:
-                Bound = SingleNode
-            else:
-                Bound = MultipleNodes
-            bound = Bound(self, source, self.name or name, name)
+            
+        bound = self._get_new_bound_relationship(source, name)
         source._meta.add_field(bound)
         if not hasattr(source._meta, '_relationships'):
             source._meta._relationships = {}
