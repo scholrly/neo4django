@@ -9,7 +9,7 @@ graph query language, which yield :class:`~neo4django.db.models.NodeModel`
 instances on execution.
 
 Most of the `Django QuerySet API <https://docs.djangoproject.com/en/1.4/ref/models/querysets/>`_
-is implemented, with exceptions noted in the `project issues <https://github.com/scholrly/neo4django/issues>`_. We've added two field lookups- `member` and `member__in`- to make searching over array properties easier. For an 
+is implemented, with exceptions noted in the `project issues <https://github.com/scholrly/neo4django/issues>`_. We've added two field lookups- `member` and `member_in`- to make searching over array properties easier. For an 
 ``OnlinePerson`` instance with an ``emails`` property, query against the field
 like::
 
