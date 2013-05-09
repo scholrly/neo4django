@@ -22,44 +22,6 @@ from neo4jrestclient.constants import RELATIONSHIPS_ALL, RELATIONSHIPS_IN, RELAT
 from collections import defaultdict
 from functools import partial
 
-class RelationshipBase(type):
-    """
-    Metaclass for Relationships. Creates a RelationshipModel for each Relationship
-    subclass that extends the models of all Relationship superclasses. 
-    """
-    def __new__(meta, name, bases, body):
-        new = super(RelationshipBase, meta).__new__
-        parents = [cls for cls in bases if isinstance(cls, RelationshipBase)]
-        if not parents: # this is the base class
-            return new(meta, name, bases, body)
-        module = body.pop('__module__')
-        modelbases = [cls.Model for cls in parents
-                        if hasattr(cls, 'Model')]
-        Model = RelationshipModel.new(module, name, modelbases)
-        for key, value in body.items():
-            if hasattr(value, 'contribute_to_class'):
-                value.contribute_to_class(Model, key)
-            else:
-                setattr(Model, key, value)
-        return new(meta, name, bases, {
-                '__module__': module,
-                'Model': Model,
-            })
-
-    #TODO not necessary until we have relationship models, and leads to
-    #recursion bug
-    #def __getattr__(cls, key):
-    #    if hasattr(cls, 'Model'):
-    #        return getattr(cls.Model, key)
-    #    else:
-    #        raise AttributeError(key)
-    #def __setattr__(cls, key, value):
-    #    if hasattr(cls, 'Model'):
-    #        setattr(cls.Model, key, value)
-    #    else:
-    #        raise TypeError(
-    #            "Cannot assign attributes to base Relationship")
-
 class RelationshipModel(object):
     """
     Model backing all relationships. Intended for a single instance to
@@ -81,7 +43,7 @@ class RelationshipModel(object):
 
     @classmethod
     def new(RelationshipModel, module, name, bases):
-        return type(name, bases + [RelationshipModel], {
+        return type(name, bases + (RelationshipModel,), {
                 '__module__': module,})
 
     @not_implemented
@@ -90,8 +52,6 @@ class RelationshipModel(object):
         raise NotImplementedError("<RelationshipModel>.add_field()")
 
 class Relationship(object):
-    """Extend to add properties to relationships."""
-    __metaclass__ = RelationshipBase
 
     def __init__(self, target, rel_type=None, direction=None, optional=True,
                  single=False, related_single=False, related_name=None,
