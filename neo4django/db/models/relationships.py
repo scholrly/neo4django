@@ -113,6 +113,8 @@ class Relationship(object):
                 raise ValueError("Incompatible direction!")
             rel_type = rel_type.type
         
+        self._reverse_relationship_type = Relationship
+
         self.__target = target
         self.name = rel_type
         self.__single = single
@@ -135,14 +137,14 @@ class Relationship(object):
     __is_reversed = False
 
     def reverse(self, target, name):
-        
         if self.direction is RELATIONSHIPS_IN:
             direction = RELATIONSHIPS_OUT
         elif self.direction is RELATIONSHIPS_OUT:
             direction = RELATIONSHIPS_IN
         else:
             direction = RELATIONSHIPS_OUT
-        relationship = Relationship(
+        Type = self._reverse_relationship_type
+        relationship = Type(
             target, rel_type=self.name, direction=direction,
             single=self.__related_single, related_name=name,
             metadata=self.__related_meta, preserve_ordering=self.__ordered)
@@ -189,7 +191,6 @@ class Relationship(object):
                     warnings.warn('`%s` and `%s` share a relationship type and '
                                   'direction. Is this what you meant to do?' 
                                   % (r.name, name))
-            
         bound = self._get_new_bound_relationship(source, name)
         source._meta.add_field(bound)
         if not hasattr(source._meta, '_relationships'):
