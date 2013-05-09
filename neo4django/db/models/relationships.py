@@ -555,29 +555,31 @@ class MultipleNodes(BoundRelationship):
         # unpack a RelationshipInstance
         return list(value._added)
 
-    def _get_relationship(self, obj, states):
+    def _get_state(self, obj, states):
         state = states.get(self.name)
         if state is None:
             states[self.name] = state = RelationshipInstance(self, obj)
         return state
 
-    def _set_relationship(self, obj, state, value):
+    def _get_relationship(self, obj, states):
+        return self._get_state(obj, states)
+
+    def _set_relationship(self, obj, states, value):
         if value is not None:
-            if state.get(self.name) is None:
-                state[self.name] = RelationshipInstance(self, obj)
-            items = list(state[self.name].all())
-            notsaved = state[self.name]._added
+            state = self._get_state(obj, states)
+            items = list(state.all())
+            notsaved = state._added
             if items and len(notsaved) < len(items):
-                state[self.name].remove(*items) 
+                state.remove(*items) 
                 #TODO: make it so it only removes authors not in value
                 #      and remove authors already there from value
                 #XXX: only works when removing from saved nodes
             if notsaved:
                 notsaved[:] = [] #TODO give rel instance a method for this?
             if hasattr(value, '__iter__'):
-                state[self.name].add(*value)
+                state.add(*value)
             else:
-                state[self.name].add(value)
+                state.add(value)
 
     def _neo4j_instance(self, this, relationship):
         if this.id == relationship.start.id:
@@ -789,12 +791,24 @@ class RelationshipQuerySet(NodeQuerySet):
         target_model = model or rel.relationship.target_model
         super(RelationshipQuerySet, self).__init__(
             model=target_model, query=query or Query(target_model),
-    
             using=using)
         self._rel_instance = rel_instance
         self._rel = rel
         self._model_instance = model_instance
 
+        self.query.set_start_clause(self._get_start_clause(), lambda : {
+            'startParam':self._model_instance.id
+        })
+
+    def _get_start_clause(self):
+        """
+        Return a Cypher START fragment - either a str, or an object with an
+        as_cypher() method -  that will be used as the first half of the query
+        built executing the query set. The query should expect a parameter named
+        "startParam" containing this side of the relationship's node id, and
+        should define a column "n" containing nodes to later be filtered
+        against.
+        """
         order_clause = """
             ORDER BY r.`%s`
         """ % ORDER_ATTR if self._rel_instance.ordered else ''
@@ -802,16 +816,13 @@ class RelationshipQuerySet(NodeQuerySet):
         rel_str = cypher_rel_str(self._rel.rel_type, self._rel.direction,
                                  identifier='r')
 
-        start_clause = Clauses([
+        return Clauses([
             Start({'m':'node({startParam})'}, ['startParam']),
             'MATCH (m)%s(n)' % rel_str,
             With({'n':'n', 'r':'r', 'typeNode':'typeNode'}),
             order_clause
         ])
 
-        self.query.set_start_clause(start_clause, lambda : {
-            'startParam':self._model_instance.id
-        })
 
     def iterator(self):
         removed = list(self._rel_instance._old)
