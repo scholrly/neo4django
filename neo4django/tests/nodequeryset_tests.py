@@ -707,6 +707,22 @@ def test_aggregate_avg():
     eq_(Person.objects.all().filter(name='Candleja-').aggregate(Avg('age')).get('age__avg', None), 30)
 
 @with_setup(None, teardown)
+def test_latest():
+    class BornPerson(models.NodeModel):
+        class Meta:
+            get_latest_by = 'born'
+        born = models.DateProperty()
+
+    person = BornPerson.objects.create(born=datetime.date.today())
+    older_person = BornPerson.objects.create(
+        born=datetime.date.today() - datetime.timedelta(1))
+
+    eq_(person, BornPerson.objects.latest('born'))
+    eq_(person, BornPerson.objects.latest())
+
+
+
+@with_setup(None, teardown)
 def test_query_type():
     """
     Confirms #151 - ensures sibling types are not returned on query, even if the
