@@ -305,6 +305,7 @@ def test_relationship_none():
     p = list(Poll.objects.all())[0]
     eq_(len(p.choices.none()), 0)
 
+@with_setup(None, teardown)
 def test_relationship_count():
     class CountingPoll(models.NodeModel):
         question = models.StringProperty()
@@ -327,6 +328,7 @@ def test_relationship_count():
     c2.save()
     eq_(pbest.choices.count(), 2)
 
+@with_setup(None, teardown)
 def test_relationship_filter():
     class PollF(models.NodeModel):
         question = models.StringProperty()
@@ -363,6 +365,7 @@ def test_relationship_filter():
     eq_(len(choices.filter(votes__gte=3).filter(choice='Matt')), 0)
     eq_(len(p.choices.filter(votes__gte=3).filter(choice='Matt')), 0)
 
+@with_setup(None, teardown)
 def test_relationship_create():
     class PollCreate(models.NodeModel):
         question = models.StringProperty()
@@ -382,6 +385,7 @@ def test_relationship_create():
     eq_(len(p.choices.all()), 2)
     eq_(len(ChoiceCreate.objects.all()), 2)
 
+@with_setup(None, teardown)
 def test_relationship_delete():
     class PollDelete(models.NodeModel):
         question = models.StringProperty()
@@ -424,6 +428,23 @@ def test_relationship_delete():
     p = list(PollDelete.objects.all())[0] #re-pull it from the database
     eq_(len(p.choices.all()), 0)
     eq_(len(ChoiceDelete.objects.all()), 0)
+
+@with_setup(None, teardown)
+def test_relationship_distinct():
+    class Job(models.NodeModel):
+        pass
+
+    class EmployedPerson(models.NodeModel):
+        jobs = models.Relationship(Job, rel_type='emplyed_by')
+
+    pete = EmployedPerson.objects.create()
+    job = Job.objects.create()
+
+    pete.jobs.add(job, job)
+    pete.save()
+
+    eq_(len(pete.jobs.all()), 2)
+    eq_(len(pete.jobs.all().distinct()), 1)
 
 @with_setup(None, teardown)
 def test_abstract_rel_inheritance():
