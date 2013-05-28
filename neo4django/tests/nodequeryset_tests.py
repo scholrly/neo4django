@@ -464,7 +464,82 @@ def test_filter_array_member_in():
     eq_(len(q_1only), 1)
     eq_(list(q_1only)[0].id, p1.id)
 
-#test isnull
+@with_setup(setup_mice_and_people, teardown)
+def test_filter_contains():
+    q1 = Person.objects.filter(name__contains='a')
+
+    eq_(len(q1), 3)
+    assert all('a' in p.name for p in q1)
+
+    q2 = IndexedMouse.objects.filter(name__contains='y')
+    eq_(len(q2), 2)
+
+@with_setup(setup_mice_and_people, teardown)
+def test_filter_icontains():
+    q1 = Person.objects.filter(name__icontains='j')
+
+    eq_(len(q1), 3)
+    assert all('j' in p.name.lower() for p in q1)
+
+    q2 = IndexedMouse.objects.filter(name__icontains='b')
+    eq_(len(q2), 1)
+
+@with_setup(setup_mice_and_people, teardown)
+def test_filter_startswith():
+    q1 = Person.objects.filter(name__startswith='J')
+
+    eq_(len(q1), 2)
+    assert all(p.name.startswith('J') for p in q1)
+
+    q2 = IndexedMouse.objects.filter(name__startswith='P')
+    eq_(len(q2), 1)
+
+@with_setup(None, teardown)
+def test_filter_istartswith():
+    make_people(['Pete', 'John', 'peter'],[32,25,30])
+    
+    q1 = Person.objects.filter(name__istartswith='Pete')
+    eq_(len(q1), 2)
+    assert all(p.name.lower().startswith('pete') for p in q1)
+
+@with_setup(setup_mice_and_people, teardown)
+def test_filter_endswith():
+    q1 = Person.objects.filter(name__endswith='ll')
+
+    eq_(len(q1), 2)
+    assert all(p.name.endswith('ll') for p in q1)
+
+    q2 = IndexedMouse.objects.filter(name__endswith='ky')
+    eq_(len(q2), 1)
+
+@with_setup(setup_mice_and_people, teardown)
+def test_filter_iendswith():
+    make_people(['BelL'],[18])
+    q1 = Person.objects.filter(name__iendswith='ll')
+
+    eq_(len(q1), 3)
+    assert all(p.name.lower().endswith('ll') for p in q1)
+
+    make_mice(['pinkY'],[15])
+    q2 = IndexedMouse.objects.filter(name__iendswith='ky')
+    eq_(len(q2), 2)
+
+@with_setup(setup_mice_and_people, teardown)
+def test_filter_regex():
+    q1 = Person.objects.filter(name__regex='.*ll')
+    eq_(len(q1), 2)
+
+    q2 = IndexedMouse.objects.filter(name__regex='P.*ky')
+    eq_(len(q2), 1)
+
+@with_setup(setup_mice_and_people, teardown)
+def test_filter_iregex():
+    make_people(['Pete', 'John', 'peter'],[32,25,30])
+    q1 = Person.objects.filter(name__iregex='Pete.*')
+    eq_(len(q1), 3)
+
+    q2 = IndexedMouse.objects.filter(name__iregex='p.*ky')
+    eq_(len(q2), 1)
 
 @with_setup(None, teardown)
 def test_exclude_exact():
@@ -497,36 +572,6 @@ def test_in_bulk_not_found():
     """
     people = Person.objects.in_bulk([999999])
     eq_(people, {})
-
-@with_setup(setup_mice_and_people, teardown)
-def test_contains():
-    q1 = Person.objects.filter(name__contains='a')
-
-    eq_(len(q1), 3)
-    assert all('a' in p.name for p in q1)
-
-    q2 = IndexedMouse.objects.filter(name__contains='y')
-    eq_(len(q2), 2)
-
-@with_setup(setup_mice_and_people, teardown)
-def test_icontains():
-    q1 = Person.objects.filter(name__icontains='j')
-
-    eq_(len(q1), 3)
-    assert all('j' in p.name.lower() for p in q1)
-
-    q2 = IndexedMouse.objects.filter(name__icontains='b')
-    eq_(len(q2), 1)
-
-@with_setup(setup_mice_and_people, teardown)
-def test_startswith():
-    q1 = Person.objects.filter(name__startswith='J')
-
-    eq_(len(q1), 2)
-    assert all(p.name.startswith('J') for p in q1)
-
-    q2 = IndexedMouse.objects.filter(name__startswith='P')
-    eq_(len(q2), 1)
 
 cat_names = ['Tom', 'Mr. Pussy-Wussy', 'Mr. Bigglesworth']
 dog_names = ['Spike','Lassie','Clifford']
@@ -726,8 +771,6 @@ def test_latest():
 
     eq_(person, BornPerson.objects.latest('born'))
     eq_(person, BornPerson.objects.latest())
-
-
 
 @with_setup(None, teardown)
 def test_query_type():

@@ -76,8 +76,8 @@ tests=[
 	'test_autoproperty_transactionality',
 	'test_abstract_rel_inheritance',
 	'test_filter_in',
-	'test_contains',
-	'test_startswith',
+	'test_filter_contains',
+	'test_filter_startswith',
 	'test_datetime_auto_now_add',
 	'test_select_related',
 	'test_rel_query_direction',
@@ -133,7 +133,12 @@ tests=[
 	'test_relationship_distinct',
 	'test_reverse',
 	'test_latest',
-	'test_icontains']
+	'test_filter_icontains',
+	'test_filter_istartswith',
+	'test_filter_iregex',
+	'test_filter_regex',
+	'test_filter_iendswith',
+	'test_filter_endswith']
 should_fail=[
 	'test_dates',
 	'test_relationship_model',
@@ -142,4 +147,9 @@ should_fail=[
 	'test_type_query',
 	'test_model_casting_validation',
 	'test_array_use_strings',
-	'test_relationship_models']
+	'test_relationship_models',
+    'test_filter_istartswith',
+	'test_filter_iregex',
+	'test_filter_regex',
+	'test_filter_iendswith',
+	'test_filter_endswith']
