@@ -26,8 +26,8 @@ from . import aggregates
 
 #python needs a bijective map... grumble... but a reg enum is fine I guess
 #only including those operators currently being implemented
-OPERATORS = Enum('EXACT', 'LT','LTE','GT','GTE','IN','RANGE','MEMBER','CONTAINS',
-                 'STARTSWITH', 'MEMBER_IN')
+OPERATORS = Enum('EXACT', 'IEXACT', 'LT','LTE','GT','GTE','IN','RANGE','MEMBER',
+                 'CONTAINS', 'ICONTAINS', 'STARTSWITH', 'MEMBER_IN')
 
 ConditionTuple = namedtuple('ConditionTuple', ['field','value','operator','path'])
 class Condition(ConditionTuple):
@@ -297,6 +297,9 @@ def cypher_predicate_from_condition(element_name, condition):
     if condition.operator is OPERATORS.EXACT:
         cypher = ("%s = %s" % 
                   (element_name, cypher_primitive(value)))
+    elif condition.operator is OPERATORS.IEXACT:
+        cypher = ("LOWER(%s) = LOWER(%s)" % 
+                  (element_name, cypher_primitive(value)))
     elif condition.operator is OPERATORS.GT:
         cypher = ("%s > %s" %
                   (element_name, cypher_primitive(value)))
@@ -327,12 +330,18 @@ def cypher_predicate_from_condition(element_name, condition):
     elif condition.operator is OPERATORS.MEMBER_IN:
         cypher = ('ANY(someVar IN %s WHERE someVar IN %s)' % 
                   (element_name, cypher_primitive(value)))
-    elif condition.operator is OPERATORS.CONTAINS:
+    elif condition.operator in (OPERATORS.CONTAINS, OPERATORS.ICONTAINS):
         if isinstance(field._property, StringProperty):
+            if condition.operator is OPERATORS.ICONTAINS:
+                cased_value = value.lower()
+                cased_element_name = 'LOWER(%s)' % element_name
+            else:
+                cased_value = value
+                cased_element_name = element_name
             #TODO this is a poor man's excuse for Java regex escaping. we need
             # a better solution
-            regex = ('.*%s.*' % re.escape(value))
-            cypher = '%s =~ %s' % (element_name, cypher_primitive(regex))
+            regex = ('.*%s.*' % re.escape(cased_value))
+            cypher = '%s =~ %s' % (cased_element_name, cypher_primitive(regex))
         else:
             raise exceptions.ValidationError('The contains operator is only'
                                              ' valid against string and array'
@@ -974,7 +983,7 @@ class Query(object):
 
         index_qs = not_none(lucene_query_and_index_from_q(using, self.nodetype, q)
                             for q in filters)
-
+        
         # combine any queries headed for the same index and replace lucene
         # queries with strings
         
@@ -985,7 +994,8 @@ class Query(object):
             else:
                 index_qs_dict[key] = val
 
-        index_qs = [(key, unicode(val)) for key, val in index_qs_dict.iteritems()]
+        index_qs = [(key, unicode(val)) for key, val in index_qs_dict.iteritems()
+                    if val is not None]
 
         # use index lookups, ids, OR a type tree traversal as a cypher START,
         # then unindexed conditions as a WHERE
@@ -1252,10 +1262,6 @@ class NodeQuerySet(QuerySet):
                 start = stop
                 stop += QUERY_CHUNK_SIZE
 
-    @not_implemented
-    def aggegrate(self, *args, **kwargs):
-        pass
-
     #TODO leaving this todo for later transaction work
     @transactional
     def create(self, **kwargs):
@@ -1287,10 +1293,6 @@ class NodeQuerySet(QuerySet):
     ##################################################
     # PUBLIC METHODS THAT RETURN A QUERYSET SUBCLASS #
     ##################################################
-
-    def _filter_or_exclude(self, negate, *args, **kwargs):
-        return super(NodeQuerySet, self)._filter_or_exclude(negate, *args,
-                                                            **kwargs)
 
     @not_implemented
     def values(self, *fields):

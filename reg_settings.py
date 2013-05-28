@@ -136,8 +136,6 @@ tests=[
 	'test_icontains']
 should_fail=[
 	'test_dates',
-	'test_filter_iexact',
-	'test_icontains',
 	'test_relationship_model',
 	'test_nodemodel_independence',
 	'test_url_array_property_validator',
