@@ -29,7 +29,7 @@ from . import aggregates
 OPERATORS = Enum('EXACT', 'IEXACT', 'LT','LTE','GT','GTE','IN','RANGE','MEMBER',
                  'CONTAINS', 'ICONTAINS', 'STARTSWITH', 'ISTARTSWITH',
                  'ENDSWITH', 'IENDSWITH', 'REGEX', 'IREGEX', 'MEMBER_IN',
-                 'YEAR', 'MONTH', 'DAY')
+                 'YEAR', 'MONTH', 'DAY', 'ISNULL')
 
 ConditionTuple = namedtuple('ConditionTuple', ['field','value','operator','path'])
 class Condition(ConditionTuple):
@@ -288,6 +288,7 @@ def cypher_predicate_from_condition(element_name, condition):
     """
     from .properties import (StringProperty, ArrayProperty, DateProperty,
                              DateTimeProperty)
+    from .relationships import BoundRelationship
 
     cypher = None
 
@@ -392,6 +393,11 @@ def cypher_predicate_from_condition(element_name, condition):
                 'properties.')
         cypher = ("SUBSTRING(%s, 8, 2) = %s" %
                   (element_name, cypher_primitive(unicode(value).zfill(2))))
+    elif condition.operator is OPERATORS.ISNULL:
+        if not isinstance(field._property, BoundRelationship):
+            cypher = 'HAS(%s)' % re.sub(r'(\?|\!)$', '', element_name)
+            if value:
+                cypher = 'NOT(%s)' % cypher
     else:
         raise NotImplementedError('Other operators are not yet implemented.')
 
