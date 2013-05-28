@@ -130,7 +130,8 @@ tests=[
 	'test_spanning_lookup',
 	'test_related_modelform',
 	'test_relationship_models',
-    'test_relationship_distinct']
+    'test_relationship_distinct',
+    'test_reverse']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',
@@ -140,4 +141,5 @@ should_fail=[
 	'test_type_query',
 	'test_model_casting_validation',
 	'test_array_use_strings',
-	'test_relationship_models']
+	'test_relationship_models',
+    'test_reverse']
