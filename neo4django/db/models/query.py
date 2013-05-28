@@ -1271,10 +1271,6 @@ class NodeQuerySet(QuerySet):
             created = True
         return (obj, created)
 
-    @not_implemented
-    def latest(self, field_name=None):
-        pass
-
     @transactional
     def in_bulk(self, id_list):
         return dict((o.id, o) for o in self.model.objects.filter(id__in=id_list))
