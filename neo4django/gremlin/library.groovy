@@ -282,3 +282,4 @@ class Neo4Django {
     }
 }
 Neo4Django.binding = binding;
+binding.setVariable('Neo4Django', Neo4Django)

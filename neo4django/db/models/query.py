@@ -836,6 +836,7 @@ QUERY_PASSTHROUGH_METHODS = ('set_limits','clear_limits','can_filter',
 @borrows_methods(SQLQuery, QUERY_PASSTHROUGH_METHODS)
 class Query(object):
     aggregates_module = aggregates
+
     def __init__(self, nodetype, filters=None, max_depth=None, 
                  select_related_fields=[]):
         self.filters = filters or []
@@ -1070,7 +1071,7 @@ class Query(object):
                 """
             params['startQueries'] = index_qs
         else:
-            #TODO move this to being index-based
+            #TODO move this to being index-based - it won't work for abstract model queries
             if start_clause is None:
                 match_clause = 'MATCH %s' % type_restriction_expr
                 start_clause = Clauses([Start({'typeNode':'node({typeNodeId})'},
@@ -1095,7 +1096,8 @@ class Query(object):
             start_clause.cypher_params += ['typeNodeId']
         start_clause = Clauses([start_clause] + extra_start_clauses)
 
-        if type_restriction_expr:
+        if type_restriction_expr and not getattr(self.nodetype._meta,
+                                                 'abstract', False):
             if where_clause:
                 where_clause = ' AND '.join((where_clause,
                                              type_restriction_expr))

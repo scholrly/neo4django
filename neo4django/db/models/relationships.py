@@ -22,44 +22,6 @@ from neo4jrestclient.constants import RELATIONSHIPS_ALL, RELATIONSHIPS_IN, RELAT
 from collections import defaultdict
 from functools import partial
 
-class RelationshipBase(type):
-    """
-    Metaclass for Relationships. Creates a RelationshipModel for each Relationship
-    subclass that extends the models of all Relationship superclasses. 
-    """
-    def __new__(meta, name, bases, body):
-        new = super(RelationshipBase, meta).__new__
-        parents = [cls for cls in bases if isinstance(cls, RelationshipBase)]
-        if not parents: # this is the base class
-            return new(meta, name, bases, body)
-        module = body.pop('__module__')
-        modelbases = [cls.Model for cls in parents
-                        if hasattr(cls, 'Model')]
-        Model = RelationshipModel.new(module, name, modelbases)
-        for key, value in body.items():
-            if hasattr(value, 'contribute_to_class'):
-                value.contribute_to_class(Model, key)
-            else:
-                setattr(Model, key, value)
-        return new(meta, name, bases, {
-                '__module__': module,
-                'Model': Model,
-            })
-
-    #TODO not necessary until we have relationship models, and leads to
-    #recursion bug
-    #def __getattr__(cls, key):
-    #    if hasattr(cls, 'Model'):
-    #        return getattr(cls.Model, key)
-    #    else:
-    #        raise AttributeError(key)
-    #def __setattr__(cls, key, value):
-    #    if hasattr(cls, 'Model'):
-    #        setattr(cls.Model, key, value)
-    #    else:
-    #        raise TypeError(
-    #            "Cannot assign attributes to base Relationship")
-
 class RelationshipModel(object):
     """
     Model backing all relationships. Intended for a single instance to
@@ -81,7 +43,7 @@ class RelationshipModel(object):
 
     @classmethod
     def new(RelationshipModel, module, name, bases):
-        return type(name, bases + [RelationshipModel], {
+        return type(name, bases + (RelationshipModel,), {
                 '__module__': module,})
 
     @not_implemented
@@ -90,8 +52,6 @@ class RelationshipModel(object):
         raise NotImplementedError("<RelationshipModel>.add_field()")
 
 class Relationship(object):
-    """Extend to add properties to relationships."""
-    __metaclass__ = RelationshipBase
 
     def __init__(self, target, rel_type=None, direction=None, optional=True,
                  single=False, related_single=False, related_name=None,
@@ -113,6 +73,8 @@ class Relationship(object):
                 raise ValueError("Incompatible direction!")
             rel_type = rel_type.type
         
+        self._reverse_relationship_type = Relationship
+
         self.__target = target
         self.name = rel_type
         self.__single = single
@@ -135,14 +97,14 @@ class Relationship(object):
     __is_reversed = False
 
     def reverse(self, target, name):
-        
         if self.direction is RELATIONSHIPS_IN:
             direction = RELATIONSHIPS_OUT
         elif self.direction is RELATIONSHIPS_OUT:
             direction = RELATIONSHIPS_IN
         else:
             direction = RELATIONSHIPS_OUT
-        relationship = Relationship(
+        Type = self._reverse_relationship_type
+        relationship = Type(
             target, rel_type=self.name, direction=direction,
             single=self.__related_single, related_name=name,
             metadata=self.__related_meta, preserve_ordering=self.__ordered)
@@ -164,6 +126,17 @@ class Relationship(object):
             name = target.__name__
         return suffix % name.lower()
 
+    def _get_bound_relationship_type(self):
+        # TODO this will change with relationship models (#1)
+        if self.__single:
+            return SingleNode
+        else:
+            return MultipleNodes
+    
+    def _get_new_bound_relationship(self, source, name):
+        return self._get_bound_relationship_type()(
+                self, source, self.name or name, name)
+
     def contribute_to_class(self, source, name):
         if not issubclass(source, NodeModel):
             raise TypeError("Relationships may only extend from Nodes.")
@@ -178,20 +151,7 @@ class Relationship(object):
                     warnings.warn('`%s` and `%s` share a relationship type and '
                                   'direction. Is this what you meant to do?' 
                                   % (r.name, name))
-
-        if hasattr(self, 'Model'):
-            if self.__single:
-                Bound = SingleRelationship
-            else:
-                Bound = MultipleRelationships
-            bound = Bound(self, source, self.name or name, name,
-                            self.Model)
-        else:
-            if self.__single:
-                Bound = SingleNode
-            else:
-                Bound = MultipleNodes
-            bound = Bound(self, source, self.name or name, name)
+        bound = self._get_new_bound_relationship(source, name)
         source._meta.add_field(bound)
         if not hasattr(source._meta, '_relationships'):
             source._meta._relationships = {}
@@ -556,29 +516,31 @@ class MultipleNodes(BoundRelationship):
         # unpack a RelationshipInstance
         return list(value._added)
 
-    def _get_relationship(self, obj, states):
+    def _get_state(self, obj, states):
         state = states.get(self.name)
         if state is None:
             states[self.name] = state = RelationshipInstance(self, obj)
         return state
 
-    def _set_relationship(self, obj, state, value):
+    def _get_relationship(self, obj, states):
+        return self._get_state(obj, states)
+
+    def _set_relationship(self, obj, states, value):
         if value is not None:
-            if state.get(self.name) is None:
-                state[self.name] = RelationshipInstance(self, obj)
-            items = list(state[self.name].all())
-            notsaved = state[self.name]._added
+            state = self._get_state(obj, states)
+            items = list(state.all())
+            notsaved = state._added
             if items and len(notsaved) < len(items):
-                state[self.name].remove(*items) 
+                state.remove(*items) 
                 #TODO: make it so it only removes authors not in value
                 #      and remove authors already there from value
                 #XXX: only works when removing from saved nodes
             if notsaved:
                 notsaved[:] = [] #TODO give rel instance a method for this?
             if hasattr(value, '__iter__'):
-                state[self.name].add(*value)
+                state.add(*value)
             else:
-                state[self.name].add(value)
+                state.add(value)
 
     def _neo4j_instance(self, this, relationship):
         if this.id == relationship.start.id:
@@ -790,12 +752,24 @@ class RelationshipQuerySet(NodeQuerySet):
         target_model = model or rel.relationship.target_model
         super(RelationshipQuerySet, self).__init__(
             model=target_model, query=query or Query(target_model),
-    
             using=using)
         self._rel_instance = rel_instance
         self._rel = rel
         self._model_instance = model_instance
 
+        self.query.set_start_clause(self._get_start_clause(), lambda : {
+            'startParam':self._model_instance.id
+        })
+
+    def _get_start_clause(self):
+        """
+        Return a Cypher START fragment - either a str, or an object with an
+        as_cypher() method -  that will be used as the first half of the query
+        built executing the query set. The query should expect a parameter named
+        "startParam" containing this side of the relationship's node id, and
+        should define a column "n" containing nodes to later be filtered
+        against.
+        """
         order_clause = """
             ORDER BY r.`%s`
         """ % ORDER_ATTR if self._rel_instance.ordered else ''
@@ -803,16 +777,13 @@ class RelationshipQuerySet(NodeQuerySet):
         rel_str = cypher_rel_str(self._rel.rel_type, self._rel.direction,
                                  identifier='r')
 
-        start_clause = Clauses([
+        return Clauses([
             Start({'m':'node({startParam})'}, ['startParam']),
             'MATCH (m)%s(n)' % rel_str,
             With({'n':'n', 'r':'r', 'typeNode':'typeNode'}),
             order_clause
         ])
 
-        self.query.set_start_clause(start_clause, lambda : {
-            'startParam':self._model_instance.id
-        })
 
     def iterator(self):
         removed = list(self._rel_instance._old)
