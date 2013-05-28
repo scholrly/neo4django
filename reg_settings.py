@@ -129,7 +129,8 @@ tests=[
 	'test_inherited_indexed_filter',
 	'test_spanning_lookup',
 	'test_related_modelform',
-	'test_relationship_models']
+	'test_relationship_models',
+    'test_relationship_distinct']
 should_fail=[
 	'test_dates',
 	'test_filter_iexact',

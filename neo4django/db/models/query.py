@@ -500,16 +500,21 @@ class With(Clause):
 
 class Return(Clause):
     cypher_template = 'RETURN %(fields)s %(order_by)s %(skip)s %(limit)s'
-    def __init__(self, field_dict, limit=None, skip=None, order_by_terms=None):
+    def __init__(self, field_dict, limit=None, skip=None, order_by_terms=None,
+                 distinct_fields=None):
         self.field_dict = field_dict
         self.limit = limit
         self.skip = skip
         self.order_by_terms = order_by_terms
+        self.distinct_fields = distinct_fields
 
     def get_params(self):
+        distinct_fields = set(self.distinct_fields or [])
+        field_alias_pairs = ((field if field not in distinct_fields
+                              else 'DISTINCT ' + field, alias)
+                             for alias, field in self.field_dict.iteritems())
         return {
-            'fields':','.join('%s AS %s' % (field, alias)
-                              for alias, field in self.field_dict.iteritems()),
+            'fields':','.join('%s AS %s' % pair for pair in field_alias_pairs),
             'limit': 'LIMIT %s' % str(self.limit) \
                     if self.limit is not None else '',
             'skip': 'SKIP %d' % self.skip if self.skip else '',
@@ -831,7 +836,8 @@ def execute_select_related(models=None, query=None, index_name=None,
 # we want some methods of SQLQuery but don't want the burder of inheriting
 # everything. these methods are pulled off django.db.models.sql.query.Query
 QUERY_PASSTHROUGH_METHODS = ('set_limits','clear_limits','can_filter',
-                             'add_ordering', 'clear_ordering')
+                             'add_ordering', 'clear_ordering',
+                             'add_distinct_fields')
 
 @borrows_methods(SQLQuery, QUERY_PASSTHROUGH_METHODS)
 class Query(object):
@@ -854,6 +860,9 @@ class Query(object):
         self.start_clause_param_func = lambda : {}
         self.with_clauses = []
         self.end_clause = None
+
+        self.distinct = False
+        self.distinct_fields = None
 
         self.clear_limits()
         self.clear_ordering()
@@ -908,15 +917,12 @@ class Query(object):
     def clone(self):
         clone = type(self)(self.nodetype, self.filters, self.max_depth,
                            self.select_related_fields)
-        clone.order_by = self.order_by
-        clone.return_fields = self.return_fields
-        clone.aggregates = self.aggregates
-        clone.high_mark = self.high_mark
-        clone.low_mark = self.low_mark
-        clone.start_clause = self.start_clause
-        clone.start_clause_param_func = self.start_clause_param_func
-        clone.with_clauses = self.with_clauses
-        clone.end_clause = self.end_clause
+        clone_attrs = ('order_by', 'return_fields', 'aggregates', 'distinct',
+                       'distinct_fields', 'high_mark', 'low_mark',
+                       'start_clause', 'start_clause_param_func',
+                       'with_clauses', 'end_clause')
+        for a in clone_attrs:
+            setattr(clone, a, getattr(self, a))
         return clone
 
     def get_aggregation(self, using):
@@ -1021,7 +1027,8 @@ class Query(object):
         limit = self.high_mark - self.low_mark if self.high_mark is not None \
                 else None
         return_clause = Return(self.return_fields, skip=self.low_mark,
-                               limit=limit, order_by_terms=order_by)\
+                               limit=limit, order_by_terms=order_by,
+                               distinct_fields=['n'] if self.distinct else [])\
                 if self.end_clause is None else self.end_clause
 
         groovy_script = None
@@ -1340,9 +1347,12 @@ class NodeQuerySet(QuerySet):
     def annotate(self, *args, **kwargs):
         pass
 
-    @not_implemented
-    def distinct(self, true_or_false=True):
-        pass
+    def distinct(self, *field_names):
+        if len(field_names) > 0:
+            raise NotImplementedError("Only querying against distinct nodes is "
+                                      "implemented. Distinct fields cannot be "
+                                      "queried against.")
+        return super(NodeQuerySet, self).distinct(*field_names)
 
     @not_supported
     def extra(self, *args, **kwargs):
