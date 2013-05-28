@@ -150,7 +150,4 @@ should_fail=[
 	'test_type_query',
 	'test_model_casting_validation',
 	'test_array_use_strings',
-	'test_relationship_models',
-	'test_filter_year',
-	'test_filter_month',
-	'test_filter_day']
+	'test_relationship_models']

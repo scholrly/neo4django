@@ -28,7 +28,8 @@ from . import aggregates
 #only including those operators currently being implemented
 OPERATORS = Enum('EXACT', 'IEXACT', 'LT','LTE','GT','GTE','IN','RANGE','MEMBER',
                  'CONTAINS', 'ICONTAINS', 'STARTSWITH', 'ISTARTSWITH',
-                 'ENDSWITH', 'IENDSWITH', 'REGEX', 'IREGEX', 'MEMBER_IN')
+                 'ENDSWITH', 'IENDSWITH', 'REGEX', 'IREGEX', 'MEMBER_IN',
+                 'YEAR', 'MONTH', 'DAY')
 
 ConditionTuple = namedtuple('ConditionTuple', ['field','value','operator','path'])
 class Condition(ConditionTuple):
@@ -285,7 +286,8 @@ def cypher_predicate_from_condition(element_name, condition):
     yield a value to filter against, like "node.name".
     condition - the condition for which we're generating a predicate
     """
-    from .properties import StringProperty, ArrayProperty
+    from .properties import (StringProperty, ArrayProperty, DateProperty,
+                             DateTimeProperty)
 
     cypher = None
 
@@ -297,7 +299,7 @@ def cypher_predicate_from_condition(element_name, condition):
 
     # if the operator is a simple case-insensitive op, lower-case the value
     # and wrap the element_name in LOWER
-    # NB - this won't work for complex cases, eg iregex or isearch
+    # NB - this won't work for complex cases, eg iregex
     if condition.operator in (OPERATORS.IEXACT, OPERATORS.ICONTAINS,
                               OPERATORS.ISTARTSWITH, OPERATORS.IENDSWITH):
         value = value.lower()
@@ -369,6 +371,27 @@ def cypher_predicate_from_condition(element_name, condition):
             value = '(?i)' + value
         cypher = ("%s =~ %s" %
                   (element_name, cypher_primitive(value)))
+    elif condition.operator is OPERATORS.YEAR:
+        if not isinstance(field._property, (DateProperty, DateTimeProperty)):
+            raise exceptions.ValidationError(
+                'The year operator is only valid against date-based '
+                'properties.')
+        cypher = ("SUBSTRING(%s, 0, 4) = %s" %
+                  (element_name, cypher_primitive(unicode(value).zfill(4))))
+    elif condition.operator is OPERATORS.MONTH:
+        if not isinstance(field._property, (DateProperty, DateTimeProperty)):
+            raise exceptions.ValidationError(
+                'The month operator is only valid against date-based '
+                'properties.')
+        cypher = ("SUBSTRING(%s, 5, 2) = %s" %
+                  (element_name, cypher_primitive(unicode(value).zfill(2))))
+    elif condition.operator is OPERATORS.DAY:
+        if not isinstance(field._property, (DateProperty, DateTimeProperty)):
+            raise exceptions.ValidationError(
+                'The day operator is only valid against date-based '
+                'properties.')
+        cypher = ("SUBSTRING(%s, 8, 2) = %s" %
+                  (element_name, cypher_primitive(unicode(value).zfill(2))))
     else:
         raise NotImplementedError('Other operators are not yet implemented.')
 
