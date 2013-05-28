@@ -27,7 +27,8 @@ from . import aggregates
 #python needs a bijective map... grumble... but a reg enum is fine I guess
 #only including those operators currently being implemented
 OPERATORS = Enum('EXACT', 'IEXACT', 'LT','LTE','GT','GTE','IN','RANGE','MEMBER',
-                 'CONTAINS', 'ICONTAINS', 'STARTSWITH', 'MEMBER_IN')
+                 'CONTAINS', 'ICONTAINS', 'STARTSWITH', 'ISTARTSWITH',
+                 'ENDSWITH', 'IENDSWITH', 'REGEX', 'IREGEX', 'MEMBER_IN')
 
 ConditionTuple = namedtuple('ConditionTuple', ['field','value','operator','path'])
 class Condition(ConditionTuple):
@@ -294,11 +295,16 @@ def cypher_predicate_from_condition(element_name, condition):
     #the value we're filtering against
     value = condition.value
 
-    if condition.operator is OPERATORS.EXACT:
+    # if the operator is a simple case-insensitive op, lower-case the value
+    # and wrap the element_name in LOWER
+    # NB - this won't work for complex cases, eg iregex or isearch
+    if condition.operator in (OPERATORS.IEXACT, OPERATORS.ICONTAINS,
+                              OPERATORS.ISTARTSWITH, OPERATORS.IENDSWITH):
+        value = value.lower()
+        element_name = 'LOWER(%s)' % element_name
+
+    if condition.operator in (OPERATORS.EXACT, OPERATORS.IEXACT):
         cypher = ("%s = %s" % 
-                  (element_name, cypher_primitive(value)))
-    elif condition.operator is OPERATORS.IEXACT:
-        cypher = ("LOWER(%s) = LOWER(%s)" % 
                   (element_name, cypher_primitive(value)))
     elif condition.operator is OPERATORS.GT:
         cypher = ("%s > %s" %
@@ -332,27 +338,37 @@ def cypher_predicate_from_condition(element_name, condition):
                   (element_name, cypher_primitive(value)))
     elif condition.operator in (OPERATORS.CONTAINS, OPERATORS.ICONTAINS):
         if isinstance(field._property, StringProperty):
-            if condition.operator is OPERATORS.ICONTAINS:
-                cased_value = value.lower()
-                cased_element_name = 'LOWER(%s)' % element_name
-            else:
-                cased_value = value
-                cased_element_name = element_name
             #TODO this is a poor man's excuse for Java regex escaping. we need
             # a better solution
-            regex = ('.*%s.*' % re.escape(cased_value))
-            cypher = '%s =~ %s' % (cased_element_name, cypher_primitive(regex))
+            regex = ('.*%s.*' % re.escape(value))
+            cypher = '%s =~ %s' % (element_name, cypher_primitive(regex))
         else:
             raise exceptions.ValidationError('The contains operator is only'
-                                             ' valid against string and array'
-                                             ' properties.')
-    elif condition.operator is OPERATORS.STARTSWITH:
+                                             ' valid against string and array '
+                                             'properties.')
+    elif condition.operator in (OPERATORS.STARTSWITH, OPERATORS.ISTARTSWITH):
         if not isinstance(field._property, StringProperty):
             raise exceptions.ValidationError(
                 'The startswith operator is only valid against string '
                 'properties.')
         cypher = ("LEFT(%s, %d) = %s" %
                   (element_name, len(value), cypher_primitive(value)))
+    elif condition.operator in (OPERATORS.ENDSWITH, OPERATORS.IENDSWITH):
+        if not isinstance(field._property, StringProperty):
+            raise exceptions.ValidationError(
+                'The endswith operator is only valid against string '
+                'properties.')
+        cypher = ("RIGHT(%s, %d) = %s" %
+                  (element_name, len(value), cypher_primitive(value)))
+    elif condition.operator in (OPERATORS.REGEX, OPERATORS.IREGEX):
+        if not isinstance(field._property, StringProperty):
+            raise exceptions.ValidationError(
+                'The regex operator is only valid against string '
+                'properties.')
+        if condition.operator is OPERATORS.IREGEX:
+            value = '(?i)' + value
+        cypher = ("%s =~ %s" %
+                  (element_name, cypher_primitive(value)))
     else:
         raise NotImplementedError('Other operators are not yet implemented.')
 

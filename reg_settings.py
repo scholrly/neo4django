@@ -147,9 +147,4 @@ should_fail=[
 	'test_type_query',
 	'test_model_casting_validation',
 	'test_array_use_strings',
-	'test_relationship_models',
-    'test_filter_istartswith',
-	'test_filter_iregex',
-	'test_filter_regex',
-	'test_filter_iendswith',
-	'test_filter_endswith']
+	'test_relationship_models']
