@@ -43,37 +43,6 @@ class IdLookup(object):
             return int(value)
         else: # Allows lookups on Nulls
             return value
-    
-    def nodes(self, nodeid):
-        #TODO is this dead code?
-        try:
-            node = connections[self.__model.__using].node[nodeid]
-        except:
-            node = None
-        else:
-            app_label = self.__model._meta.app_label
-            model_name = self.__model.__name__
-
-            #we only support single inheritance - first NodeModel descendant in the hierarchy wins
-            parents = [cls for cls in type(self.__model).__bases__
-                        if issubclass(cls, NodeModel) and cls is not NodeModel]
-
-            if parents:
-                parent_label = parents[0]._meta.app_label
-                parent_model = parents[0].__name__
-            else:
-                parent_label = parent_model = None
-
-            type_node = connections[self.__model.using].type_node(
-                app_label, model_name, parent_label, parent_model)
-            for rel in node.relationships.incoming('<<INSTANCE>>'):
-                # verify that the found node is an instance of the
-                # requested type
-                if rel.start == type_node: break # ok, it is!
-            else: # no, it isn't!
-                node = None
-        if node is not None:
-            yield node
 
 class NeoModelBase(type(dj_models.Model)):
     """
