@@ -138,7 +138,10 @@ tests=[
 	'test_filter_iregex',
 	'test_filter_regex',
 	'test_filter_iendswith',
-	'test_filter_endswith']
+	'test_filter_endswith',
+	'test_filter_year',
+	'test_filter_month',
+	'test_filter_day']
 should_fail=[
 	'test_dates',
 	'test_relationship_model',
@@ -147,4 +150,7 @@ should_fail=[
 	'test_type_query',
 	'test_model_casting_validation',
 	'test_array_use_strings',
-	'test_relationship_models']
+	'test_relationship_models',
+	'test_filter_year',
+	'test_filter_month',
+	'test_filter_day']

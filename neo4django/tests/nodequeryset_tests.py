@@ -542,6 +542,42 @@ def test_filter_iregex():
     eq_(len(q2), 1)
 
 @with_setup(None, teardown)
+def test_filter_year():
+    class DatedEvent(models.NodeModel):
+        date = models.DateProperty()
+
+    event_1 = DatedEvent.objects.create(date=datetime.date.today())
+    event_2 = DatedEvent.objects.create(date=datetime.date(2003, 3, 4))
+
+    q = DatedEvent.objects.filter(date__year = 2003)
+    eq_(len(q), 1)
+    eq_(q[0], event_2)
+
+@with_setup(None, teardown)
+def test_filter_month():
+    class DatedEvent(models.NodeModel):
+        date = models.DateProperty()
+
+    event_1 = DatedEvent.objects.create(date=datetime.date(2013, 1, 1))
+    event_2 = DatedEvent.objects.create(date=datetime.date(2003, 3, 4))
+
+    q = DatedEvent.objects.filter(date__month = 3)
+    eq_(len(q), 1)
+    eq_(q[0], event_2)
+
+@with_setup(None, teardown)
+def test_filter_day():
+    class DatedEvent(models.NodeModel):
+        date = models.DateProperty()
+
+    event_1 = DatedEvent.objects.create(date=datetime.date(2013, 1, 1))
+    event_2 = DatedEvent.objects.create(date=datetime.date(2003, 3, 4))
+
+    q = DatedEvent.objects.filter(date__day = 1)
+    eq_(len(q), 1)
+    eq_(q[0], event_1)
+
+@with_setup(None, teardown)
 def test_exclude_exact():
     pass
 
