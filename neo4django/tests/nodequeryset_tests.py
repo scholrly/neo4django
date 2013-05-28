@@ -578,6 +578,23 @@ def test_filter_day():
     eq_(q[0], event_1)
 
 @with_setup(None, teardown)
+def test_filter_isnull():
+    nameless_person = Person.objects.create(age=50)
+    ageless_person = Person.objects.create(name='Pete', age=None)
+
+    q1 = Person.objects.filter(age__isnull=True)
+    eq_(len(q1), 1)
+    eq_(q1[0], ageless_person)
+
+    q2 = Person.objects.filter(name__isnull=True)
+    eq_(len(q2), 1)
+    eq_(q2[0], nameless_person)
+
+    q3 = Person.objects.filter(age__isnull=False)
+    eq_(len(q3), 1)
+    eq_(q3[0], nameless_person)
+
+@with_setup(None, teardown)
 def test_exclude_exact():
     pass
 
