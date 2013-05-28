@@ -317,7 +317,6 @@ def test_filter_gt():
     all_named_after_t = Person.objects.filter(name__gt='T')
     eq_(len(all_named_after_t), 3)
 
-
 @with_setup(setup_teens, teardown)
 def test_filter_gte():
     teens_and_up = Person.objects.filter(age__gte=12)
@@ -471,8 +470,6 @@ def test_filter_array_member_in():
 def test_exclude_exact():
     pass
 
-#TODO other test excludes
-
 @with_setup(setup_people, teardown)
 def test_in_bulk():
     """
@@ -510,6 +507,16 @@ def test_contains():
 
     q2 = IndexedMouse.objects.filter(name__contains='y')
     eq_(len(q2), 2)
+
+@with_setup(setup_mice_and_people, teardown)
+def test_icontains():
+    q1 = Person.objects.filter(name__icontains='j')
+
+    eq_(len(q1), 3)
+    assert all('j' in p.name.lower() for p in q1)
+
+    q2 = IndexedMouse.objects.filter(name__icontains='b')
+    eq_(len(q2), 1)
 
 @with_setup(setup_mice_and_people, teardown)
 def test_startswith():
