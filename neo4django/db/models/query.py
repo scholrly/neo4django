@@ -864,6 +864,8 @@ class Query(object):
         self.distinct = False
         self.distinct_fields = None
 
+        self.standard_ordering = True
+
         self.clear_limits()
         self.clear_ordering()
 
@@ -920,7 +922,7 @@ class Query(object):
         clone_attrs = ('order_by', 'return_fields', 'aggregates', 'distinct',
                        'distinct_fields', 'high_mark', 'low_mark',
                        'start_clause', 'start_clause_param_func',
-                       'with_clauses', 'end_clause')
+                       'with_clauses', 'end_clause', 'standard_ordering')
         for a in clone_attrs:
             setattr(clone, a, getattr(self, a))
         return clone
@@ -1022,7 +1024,14 @@ class Query(object):
             where = cypher_where_from_q(self.nodetype, combined_filter)
             with_clauses.append(With({'n':'n'}, match=match, where=where))
 
-        order_by = [cypher_order_by_term('n', field) for field in self.order_by] \
+        def negate_order_by(term):
+            if term.startswith('-'):
+                return term[1:]
+            return '-' + term
+
+        order_by = [cypher_order_by_term('n', field if self.standard_ordering
+                                         else negate_order_by(field))
+                    for field in self.order_by] \
                 or None
         limit = self.high_mark - self.low_mark if self.high_mark is not None \
                 else None
@@ -1356,10 +1365,6 @@ class NodeQuerySet(QuerySet):
 
     @not_supported
     def extra(self, *args, **kwargs):
-        pass
-
-    @not_implemented
-    def reverse(self):
         pass
 
     @not_implemented
