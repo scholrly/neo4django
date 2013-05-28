@@ -75,7 +75,7 @@ class IdLookup(object):
         if node is not None:
             yield node
 
-class NeoModelBase(dj_models.Model.__metaclass__):
+class NeoModelBase(type(dj_models.Model)):
     """
     Model metaclass that adds creation counters to models, a hook for adding 
     custom "class Meta" style options to NeoModels beyond those supported by 
