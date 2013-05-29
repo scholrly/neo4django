@@ -1,6 +1,5 @@
 import re
 import datetime
-import time
 
 from abc import ABCMeta
 
@@ -13,14 +12,14 @@ from django.utils import timezone, datetime_safe
 from django.forms import fields as formfields
 from django.conf import settings
 
-from neo4jrestclient.client import NotFoundError
-
 from neo4django.decorators import transactional
 from .base import NodeModel
 from .relationships import Relationship
 from .. import connections
-from neo4django.validators import validate_array, validate_str_array,\
-        validate_int_array, ElementValidator
+from neo4django.validators import (validate_array,
+                                   validate_str_array,
+                                   validate_int_array,
+                                   ElementValidator)
 from neo4django.utils import AttrRouter, write_through
 from neo4django.decorators import borrows_methods
 from neo4django.constants import ERROR_ATTR
@@ -30,6 +29,7 @@ MAX_INT = 9223372036854775807
 
 FIELD_PASSTHROUGH_METHODS = ('formfield',)
 
+
 @borrows_methods(fields.Field, FIELD_PASSTHROUGH_METHODS)
 class Property(object):
     """Extend to create properties of specific types."""
@@ -37,7 +37,7 @@ class Property(object):
 
     __metaclass__ = ABCMeta
 
-    default_validators = [] # Default set of validators
+    default_validators = []  # Default set of validators
     default_error_messages = {
         'invalid_choice': _(u'Value %r is not a valid choice.'),
         'null': _(u'This property cannot be null.'),
@@ -157,7 +157,7 @@ class Property(object):
         setattr(cls, name, prop)
 
     def run_validators(self, value):
-        if value in validators.EMPTY_VALUES: #TODO ??? - ML
+        if value in validators.EMPTY_VALUES:  # TODO ??? - ML
             return
 
         errors = []
@@ -214,10 +214,12 @@ class Property(object):
     def pre_save(self, model_instance, add, attname):
         pass
 
+
 @borrows_methods(fields.Field, ('save_form_data',))
 class BoundProperty(AttrRouter):
     rel = None
     primary_key = False
+
     def __init__(self, prop, cls, propname, attname, *args, **kwargs):
         super(BoundProperty, self).__init__(*args, **kwargs)
         self._property = prop
@@ -260,7 +262,7 @@ class BoundProperty(AttrRouter):
                      'unique_for_date',
                      'unique_for_month',
                      'unique_for_year',
-                    ], self._property)
+                     ], self._property)
 
         self.__class = cls
         self.__propname = propname
@@ -272,7 +274,7 @@ class BoundProperty(AttrRouter):
         self._property.attname = attname
 
         properties = self._properties_for(cls)
-        properties[self.name] = self # XXX: weakref
+        properties[self.name] = self  # XXX: weakref
 
     attname = name = property(lambda self: self.__attname)
     target = property(lambda self: self.__class)
@@ -333,7 +335,7 @@ class BoundProperty(AttrRouter):
         properties = BoundProperty._all_properties_for(instance)
 
         values.clear()
-        
+
         for k, v in new_val_dict.items():
             prop = properties.get(k, None)
             if prop:
@@ -345,7 +347,7 @@ class BoundProperty(AttrRouter):
         instance.node._dic['data'].update(new_val_dict)
 
     #TODO this needs to be revised
-    NodeModel._update_values_from_dict = staticmethod(_update_values_from_dict) 
+    NodeModel._update_values_from_dict = staticmethod(_update_values_from_dict)
     del _update_values_from_dict
 
     def _save_(instance, node, node_is_new):
@@ -372,7 +374,7 @@ class BoundProperty(AttrRouter):
                 prop.clean(value, instance)
                 value = prop.pre_save(node, node_is_new, prop.name) or value
                 if (not value in validators.EMPTY_VALUES or
-                    getattr(prop._property, "use_string", False)):
+                        getattr(prop._property, "use_string", False)):
                     #should already have errored if self.null==False
                     value = prop.to_neo(value)
                 prop_dict['value'] = value
@@ -390,14 +392,12 @@ class BoundProperty(AttrRouter):
         results = Neo4Django.updateNodeProperties(node, propMap);
         '''
         conn = connections[instance.using]
-        script_rv= conn.gremlin_tx(script, nodeId=instance.id,
-                propMap=gremlin_props, raw=True)
+        script_rv = conn.gremlin_tx(script, nodeId=instance.id,
+                                    propMap=gremlin_props, raw=True)
 
-        if (isinstance(script_rv, dict) and ERROR_ATTR in script_rv
-            and 'property' in script_rv):
-            raise ValueError("Duplicate index entries for <%s>.%s" % 
-                                (instance.__class__.__name__,
-                                script_rv['property']))
+        if (isinstance(script_rv, dict) and ERROR_ATTR in script_rv and 'property' in script_rv):
+            raise ValueError("Duplicate index entries for <%s>.%s" %
+                             (instance.__class__.__name__, script_rv['property']))
         elif isinstance(script_rv, dict) and 'data' in script_rv:
             #returned a node (TODO #128 error passing generalization)
             NodeModel._update_values_from_dict(instance, script_rv['data'],
@@ -405,13 +405,14 @@ class BoundProperty(AttrRouter):
         else:
             raise ValueError('Unexpected response from server: %s' %
                              str(script_rv))
-        
+
     #TODO this needs to be revised. I hope there's a better way.
-    NodeModel._save_properties = staticmethod(_save_) 
+    NodeModel._save_properties = staticmethod(_save_)
     del _save_
 
     def __get__(self, instance, cls=None):
-        if instance is None: return self
+        if instance is None:
+            return self
         values = self._values_of(instance, create=False)
         if self.__propname in values:
             return values[self.__propname]
@@ -429,16 +430,16 @@ class BoundProperty(AttrRouter):
     def __get_value(self, instance):
         try:
             underlying = getattr(instance, 'node', None) or getattr(instance, 'relationship', None)
-        except: # no node existed
+        except:  # no node existed
             pass
         else:
             try:
                 values = BoundProperty._values_of(instance)
                 values[self.__propname] = val = self._property.to_python(underlying[self.__propname])
                 return val
-            except: # no value set on node
+            except:  # no value set on node
                 pass
-        return self.get_default() # fall through: default value
+        return self.get_default()  # fall through: default value
 
     def _get_val_from_obj(self, obj):
         return self.__get__(obj)
@@ -452,8 +453,7 @@ class BoundProperty(AttrRouter):
 
     @transactional
     def __set_value(self, instance, value):
-        underlying = getattr(instance, 'node', None) or \
-                getattr(instance, 'relationship', None)
+        underlying = getattr(instance, 'node', None) or getattr(instance, 'relationship', None)
         if not underlying:
             raise TypeError('Property has no underlying node or relationship!')
         try:
@@ -470,8 +470,8 @@ class BoundProperty(AttrRouter):
             #remove the property from the node if the val is None
             del underlying[self.__propname]
 
-
         return (old, value)
+
 
 class StringProperty(Property):
     #since strings don't have a natural max, this is an arbitrarily high utf-8
@@ -503,11 +503,13 @@ class StringProperty(Property):
             defaults['max_length'] = self.max_length
         return super(StringProperty, self).formfield(**defaults)
 
+
 class EmailProperty(StringProperty):
     #TODO docstring
     default_validators = [validators.validate_email]
 
     formfield = formfields.EmailField
+
 
 class URLProperty(StringProperty):
     formfield = formfields.URLField
@@ -519,9 +521,10 @@ class URLProperty(StringProperty):
         self.validators.append(validators.URLValidator(verify_exists=verify_exists))
 
     def formfield(self, **kwargs):
-        defaults = {'form_class':formfields.URLField}
+        defaults = {'form_class': formfields.URLField}
         defaults.update(kwargs)
         return super(URLProperty, self).formfield(**defaults)
+
 
 class IntegerProperty(Property):
     """
@@ -557,16 +560,17 @@ class IntegerProperty(Property):
     @property
     def to_neo_index_gremlin(self):
         """
-        Return a Gremlin/Groovy closure literal that can compute 
+        Return a Gremlin/Groovy closure literal that can compute
         to_neo_index(value) server-side. The closure should take a single value
         as an argument (that value actually set on the node).
         """
         return """{ i -> (i < 0?'-':'0') + String.format('%019d',i)} """
 
     def formfield(self, **kwargs):
-        defaults = {'form_class':formfields.IntegerField}
+        defaults = {'form_class': formfields.IntegerField}
         defaults.update(kwargs)
         return super(IntegerProperty, self).formfield(**defaults)
+
 
 class AutoProperty(IntegerProperty):
     editable = False
@@ -595,6 +599,7 @@ class AutoProperty(IntegerProperty):
     def formfield(self, **kwargs):
         return None
 
+
 @borrows_methods(fields.DateField, ('to_python',))
 class DateProperty(Property):
 
@@ -603,8 +608,8 @@ class DateProperty(Property):
         'invalid_date': _('Invalid date: %s'),
     }
 
-    MAX=datetime.date.max
-    MIN=datetime.date.min
+    MAX = datetime.date.max
+    MIN = datetime.date.min
 
     def __init__(self, auto_now=False, auto_now_add=False, **kwargs):
         self.auto_now, self.auto_now_add = auto_now, auto_now_add
@@ -635,12 +640,13 @@ class DateProperty(Property):
             return super(DateProperty, self).pre_save(model_instance, add,
                                                       attname)
 
+
 @borrows_methods(fields.DateTimeField, ('to_python',))
 class DateTimeProperty(DateProperty):
     default_error_messages = fields.DateTimeField.default_error_messages
 
-    MAX=datetime.datetime.max
-    MIN=datetime.datetime.min
+    MAX = datetime.datetime.max
+    MIN = datetime.datetime.min
 
     def to_neo(self, value):
         if value is None:
@@ -659,7 +665,7 @@ class DateTimeProperty(DateProperty):
     def to_neo_index(self, value):
         cleaned = self.to_neo(value)
         if cleaned is not None:
-            return cleaned.replace(' ','-')
+            return cleaned.replace(' ', '-')
 
     def pre_save(self, model_instance, add, attname):
         if self.auto_now or (self.auto_now_add and add):
@@ -669,6 +675,7 @@ class DateTimeProperty(DateProperty):
         else:
             return super(DateProperty, self).pre_save(model_instance, add,
                                                       attname)
+
 
 class ArrayProperty(Property):
     __metaclass__ = ABCMeta
@@ -736,23 +743,27 @@ class ArrayProperty(Property):
             return self.token.join(escaped_values)
         return value
 
+
 class StringArrayProperty(ArrayProperty):
     default_validators = [validate_str_array]
+
 
 class URLArrayProperty(StringArrayProperty):
     def __init__(self, *args, **kwargs):
         per_key = 'per_element_validators'
         per_val = validators.URLValidator()
         if per_key in kwargs:
-            kwargs[per_key].append(per_val) #TODO make this consistent with super
+            kwargs[per_key].append(per_val)  # TODO make this consistent with super
         else:
             kwargs[per_key] = ([per_val], 'Enter a valid sequence of URLs')
         super(URLArrayProperty, self).__init__(*args, **kwargs)
+
 
 class IntArrayProperty(ArrayProperty):
     default_validators = [validate_int_array]
 
     member_to_neo_index = IntegerProperty.to_neo_index.im_func
+
 
 class BooleanProperty(Property):
     formfield = formfields.BooleanField
