@@ -28,4 +28,4 @@ If you'd like to use other Django apps built on the regular ORM in conjunction w
 
     DATABASE_ROUTERS = ['neo4django.utils.Neo4djangoIntegrationRouter']
 
-Once your project is configured, you're ready to start :ref:`writing-models` !
+Once your project is configured, you're ready to start :doc:`writing-models` !
