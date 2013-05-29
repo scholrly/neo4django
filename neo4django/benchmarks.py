@@ -125,6 +125,6 @@ for b in benchmarks:
         b[1]()
     end = time()
 
-    print "'%s':%.3f" % (b[0][:-10], (end-start)/num_runs)
+    print "'%s':%.3f" % (b[0][:-10], (end - start) / num_runs)
 
 cleandb()

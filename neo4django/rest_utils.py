@@ -21,7 +21,7 @@ def itemdropper(*ind):
     keys, due to complexity.
     """
     def func(seq):
-        return reduce(add, (seq[i:i+1] for i in xrange(len(seq)) if i not in ind))
+        return reduce(add, (seq[i:i + 1] for i in xrange(len(seq)) if i not in ind))
     return func
 
 
