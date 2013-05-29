@@ -34,6 +34,7 @@ class Aggregate(object):
 class Avg(Aggregate):
     cypher_function = 'AVG'
 
+
 class Count(Aggregate):
     cypher_function = 'COUNT'
     cypher_template = '%(function)s(%(distinct)s%(field)s)'
@@ -41,12 +42,14 @@ class Count(Aggregate):
     def __init__(self, col, distinct=False, **extra):
         super(Count, self).__init__(col, distinct=distinct and 'DISTINCT ' or '', **extra)
 
+
 class Max(Aggregate):
     cypher_function = 'MAX'
+
 
 class Min(Aggregate):
     cypher_function = 'MIN'
 
+
 class Sum(Aggregate):
     cypher_function = 'SUM'
-
