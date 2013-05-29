@@ -6,6 +6,7 @@ from django.conf import settings as _settings
 from .db import Neo4djangoRequest, connections, DEFAULT_DB_ALIAS
 from .utils import ConnectionHandler
 
+
 class NumRequestsProfiler(object):
     def __init__(self, connection, assertion):
         self.connection = connection
@@ -29,6 +30,7 @@ class NumRequestsProfiler(object):
             return
         if self.assertion is not None:
             self.assertion(self.num)
+
 
 class NodeModelTestCase(django_test.TestCase):
     """Cleans  up the graph database in between each run"""

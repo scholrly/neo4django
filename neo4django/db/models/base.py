@@ -1,6 +1,5 @@
 from django.db import models as dj_models
 from django.db.models import signals
-from django.core import exceptions
 from django.conf import settings
 
 import neo4jrestclient.client as neo_client
@@ -8,46 +7,56 @@ import neo4jrestclient.constants as neo_constants
 
 from neo4django.db import connections, DEFAULT_DB_ALIAS
 from neo4django.exceptions import NoSuchDatabaseError
-from neo4django.decorators import not_implemented, alters_data, transactional,\
-        not_supported, memoized
-from neo4django.constants import TYPE_ATTR
+from neo4django.decorators import (not_implemented,
+                                   alters_data,
+                                   transactional,
+                                   not_supported,
+                                   memoized)
 
 from .manager import NodeModelManager
 
 import inspect
 import itertools
 from decorator import decorator
-from types import MethodType
+
 
 class IdProperty(object):
+
     def __init__(self, getter, setter):
         self.getter = getter
         self.setter = setter
+
     def __get__(self, inst, cls):
-        if inst is None: return IdLookup(cls)
+        if inst is None:
+            return IdLookup(cls)
         else:
             return self.getter(inst)
+
     def __set__(self, inst, value):
         return self.setter(inst, value)
+
 
 class IdLookup(object):
     indexed = True
     unique = True
-    id=True
+    id = True
+
     def __init__(self, model):
         self.__model = model
+
     index = property(lambda self: self)
-    
+
     def to_neo(self, value):
         if value is not None:
             return int(value)
-        else: # Allows lookups on Nulls
+        else:  # Allows lookups on Nulls
             return value
+
 
 class NeoModelBase(type(dj_models.Model)):
     """
-    Model metaclass that adds creation counters to models, a hook for adding 
-    custom "class Meta" style options to NeoModels beyond those supported by 
+    Model metaclass that adds creation counters to models, a hook for adding
+    custom "class Meta" style options to NeoModels beyond those supported by
     Django, and method transactionality.
     """
     meta_additions = ['has_own_index']
@@ -55,7 +64,7 @@ class NeoModelBase(type(dj_models.Model)):
     def __init__(cls, name, bases, dct):
         super(NeoModelBase, cls).__init__(name, bases, dct)
         cls._creation_counter = 0
-        
+
     def __new__(cls, name, bases, attrs):
         super_new = super(NeoModelBase, cls).__new__
         #process the extra meta options
@@ -69,7 +78,8 @@ class NeoModelBase(type(dj_models.Model)):
         #find all methods flagged transactional and decorate them
         flagged_methods = [i for i in attrs.items()
                            if getattr(i[1], 'transactional', False) and
-                            inspect.isfunction(i[1])]
+                           inspect.isfunction(i[1])]
+
         @decorator
         def trans_method(func, *args, **kw):
             #the first arg should be 'self', since these functions are to be
@@ -95,8 +105,10 @@ class NeoModelBase(type(dj_models.Model)):
             setattr(new_cls._meta, k, extra_options[k])
         return new_cls
 
+
 class NeoModel(dj_models.Model):
     __metaclass__ = NeoModelBase
+
     class Meta:
         abstract = True
 
@@ -108,6 +120,7 @@ class NeoModel(dj_models.Model):
                 cls._creation_counter += 1
             return cls._creation_counter
     creation_counter = creation_counter()
+
 
 class NodeModel(NeoModel):
     objects = NodeModelManager()
@@ -128,12 +141,12 @@ class NodeModel(NeoModel):
 
         #take care of using by inferring from the neo4j node
         names = [name for name in connections
-            if connections[name].url in neo_node.url]
+                 if connections[name].url in neo_node.url]
         if len(names) < 1:
             raise NoSuchDatabaseError(url=neo_node.url)
 
         instance.__using = names[0]
-        
+
         #TODO: this violates DRY (BoundProperty._all_properties_for...)
         def get_props(cls):
             meta = cls._meta
@@ -206,7 +219,8 @@ class NodeModel(NeoModel):
         new_model = cls()
         for field in neo_model._meta.fields:
             name = field.attname
-            if name not in onto_field_names or name in ('pk', 'id'): continue
+            if name not in onto_field_names or name in ('pk', 'id'):
+                continue
             val = getattr(neo_model, name)
             if isinstance(val, dj_models.Manager):
                 for obj in val.all():
@@ -245,9 +259,10 @@ class NodeModel(NeoModel):
                 return cls._indexes[cls][using]
         else:
             cls._indexes[cls] = {}
-        
-        model_parents = [t for t in cls.mro() \
-                            if issubclass(t, NodeModel) and t is not NodeModel]
+
+        model_parents = [t for t in cls.mro()
+                         if issubclass(t, NodeModel) and t is not NodeModel]
+
         if len(model_parents) == 0:
             #because marking this method abstract with the django metaclasses
             #is tough
@@ -278,10 +293,11 @@ class NodeModel(NeoModel):
     @alters_data
     @not_implemented
     @transactional
-    def _insert(self, values, **kwargs):  ##XXX: what is this?
+    def _insert(self, values, **kwargs):  # XXX: what is this?
         pass
 
     __node = None
+
     @property
     def node(self):
         node = self.__node
@@ -321,13 +337,13 @@ class NodeModel(NeoModel):
         if self.id is None:
             #TODO #244, batch optimization
             #get all the type props, in case a new type node needs to be created
-            type_hier_props = [{'app_label':t._meta.app_label,
-                                'model_name':t.__name__}
-                            for t in self._concrete_type_chain()]
+            type_hier_props = [{'app_label': t._meta.app_label,
+                                'model_name': t.__name__}
+                               for t in self._concrete_type_chain()]
             type_hier_props = list(reversed(type_hier_props))
             #get all the names of all types, including abstract, for indexing
             type_names_to_index = [t._type_name() for t in type(self).mro()
-                                   if (issubclass(t, NodeModel) 
+                                   if (issubclass(t, NodeModel)
                                        and t is not NodeModel)]
             script = '''
             node = Neo4Django.createNodeWithTypes(types)
@@ -335,9 +351,9 @@ class NodeModel(NeoModel):
             results = node
             '''
             conn = connections[using]
-            self.__node = node = conn.gremlin_tx(script, types=type_hier_props,
-                                                 indexName=self.index_name(), 
-                                                 typesToIndex=type_names_to_index)
+            self.__node = conn.gremlin_tx(script, types=type_hier_props,
+                                          indexName=self.index_name(),
+                                          typesToIndex=type_names_to_index)
         return self.__node
 
     @classmethod
@@ -349,7 +365,7 @@ class NodeModel(NeoModel):
         def model_parents(cls):
             cur_cls = cls
             while True:
-                bases = filter(lambda c: issubclass(c, NodeModel), cur_cls.__bases__) 
+                bases = filter(lambda c: issubclass(c, NodeModel), cur_cls.__bases__)
                 if len(bases) > 1:
                     raise ValueError('Multiple inheritance of NodeModels is not currently supported.')
                 elif len(bases) == 0:
@@ -363,8 +379,8 @@ class NodeModel(NeoModel):
     def __type_node(cls, using):
         conn = connections[using]
         name = cls.__name__
-        
-        type_hier_props = [{'app_label':t._meta.app_label,'model_name':t.__name__}
+
+        type_hier_props = [{'app_label': t._meta.app_label, 'model_name': t.__name__}
                            for t in cls._concrete_type_chain()]
         type_hier_props = list(reversed(type_hier_props))
         script = "results = Neo4Django.getTypeNode(types)"
@@ -419,5 +435,5 @@ class NodeModel(NeoModel):
         pass
 
     @not_supported
-    def _collect_sub_objects(self,seen_objs,parent=None,nullable=False):
+    def _collect_sub_objects(self, seen_objs, parent=None, nullable=False):
         pass
