@@ -36,7 +36,7 @@ Finding a child with parents named Tom and Meagan and a stepdad named Jack is si
 If we'd like to pre-load a subgraph around a particular ``FamilyPerson``, we can
 use :func:`~neo4django.db.models.query.NodeQuerySet.select_related`::
 
-    jack = Person.objects.all(name='Jack').select_related(depth=5)
+    jack = Person.objects.filter(name='Jack').select_related(depth=5)
     #OR
     Person.objects.get(name='Jack').select_related('spouse__mother__sister__son__stepdad')
 
