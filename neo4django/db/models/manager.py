@@ -4,6 +4,7 @@ from django.db.models.query import EmptyQuerySet
 from neo4django.decorators import not_implemented
 from query import NodeQuerySet
 
+
 class NodeModelManager(models.Manager):
     def __init__(self):
         super(NodeModelManager, self).__init__()
@@ -14,10 +15,10 @@ class NodeModelManager(models.Manager):
     @not_implemented
     def _insert(self, values, **kwargs):
         pass
-    
+
     @not_implemented
     def _update(self, values, **kwargs):
-        pass   
+        pass
 
     def get_empty_query_set(self):
         return EmptyQuerySet()
@@ -37,9 +38,9 @@ class NodeModelManager(models.Manager):
 
     def dates(self, *args, **kwargs):
         return self.get_query_set().dates(*args, **kwargs)
-    
+
     def create(self, **kwargs):
         return self.get_query_set().create(**kwargs)
-    
+
     def filter(self, *args, **kwargs):
         return self.get_query_set().filter(*args, **kwargs)

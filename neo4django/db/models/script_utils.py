@@ -1,6 +1,7 @@
 import neo4jrestclient.client as neo4j
-from .. import DEFAULT_DB_ALIAS, connections
+from .. import connections
 from ...rest_utils import id_from_url
+
 
 class LazyBase(object):
     """
@@ -20,8 +21,10 @@ class LazyBase(object):
     def from_dict(cls, dic):
         return cls(dic['self'], dic)
 
+
 class LazyNode(LazyBase, neo4j.Node):
     id_url_template = 'node/%d'
+
 
 class LazyRelationship(LazyBase, neo4j.Relationship):
     id_url_template = 'relationship/%d'
@@ -58,6 +61,7 @@ class LazyRelationship(LazyBase, neo4j.Relationship):
                 pass
         return super(LazyRelationship, self).end
 
+
 class SkeletonBase(object):
     """
     A mixin to allow REST element construction from an id and property dict.
@@ -68,28 +72,30 @@ class SkeletonBase(object):
         url = db_url + (self.id_url_template % element_id)
         element_dict = {}
         for k, v in self.DICT_TEMPLATE.items():
-            element_dict[k] = v.replace('{db_url}',db_url).replace('{id}',str(element_id)) \
-                    if not hasattr(v, 'keys') else v
+            element_dict[k] = v.replace('{db_url}', db_url).replace('{id}', str(element_id)) \
+                if not hasattr(v, 'keys') else v
         element_dict['data'] = prop_dict
         super(SkeletonBase, self).__init__(url, element_dict)
 
+
 class SkeletonNode(SkeletonBase, LazyNode):
     DICT_TEMPLATE = {
-        "outgoing_relationships" : "{db_url}node/{id}/relationships/out",
-        "data" : {},
-        "traverse" : "{db_url}node/{id}/traverse/{returnType}",
-        "all_typed_relationships" : "{db_url}node/{id}/relationships/all/{-list|&|types}",
-        "property" : "{db_url}node/{id}/properties/{key}",
-        "self" : "{db_url}node/{id}",
-        "outgoing_typed_relationships" : "{db_url}node/{id}/relationships/out/{-list|&|types}",
-        "properties" : "{db_url}node/{id}/properties",
-        "incoming_relationships" : "{db_url}node//relationships/in",
-        "extensions" : {},
-        "create_relationship" : "{db_url}node/{id}/relationships",
-        "paged_traverse" : "{db_url}node/{id}/paged/traverse/{returnType}{?pageSize,leaseTime}",
-        "all_relationships" : "{db_url}node/{id}/relationships/all",
-        "incoming_typed_relationships" : "{db_url}node/{id}/relationships/in/{-list|&|types}"
+        "outgoing_relationships": "{db_url}node/{id}/relationships/out",
+        "data": {},
+        "traverse": "{db_url}node/{id}/traverse/{returnType}",
+        "all_typed_relationships": "{db_url}node/{id}/relationships/all/{-list|&|types}",
+        "property": "{db_url}node/{id}/properties/{key}",
+        "self": "{db_url}node/{id}",
+        "outgoing_typed_relationships": "{db_url}node/{id}/relationships/out/{-list|&|types}",
+        "properties": "{db_url}node/{id}/properties",
+        "incoming_relationships": "{db_url}node//relationships/in",
+        "extensions": {},
+        "create_relationship": "{db_url}node/{id}/relationships",
+        "paged_traverse": "{db_url}node/{id}/paged/traverse/{returnType}{?pageSize,leaseTime}",
+        "all_relationships": "{db_url}node/{id}/relationships/all",
+        "incoming_typed_relationships": "{db_url}node/{id}/relationships/in/{-list|&|types}"
     }
+
 
 def batch_base(ids, cls, using):
     """
@@ -97,8 +103,7 @@ def batch_base(ids, cls, using):
     """
     #HACK to get around REST client limitations
     gremlin_func = 'e' if issubclass(cls, neo4j.Relationship) else 'v'
-    script = \
-    """
+    script = """
     t = new Table()
     for (def id : ids) {
         g.%s(id).as('elements').table(t,['elements']).iterate()
@@ -109,11 +114,14 @@ def batch_base(ids, cls, using):
     result_table = connections[using].gremlin(script, ids=ids)
     return [_add_auth(cls.from_dict(v[0]), connections[using]) for v in result_table['data']]
 
+
 def batch_rels(ids, using):
     return batch_base(ids, LazyRelationship, using)
 
+
 def batch_nodes(ids, using):
     return batch_base(ids, LazyNode, using)
+
 
 def batch_paths(paths, using):
     """
@@ -125,7 +133,7 @@ def batch_paths(paths, using):
     tx = connections[using].transaction(using_globals=False)
     for p in paths:
         for n_url in p['nodes']:
-            tx.subscribe('GET',n_url)
+            tx.subscribe('GET', n_url)
         for r_url in p['relationships']:
             tx.subscribe('GET', r_url)
     result_dict = tx._batch()
@@ -150,12 +158,14 @@ def batch_paths(paths, using):
         batched.append(tuple(p_list))
     return batched
 
+
 def _add_auth(n, conn):
     n._auth = conn._auth
     return n
+
 
 class GremlinSnippet(object):
     def __init__(self, name, script, in_args=['results'], out_args=['results']):
         self.script = script
         self.in_args = in_args
-        self.out_arg = out_arg
+        self.out_args = out_args

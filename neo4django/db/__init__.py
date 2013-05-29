@@ -1,4 +1,4 @@
-__all__ = ['connection', 'connections','DEFAULT_DB_ALIAS']
+__all__ = ['connection', 'connections', 'DEFAULT_DB_ALIAS']
 
 from django.conf import settings as _settings
 from django.core import exceptions
@@ -7,6 +7,7 @@ from time import time as _time
 
 from ..utils import ConnectionHandler, StubbornDict
 from ..constants import VERSION
+
 
 # patch the client request for a different User-Agent header
 class Neo4djangoRequest(_client.Request):
@@ -67,7 +68,8 @@ _client.Request = Neo4djangoRequest
 
 if getattr(_settings, 'NEO4DJANGO_PROFILE_REQUESTS', False):
     #add profiling callbacks
-    profiling_data = {'last_print_time':_time()}
+    profiling_data = {'last_print_time': _time()}
+
     def start_timer(req, method, url, data, *args):
         from sys import stdout
         new_time = _time()
@@ -101,6 +103,7 @@ if not DEFAULT_DB_ALIAS in _settings.NEO4J_DATABASES:
 
 connections = ConnectionHandler(_settings.NEO4J_DATABASES)
 #TODO: think about emulating django's db routing
+
 
 class DefaultConnectionProxy(object):
     """

@@ -3,24 +3,23 @@ from django.db.models.fields.related import add_lazy_relation
 from django.db.models.query_utils import DeferredAttribute
 from django.db.models.query import EmptyQuerySet
 from django.db.models.signals import post_delete
-from django.db.models import fields
 from django.forms import ModelChoiceField, ModelMultipleChoiceField
 from django.utils.text import capfirst
 from django.dispatch import receiver
-from django.core.exceptions import FieldError
 
 from neo4django import Incoming, Outgoing
 from neo4django.db import DEFAULT_DB_ALIAS
 from neo4django.decorators import not_implemented, transactional
-from neo4django.utils import buffer_iterator, AssignableList, AttrRouter
+from neo4django.utils import AssignableList, AttrRouter
 from neo4django.constants import INTERNAL_ATTR, ORDER_ATTR
 from .base import NodeModel
 from .query import (NodeQuerySet, Query, cypher_rel_str, Clauses, Start, With)
 
-from neo4jrestclient.constants import RELATIONSHIPS_ALL, RELATIONSHIPS_IN, RELATIONSHIPS_OUT
+from neo4jrestclient.constants import RELATIONSHIPS_IN, RELATIONSHIPS_OUT
 
 from collections import defaultdict
 from functools import partial
+
 
 class RelationshipModel(object):
     """
@@ -43,22 +42,22 @@ class RelationshipModel(object):
 
     @classmethod
     def new(RelationshipModel, module, name, bases):
-        return type(name, bases + (RelationshipModel,), {
-                '__module__': module,})
+        return type(name, bases + (RelationshipModel,),
+                    {'__module__': module})
 
     @not_implemented
     @classmethod
     def add_field(self, prop):
         raise NotImplementedError("<RelationshipModel>.add_field()")
 
+
 class Relationship(object):
 
     def __init__(self, target, rel_type=None, direction=None, optional=True,
                  single=False, related_single=False, related_name=None,
-                 editable=True, verbose_name=None, help_text=None, 
+                 editable=True, verbose_name=None, help_text=None,
                  preserve_ordering=False, metadata={},
-                 rel_metadata={},
-                ):
+                 rel_metadata={}):
         if direction is Outgoing:
             direction = RELATIONSHIPS_OUT
         elif direction is Incoming:
@@ -72,7 +71,7 @@ class Relationship(object):
             if rel_type.direction != direction:
                 raise ValueError("Incompatible direction!")
             rel_type = rel_type.type
-        
+
         self._reverse_relationship_type = Relationship
 
         self.__target = target
@@ -121,7 +120,7 @@ class Relationship(object):
     def get_name(target, single=False):
         suffix = '%s' if single else '%s_set'
         if isinstance(target, basestring):
-            name = target.rsplit('.',1)[-1]
+            name = target.rsplit('.', 1)[-1]
         else:
             name = target.__name__
         return suffix % name.lower()
@@ -132,10 +131,9 @@ class Relationship(object):
             return SingleNode
         else:
             return MultipleNodes
-    
+
     def _get_new_bound_relationship(self, source, name):
-        return self._get_bound_relationship_type()(
-                self, source, self.name or name, name)
+        return self._get_bound_relationship_type()(self, source, self.name or name, name)
 
     def contribute_to_class(self, source, name):
         if not issubclass(source, NodeModel):
@@ -149,7 +147,7 @@ class Relationship(object):
                 if r.rel_type == self.name and r.direction == self.direction:
                     import warnings
                     warnings.warn('`%s` and `%s` share a relationship type and '
-                                  'direction. Is this what you meant to do?' 
+                                  'direction. Is this what you meant to do?'
                                   % (r.name, name))
         bound = self._get_new_bound_relationship(source, name)
         source._meta.add_field(bound)
@@ -171,16 +169,16 @@ class Relationship(object):
 
     def formfield(self, **kwargs):
         defaults = {
-                    'required': not self.optional,
-                    'label': capfirst(self.verbose_name),
-                    'help_text': self.help_text,
-                    'queryset':self.target_model.objects
-                   }
+            'required': not self.optional,
+            'label': capfirst(self.verbose_name),
+            'help_text': self.help_text,
+            'queryset': self.target_model.objects
+        }
         if self.single:
             defaults['form_class'] = ModelChoiceField
         else:
             defaults['form_class'] = ModelMultipleChoiceField
-        defaults.update(kwargs)      
+        defaults.update(kwargs)
 
         form_class = defaults['form_class']
         del defaults['form_class']
@@ -194,6 +192,7 @@ class Relationship(object):
         return (self.__target, self.name, self.direction, True, self.__single,
                 self.__related_single, self.reversed_name, self.__ordered,
                 self.__meta, self.__related_meta)
+
 
 #subclasses DeferredAttribute to avoid being set to None in
 #django.db.models.Model.__init__().
@@ -217,7 +216,7 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
         self.__attname = attname
         self.serialize = serialize
         relationships = self._relationships_for(source)
-        relationships[self.__attname] = self # XXX weakref
+        relationships[self.__attname] = self  # XXX weakref
         self._route(['reversed_name',
                      'direction',
                      'target_model',
@@ -226,7 +225,7 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
                      # form handling
                      'editable',
                      'formfield',
-                    ],self.__rel)
+                     ], self.__rel)
 
     def clean(self, value, instance):
         return value
@@ -235,8 +234,8 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
         self.__target = target
         if not isinstance(target, basestring):
             self.__rel.reverse(self.__source,
-                                self.__attname).contribute_to_class(
-                target, self.reversed_name(self.__source))
+                               self.__attname).contribute_to_class(
+                                   target, self.reversed_name(self.__source))
 
     attname = name = property(lambda self: self.__attname)
 
@@ -306,9 +305,9 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
             rels = BoundRelationship._all_relationships_for(instance)
             for key in state.keys():
                 rels[key]._save_relationship(instance, node, state[key])
-                if isinstance(state[key], tuple): #HACK, rearchitect
+                if isinstance(state[key], tuple):  # HACK, rearchitect
                     state[key] = (False, state[key][1])
-                    
+
     #TODO this... well, consider revising
     NodeModel._save_neo4j_relationships = staticmethod(_save_)
 
@@ -334,11 +333,11 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
             setattr(self._relationships, k, attrs[k])
         return self._relationships
 
-    creation_counter = property(lambda self:self.__rel.creation_counter)
+    creation_counter = property(lambda self: self.__rel.creation_counter)
 
     def _set_relationship(self, obj, state, value):
-        if value is None: # assume initialization - ignore
-            return # TODO: verify that obj is unsaved!
+        if value is None:  # assume initialization - ignore
+            return  # TODO: verify that obj is unsaved!
         raise TypeError("<%s>.%s is not assignable" %
                         (obj.__class__.__name__, self.name))
 
@@ -395,7 +394,8 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
     ######################
 
     def __get__(self, obj, cls=None):
-        if obj is None: return self
+        if obj is None:
+            return self
         return self._get_relationship(obj, self._state_for(obj))
 
     def __set__(self, obj, value):
@@ -403,6 +403,7 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
 
     def __delete__(self, obj):
         self._del_relationship(obj, self._state_for(obj))
+
 
 class SingleNode(BoundRelationship):
     #BoundRelationship subclass for a single node relationship without an
@@ -434,9 +435,9 @@ class SingleNode(BoundRelationship):
         if len(django_relationships) < 1:
             return None
         elif len(django_relationships) > 1:
-            raise ValueError("There's an ambiguous relationship set in the "\
-                             "database from node %d - there should only be one"\
-                             " relationship flagged as '_neo4django' for a "\
+            raise ValueError("There's an ambiguous relationship set in the "
+                             "database from node %d - there should only be one"
+                             " relationship flagged as '_neo4django' for a "
                              "single=True Relationship." % node.id)
         return self._neo4j_instance(node, django_relationships[0])
 
@@ -444,7 +445,7 @@ class SingleNode(BoundRelationship):
         if this.id == relationship.end.id:
             that = relationship.start
         else:
-            that = relationship.end #get the other node
+            that = relationship.end  # get the other node
 
         return self.target_model._neo4j_instance(that)
 
@@ -456,7 +457,8 @@ class SingleNode(BoundRelationship):
 
     def _save_relationship(self, instance, node, state):
         changed, other = state
-        if not changed: return
+        if not changed:
+            return
         rels = self._load_relationships(node)
 
         #delete old relationship
@@ -465,7 +467,7 @@ class SingleNode(BoundRelationship):
         if other is None:
             #delete old relationship if it exists
             if hasattr(rels, 'single') and rels.single:
-                rels.single.delete() #TODO this deletion should be transactional w creation
+                rels.single.delete()  # TODO this deletion should be transactional w creation
             rels.single = None
         else:
             rels.single = self._create_neo_relationship(node, other)
@@ -477,21 +479,26 @@ class SingleNode(BoundRelationship):
             raise ValueError("Can't set the cache on an already initialized relationship!")
         state[self.name] = False, other
 
+
 class BoundRelationshipModel(BoundRelationship):
     def __init__(self, rel, cls, relname, attname, Model):
         super(BoundRelationship, self).__init__(
             rel, cls, relname, attname)
         self.Model = Model
         raise NotImplementedError("Support for extended relationship "
-                                    "models is not yet implemented.")
+                                  "models is not yet implemented.")
 
-class SingleRelationship(BoundRelationshipModel): # WAIT!
+
+class SingleRelationship(BoundRelationshipModel):  # WAIT!
+
     @not_implemented
     def _get_relationship(self, obj, state):
         pass
+
     @not_implemented
     def _set_relationship(self, obj, state, other):
         pass
+
 
 class MultipleNodes(BoundRelationship):
     #BoundRelationship subclass for a multi-node relationship without an
@@ -501,7 +508,7 @@ class MultipleNodes(BoundRelationship):
         return self.__get__(obj).all()
 
     def value_to_string(self, obj):
-       return str([item.pk for item in list(self.__get__(obj).all())])
+        return str([item.pk for item in list(self.__get__(obj).all())])
 
     def save_form_data(self, instance, data):
         # TODO we need a function like _get_relationship that only takes a
@@ -510,7 +517,7 @@ class MultipleNodes(BoundRelationship):
         self._set_relationship(instance, states, list(data))
 
     def clean(self, value, instance):
-        # XXX HACK since we don't use a proxy object like 
+        # XXX HACK since we don't use a proxy object like
         # ForeignRelatedObjectsDescriptor (and actually return a
         # RelationshipInstance on getattr(model, field.attname)) so we have to
         # unpack a RelationshipInstance
@@ -531,12 +538,12 @@ class MultipleNodes(BoundRelationship):
             items = list(state.all())
             notsaved = state._added
             if items and len(notsaved) < len(items):
-                state.remove(*items) 
+                state.remove(*items)
                 #TODO: make it so it only removes authors not in value
                 #      and remove authors already there from value
                 #XXX: only works when removing from saved nodes
             if notsaved:
-                notsaved[:] = [] #TODO give rel instance a method for this?
+                notsaved[:] = []  # TODO give rel instance a method for this?
             if hasattr(value, '__iter__'):
                 state.add(*value)
             else:
@@ -550,7 +557,7 @@ class MultipleNodes(BoundRelationship):
         return self.target_model._neo4j_instance(that)
 
     def accept(self, obj):
-        pass # TODO: implement verification
+        pass  # TODO: implement verification
 
     def _save_relationship(self, instance, node, state):
         state.__save__(node)
@@ -558,7 +565,7 @@ class MultipleNodes(BoundRelationship):
     def _load_relationships(self, node, ordered=False, **kwargs):
         sup = super(MultipleNodes, self)._load_relationships(node, **kwargs)
         if ordered:
-            return sorted(sup, key=lambda rel:rel[ORDER_ATTR])
+            return sorted(sup, key=lambda rel: rel[ORDER_ATTR])
         return sup
 
     def _create_neo_relationship(self, node, *args, **kwargs):
@@ -566,19 +573,22 @@ class MultipleNodes(BoundRelationship):
             rels = self._load_relationships(node, ordered=True, **kwargs)
             new_index = rels[-1][ORDER_ATTR] + 1 if len(rels) > 0 else 0
             if 'attrs' in kwargs:
-                kwargs['attrs'][ORDER_ATTR]=new_index
+                kwargs['attrs'][ORDER_ATTR] = new_index
             else:
-                kwargs['attrs'] = { ORDER_ATTR:new_index }
-        return super(MultipleNodes, self). \
-                    _create_neo_relationship(node, *args, **kwargs)
+                kwargs['attrs'] = {ORDER_ATTR: new_index}
+        return super(MultipleNodes, self)._create_neo_relationship(node, *args, **kwargs)
 
-class MultipleRelationships(BoundRelationshipModel): # WAIT!
+
+class MultipleRelationships(BoundRelationshipModel):  # WAIT!
+
     @not_implemented
     def _get_relationship(self, obj, state):
         pass
+
     @not_implemented
     def add(self, obj, other):
         pass
+
 
 # TODO this needs to be supplanted by using somthing like django.db.models
 # .fields.related.ForeignRelatedObjectsDescriptor
@@ -590,18 +600,19 @@ class RelationshipInstance(models.Manager):
     def __init__(self, rel, obj):
         self._rel = rel
         self._obj = obj
-        self._added = [] # contains domain objects
-        self._removed = [] # contains relationships
+        self._added = []  # contains domain objects
+        self._removed = []  # contains relationships
         #holds cached domain objects (that have been added or loaded by query)
         self._cache = None
         self._cache_unique = set([])
 
         # sender should be the associated model (not any associated LazyModel)
-        sender = self._rel.target_model._model \
-                if hasattr(self._rel.target_model, '_model') \
-                else self._rel.target_model
+        sender = (self._rel.target_model._model
+                  if hasattr(self._rel.target_model, '_model')
+                  else self._rel.target_model)
+
         @receiver(post_delete, sender=sender, weak=False)
-        def delete_handler(sender,**kwargs):
+        def delete_handler(sender, **kwargs):
             deleted_obj = kwargs.pop('instance', None)
             if deleted_obj:
                 self._remove_from_cache(deleted_obj)
@@ -648,15 +659,16 @@ class RelationshipInstance(models.Manager):
 
     def _neo4j_relationships_and_models(self, node):
         """
-        "Returns generator of relationship, neo4j instance tuples associated 
+        "Returns generator of relationship, neo4j instance tuples associated
         with node.
         """
         if self._cache is None:
-            self._add_to_cache(*[(r, self._rel._neo4j_instance(node, r)) for r in 
-                           self._rel._load_relationships(node, ordered=self.ordered)])
+            self._add_to_cache(*[(r, self._rel._neo4j_instance(node, r)) for r in
+                               self._rel._load_relationships(node, ordered=self.ordered)])
         for tup in self._get_or_create_cache():
             if tup[0] not in self._removed:
                 yield tup
+
     @property
     def _new(self):
         for item in self._added:
@@ -688,14 +700,11 @@ class RelationshipInstance(models.Manager):
                                                     ordered=self.ordered))
             rels_by_node = defaultdict(list)
             for neo_rel in neo_rels:
-                other_end = neo_rel.start if neo_rel.end == self._obj.node\
-                            else neo_rel.end
+                other_end = neo_rel.start if neo_rel.end == self._obj.node else neo_rel.end
                 rels_by_node[other_end].append(neo_rel)
-            nodes_to_remove = [o.node for o in objs if hasattr(o, 'node')]
-            unsaved_obj_to_remove = [o for o in objs if not hasattr(o, 'node')]
+
             for obj in objs:
-                candidate_rels = rels_by_node[obj.node]\
-                        if hasattr(o, 'node') else []
+                candidate_rels = rels_by_node[obj.node] if hasattr(obj, 'node') else []
                 if candidate_rels:
                     if candidate_rels[0] not in self._removed:
                         self._removed.append(candidate_rels.pop(0))
@@ -745,7 +754,9 @@ class RelationshipInstance(models.Manager):
     def get_empty_query_set(self):
         return EmptyQuerySet()
 
+
 class RelationshipQuerySet(NodeQuerySet):
+
     def __init__(self, rel_instance, rel, model_instance, model=None,
                  query=None, using=DEFAULT_DB_ALIAS):
         # TODO will cause issues with #138 - multi-typed relationships
@@ -757,8 +768,8 @@ class RelationshipQuerySet(NodeQuerySet):
         self._rel = rel
         self._model_instance = model_instance
 
-        self.query.set_start_clause(self._get_start_clause(), lambda : {
-            'startParam':self._model_instance.id
+        self.query.set_start_clause(self._get_start_clause(), lambda: {
+            'startParam': self._model_instance.id
         })
 
     def _get_start_clause(self):
@@ -778,15 +789,13 @@ class RelationshipQuerySet(NodeQuerySet):
                                  identifier='r')
 
         return Clauses([
-            Start({'m':'node({startParam})'}, ['startParam']),
+            Start({'m': 'node({startParam})'}, ['startParam']),
             'MATCH (m)%s(n)' % rel_str,
-            With({'n':'n', 'r':'r', 'typeNode':'typeNode'}),
+            With({'n': 'n', 'r': 'r', 'typeNode': 'typeNode'}),
             order_clause
         ])
 
-
     def iterator(self):
-        removed = list(self._rel_instance._old)
         added = list(self._rel_instance._new)
         if self._model_instance.id is not None:
             for m in super(RelationshipQuerySet, self).iterator():
@@ -809,4 +818,3 @@ class RelationshipQuerySet(NodeQuerySet):
             return super(RelationshipQuerySet, self).count() + diff_len
         else:
             return diff_len
-

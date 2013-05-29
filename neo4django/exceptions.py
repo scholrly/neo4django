@@ -2,6 +2,7 @@ class Error(Exception):
     """Base class for neo4django exceptions."""
     pass
 
+
 class GremlinLibraryCouldNotBeLoaded(Error):
     """
     Error for when the Gremlin library could not be loaded within the number of
@@ -9,6 +10,7 @@ class GremlinLibraryCouldNotBeLoaded(Error):
     is being reset more than usual.
     """
     pass
+
 
 class NoSuchDatabaseError(Error):
     def __init__(self, url=None, name=None):
