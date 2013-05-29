@@ -1,6 +1,7 @@
 from django.db.models import Q
-from django.db.models.query import QuerySet, EmptyQuerySet
+from django.db.models.query import QuerySet, DateQuerySet
 from django.db.models.sql.query import Query as SQLQuery
+from django.db.models.sql.subqueries import DateQuery
 from django.core import exceptions
 from django.db.models.loading import get_model
 from django.utils.datastructures import SortedDict
@@ -12,26 +13,30 @@ from operator import and_, or_
 import itertools
 import re
 
-import neo4jrestclient.client as neo4j
 import neo4jrestclient.constants as neo_constants
 
 from .. import DEFAULT_DB_ALIAS, connections
 from ...utils import Enum, uniqify
 from ...constants import ORDER_ATTR
-from ...decorators import transactional, not_supported, alters_data, \
-        not_implemented, borrows_methods
+from ...decorators import (transactional,
+                           not_supported,
+                           alters_data,
+                           not_implemented,
+                           borrows_methods)
 from . import script_utils
 from .script_utils import id_from_url, LazyNode, _add_auth as add_auth
 from . import aggregates
 
 #python needs a bijective map... grumble... but a reg enum is fine I guess
 #only including those operators currently being implemented
-OPERATORS = Enum('EXACT', 'IEXACT', 'LT','LTE','GT','GTE','IN','RANGE','MEMBER',
+OPERATORS = Enum('EXACT', 'IEXACT', 'LT', 'LTE', 'GT', 'GTE', 'IN', 'RANGE', 'MEMBER',
                  'CONTAINS', 'ICONTAINS', 'STARTSWITH', 'ISTARTSWITH',
                  'ENDSWITH', 'IENDSWITH', 'REGEX', 'IREGEX', 'MEMBER_IN',
                  'YEAR', 'MONTH', 'DAY', 'ISNULL')
 
-ConditionTuple = namedtuple('ConditionTuple', ['field','value','operator','path'])
+ConditionTuple = namedtuple('ConditionTuple', ['field', 'value', 'operator', 'path'])
+
+
 class Condition(ConditionTuple):
     def __init__(self, *args, **kwargs):
         if 'value' in kwargs:
@@ -42,7 +47,7 @@ class Condition(ConditionTuple):
                 if isinstance(args[1], list):
                     args = list(args)
                     args[1] = tuple(args[1])
-        super(Condition, self).__init__( *args, **kwargs)
+        super(Condition, self).__init__(*args, **kwargs)
 
 QUERY_CHUNK_SIZE = 100
 
@@ -51,9 +56,11 @@ TYPE_REL = '<<TYPE>>'
 INSTANCE_REL = '<<INSTANCE>>'
 INTERNAL_RELATIONSHIPS = (TYPE_REL, INSTANCE_REL)
 
+
 #TODO move to a util module
 def not_none(it):
     return itertools.ifilter(None, it)
+
 
 #########################
 # QUERY CODE GENERATION #
@@ -67,13 +74,14 @@ def clone_q(q):
     new_q.connector = q.connector
     return new_q
 
+
 def condition_from_kw(nodetype, keyval):
     pattern = re.compile('__+')
     terms = pattern.split(keyval[0])
     explicit_op = False
 
     if not terms:
-        pass #TODO error out
+        pass  # TODO error out
     elif len(terms) > 1:
         try:
             #get the corresponding operator
@@ -95,8 +103,8 @@ def condition_from_kw(nodetype, keyval):
         # the select_related machinery, and possibly reuse Django methods for
         # following these paths
         rels = getattr(cur_m._meta, '_relationships', {}).items()
-        candidates_on_models = sorted((s for s in ((score_model_rel(step,r), r)
-                                                   for _,r in rels)
+        candidates_on_models = sorted((s for s in ((score_model_rel(step, r), r)
+                                                   for _, r in rels)
                                        if s[0] > 0), reverse=True)
         if len(candidates_on_models) < 1:
             # if there's no candidate, it could be an error *OR* it could be
@@ -107,26 +115,27 @@ def condition_from_kw(nodetype, keyval):
                 break
             else:
                 raise exceptions.ValidationError("Cannot find referenced field "
-                                                 "`%s` from model %s." % 
+                                                 "`%s` from model %s." %
                                                  (keyval[0], nodetype.__name__))
         rel_choice = candidates_on_models[0][-1]
         cur_m = (rel_choice.target_model if not rel_choice.target_model is cur_m
                  else rel_choice.source_model)
-    
+
     attname = attname or 'id'
 
     try:
         field = getattr(cur_m, attname)
     except AttributeError:
         raise exceptions.ValidationError(
-            "Cannot find referenced field `%s` from model %s." % 
-                                       (keyval[0], nodetype.__name__))
+            "Cannot find referenced field `%s` from model %s." %
+            (keyval[0], nodetype.__name__))
 
     if op in (OPERATORS.RANGE, OPERATORS.IN, OPERATORS.MEMBER_IN):
         return Condition(field, tuple([field.to_neo(v) for v in keyval[1]]),
                          op, path)
     else:
         return Condition(field, field.to_neo(keyval[1]), op, path)
+
 
 def lucene_query_from_condition(condition):
     """
@@ -136,8 +145,9 @@ def lucene_query_from_condition(condition):
     lq = None
     field = condition.field
     attname = field.attname
+
     def escape_wilds(s):
-        return str(s).replace('*','\*').replace('?','\?')
+        return str(s).replace('*', '\*').replace('?', '\?')
     if condition.operator is OPERATORS.EXACT:
         lq = LQ(attname, field.to_neo_index(condition.value))
     elif condition.operator is OPERATORS.STARTSWITH:
@@ -154,7 +164,7 @@ def lucene_query_from_condition(condition):
                           for v in condition.value))
     #FIXME OBOE with field.MAX + exrange, not sure it's easy to fix though...
     elif condition.operator in (OPERATORS.GT, OPERATORS.GTE, OPERATORS.LT,
-                                OPERATORS.LTE, OPERATORS.RANGE): 
+                                OPERATORS.LTE, OPERATORS.RANGE):
         if not field.indexed_range:
             raise exceptions.FieldError(
                 'The {0} property is not configured for range '
@@ -185,7 +195,7 @@ def lucene_query_from_condition(condition):
         elif condition.operator is OPERATORS.RANGE:
             if len(condition.value) != 2:
                 raise exceptions.ValidationError('Range queries need upper and'
-                                                ' lower bounds.')
+                                                 ' lower bounds.')
             lq = LQ(condition.field.attname,
                     inrange=[condition.field.to_neo_index(v)
                              for v in condition.value])
@@ -193,7 +203,8 @@ def lucene_query_from_condition(condition):
         return None
     return lq
 
-def condition_tree_from_q(nodetype, q, predicate=lambda c:True):
+
+def condition_tree_from_q(nodetype, q, predicate=lambda c: True):
     """
     Returns a new Q tree with kwargs pairs replaced by conditions. Any
     conditions that don't meet an optional predicate will be removed.
@@ -208,6 +219,7 @@ def condition_tree_from_q(nodetype, q, predicate=lambda c:True):
     new_q.children = filter(predicate, children)
     return new_q
 
+
 def condition_tree_leaves(q):
     """
     A generator to iterate through all meaningful leaves in a Q tree.
@@ -218,6 +230,7 @@ def condition_tree_leaves(q):
         for child in q.children:
             for leaf in condition_tree_leaves(child):
                 yield leaf
+
 
 def lucene_query_from_condition_tree(cond_q):
     """
@@ -237,6 +250,7 @@ def lucene_query_from_condition_tree(cond_q):
                 lucene_query = ~lucene_query
             return lucene_query
 
+
 def lucene_query_and_index_from_q(using, nodetype, q):
     """
     Return an index name / Lucene query pair based on a given database, node
@@ -247,6 +261,7 @@ def lucene_query_and_index_from_q(using, nodetype, q):
 
     # XXX hack to get around lack of real closure support
     prop_indexes = set([])
+
     def predicate(cond):
         if isinstance(cond, Q):
             return True
@@ -267,6 +282,7 @@ def lucene_query_and_index_from_q(using, nodetype, q):
     index = next(iter(prop_indexes))
     return (index.name, lucene_query_from_condition_tree(cond_q))
 
+
 def cypher_primitive(val):
     if isinstance(val, basestring):
         return '"%s"' % val
@@ -275,6 +291,7 @@ def cypher_primitive(val):
     elif isinstance(val, Iterable):
         return "[%s]" % ','.join(cypher_primitive(v) for v in val)
     return str(val)
+
 
 def cypher_predicate_from_condition(element_name, condition):
     """
@@ -307,7 +324,7 @@ def cypher_predicate_from_condition(element_name, condition):
         element_name = 'LOWER(%s)' % element_name
 
     if condition.operator in (OPERATORS.EXACT, OPERATORS.IEXACT):
-        cypher = ("%s = %s" % 
+        cypher = ("%s = %s" %
                   (element_name, cypher_primitive(value)))
     elif condition.operator is OPERATORS.GT:
         cypher = ("%s > %s" %
@@ -324,20 +341,20 @@ def cypher_predicate_from_condition(element_name, condition):
     elif condition.operator is OPERATORS.RANGE:
         if len(condition.value) != 2:
             raise exceptions.ValidationError('Range queries need upper and'
-                                            ' lower bounds.')
+                                             ' lower bounds.')
         cypher = ("(%s >= %s) AND (%s <= %s)" %
                   (element_name, cypher_primitive(value[0]), element_name,
                    cypher_primitive(value[1])))
     elif condition.operator is OPERATORS.MEMBER or \
-            (condition.operator is OPERATORS.CONTAINS and 
+            (condition.operator is OPERATORS.CONTAINS and
              isinstance(field._property, ArrayProperty)):
         cypher = ("%s IN %s" %
                   (cypher_primitive(value), element_name))
     elif condition.operator is OPERATORS.IN:
-        cypher = ("%s IN %s" % 
+        cypher = ("%s IN %s" %
                   (element_name, cypher_primitive(value)))
     elif condition.operator is OPERATORS.MEMBER_IN:
-        cypher = ('ANY(someVar IN %s WHERE someVar IN %s)' % 
+        cypher = ('ANY(someVar IN %s WHERE someVar IN %s)' %
                   (element_name, cypher_primitive(value)))
     elif condition.operator in (OPERATORS.CONTAINS, OPERATORS.ICONTAINS):
         if isinstance(field._property, StringProperty):
@@ -403,6 +420,7 @@ def cypher_predicate_from_condition(element_name, condition):
 
     return cypher
 
+
 def cypher_predicates_from_q(q):
     if not isinstance(q, Q):
         identifier = '__'.join(['n'] + q.path)
@@ -410,13 +428,14 @@ def cypher_predicates_from_q(q):
             value_exp = 'ID(%s)' % identifier
         else:
             value_exp = '%s.%s!' % (identifier, q.field.attname)
-        return '(%s)' % cypher_predicate_from_condition(value_exp , q)
+        return '(%s)' % cypher_predicate_from_condition(value_exp, q)
     children = list(not_none(cypher_predicates_from_q(c)
-                              for c in q.children))
+                             for c in q.children))
     if len(children) > 0:
         expr = (" %s " % q.connector).join(children)
         return "NOT (%s)" % expr if q.negated else expr
     return None
+
 
 def cypher_where_from_q(nodetype, q):
     """
@@ -427,6 +446,7 @@ def cypher_where_from_q(nodetype, q):
     cond_q = condition_tree_from_q(nodetype, q)
     exps = cypher_predicates_from_q(cond_q)
     return "WHERE %s\n" % exps if exps else ''
+
 
 def cypher_order_by_term(element_name, field):
     """
@@ -441,6 +461,7 @@ def cypher_order_by_term(element_name, field):
         desc = 'DESC'
     return '`%s`.`%s`? %s' % (element_name, field_name, desc)
 
+
 def cypher_order_by_from_fields(element_name, ordering):
 
     #TODO it would be better if this happened at a higher level, so fields were
@@ -451,16 +472,19 @@ def cypher_order_by_from_fields(element_name, ordering):
             ', '.join(cypher_order_by_term(element_name, f) for f in ordering))
     return cypher
 
+
 class Cypher(object):
     def as_cypher(self):
         return self.cypher_template % self.get_params()
 
+
 class Path(Cypher):
     cypher_template = '%(path_assignment)s%(path_expr)s'
+
     def __init__(self, components, path_variable=None):
         """
         components - a list of alternating node identifiers and relationship
-        strs (eg, `['n','-[:friends_with]->','m']`). If a component has an 
+        strs (eg, `['n','-[:friends_with]->','m']`). If a component has an
         `as_cypher()` method, that will be tried before calling unicode on it.
         path_variable - a str path identifer. If included, the final Cypher
         output will be a named path (eg, "p=(`n`)-[:`friends_with`]->(`m`)").
@@ -473,28 +497,32 @@ class Path(Cypher):
 
     def get_params(self):
         components = self.components[:]
-        components.append(None) # make the list even-length
+        components.append(None)  # make the list even-length
         #break components into pairs and fix the node identifiers
         pairs = [('(`%s`)' % p[0] if p[0] else '()', p[1])
                  for p in zip(*[iter(components)] * 2)]
         components = list(itertools.chain.from_iterable(pairs))[:-1]
         return {
-            'path_assignment':'%s =' % self.path_variable \
-                    if self.path_variable is not None else '',
-            'path_expr':''.join(c.as_cypher() if hasattr(c, 'as_cypher')
-                                else unicode(c) for c in components)
+            'path_assignment': '%s =' % (self.path_variable
+                                         if self.path_variable is not None else ''),
+            'path_expr': ''.join(c.as_cypher() if hasattr(c, 'as_cypher')
+                                 else unicode(c) for c in components)
         }
+
 
 class Clause(Cypher):
     pass
+
 
 class Clauses(list):
     def as_cypher(self):
         return ' '.join(c.as_cypher() if hasattr(c, 'as_cypher') else unicode(c)
                         for c in self)
 
+
 class Start(Clause):
     cypher_template = 'START %(exprs)s'
+
     def __init__(self, start_assignments, cypher_params):
         """
         start_assignments - a dict of variable name keys and assignment
@@ -509,12 +537,14 @@ class Start(Clause):
 
     def get_params(self):
         return {
-            'exprs' : ','.join('%s=%s' % (k, v)
-                               for k, v in self.start_assignments.iteritems())
+            'exprs': ','.join('%s=%s' % (k, v)
+                              for k, v in self.start_assignments.iteritems())
         }
+
 
 class Match(Clause):
     cypher_template = 'MATCH %(exprs)s'
+
     def __init__(self, paths):
         """
         paths - a list of strs of objects with as_cypher() methods that return
@@ -528,12 +558,14 @@ class Match(Clause):
 
     def get_params(self):
         return {
-            'exprs':','.join(p.as_cypher() if hasattr(p, 'as_cypher')
-                             else unicode(p) for p in self.paths)
+            'exprs': ','.join(p.as_cypher() if hasattr(p, 'as_cypher')
+                              else unicode(p) for p in self.paths)
         }
+
 
 class With(Clause):
     cypher_template = 'WITH %(fields)s %(limit)s %(match)s %(where)s'
+
     def __init__(self, field_dict, limit=None, where=None, match=None):
         self.field_dict = field_dict
         self.limit = limit
@@ -542,18 +574,20 @@ class With(Clause):
 
     def get_params(self):
         return {
-            'fields':','.join('%s AS %s' % (alias, field)
-                              for alias, field in self.field_dict.iteritems()),
-            'limit': 'LIMIT %s' % str(self.limit) \
-                    if self.limit is not None else '',
+            'fields': ','.join('%s AS %s' % (alias, field)
+                               for alias, field in self.field_dict.iteritems()),
+            'limit': 'LIMIT %s' % (str(self.limit)
+                                   if self.limit is not None else ''),
             'match': ((self.match.as_cypher() if hasattr(self.match, 'as_cypher')
                        else unicode(self.match)) if self.match else ''),
             'where': ((self.where.as_cypher() if hasattr(self.where, 'as_cypher')
                        else unicode(self.where)) if self.where else ''),
         }
 
+
 class Return(Clause):
     cypher_template = 'RETURN %(fields)s %(order_by)s %(skip)s %(limit)s'
+
     def __init__(self, field_dict, limit=None, skip=None, order_by_terms=None,
                  distinct_fields=None):
         self.field_dict = field_dict
@@ -568,43 +602,49 @@ class Return(Clause):
                               else 'DISTINCT ' + field, alias)
                              for alias, field in self.field_dict.iteritems())
         return {
-            'fields':','.join('%s AS %s' % pair for pair in field_alias_pairs),
-            'limit': 'LIMIT %s' % str(self.limit) \
-                    if self.limit is not None else '',
+            'fields': ','.join('%s AS %s' % pair for pair in field_alias_pairs),
+            'limit': 'LIMIT %s' % (str(self.limit)
+                                   if self.limit is not None else ''),
             'skip': 'SKIP %d' % self.skip if self.skip else '',
-            'order_by':'ORDER BY %s' % ','.join(self.order_by_terms) \
-                       if self.order_by_terms else ''
+            'order_by': 'ORDER BY %s' % (','.join(self.order_by_terms)
+                                         if self.order_by_terms else '')
         }
+
 
 class Delete(Clause):
     cypher_template = 'DELETE %(fields)s'
+
     def __init__(self, fields):
         self.fields = fields
 
     def get_params(self):
         return {
-            'fields':','.join(self.fields)
+            'fields': ','.join(self.fields)
         }
+
 
 class DeleteNode(Delete):
     cypher_template = 'WITH %(fields)s MATCH %(field_matches)s '\
                       'DELETE %(fields_and_rels)s'
+
     def get_params(self):
         field_rels = ['%s_r' % f for f in self.fields]
         params = {
-            'fields':','.join(self.fields),
-            'fields_and_rels':','.join(self.fields + field_rels),
-            'field_matches':','.join('(%s)-[%s]-()' % (f, r)
-                                     for f, r in zip(self.fields, field_rels))
+            'fields': ','.join(self.fields),
+            'fields_and_rels': ','.join(self.fields + field_rels),
+            'field_matches': ','.join('(%s)-[%s]-()' % (f, r)
+                                      for f, r in zip(self.fields, field_rels))
         }
         return params
 
-def cypher_rel_str(rel_type, rel_dir,identifier=None, optional=False):
-    dir_strings = ('<-%s-','-%s->')
+
+def cypher_rel_str(rel_type, rel_dir, identifier=None, optional=False):
+    dir_strings = ('<-%s-', '-%s->')
     out = neo_constants.RELATIONSHIPS_OUT
     id_str = '`%s`' % identifier if identifier is not None else ''
-    return dir_strings[rel_dir==out]%('[%s%s:`%s`]' % 
-                                      (id_str, '?' if optional else '', rel_type))
+    return dir_strings[rel_dir == out] % ('[%s%s:`%s`]' %
+                                          (id_str, '?' if optional else '', rel_type))
+
 
 def cypher_from_fields(nodetype, fields):
     """
@@ -612,11 +652,11 @@ def cypher_from_fields(nodetype, fields):
     field strings.
     """
     #TODO this function is a great example of why there should be some greater
-    # layer of abstraction between query code and script generation. a first 
+    # layer of abstraction between query code and script generation. a first
     # step would be to write some CypherPrimitive, CypherList, etc.
     matches, returns = [], []
     reqd_fields = (field for i, field in enumerate(fields)
-                   if not any(other_field.startswith(field) 
+                   if not any(other_field.startswith(field)
                               and field != other_field
                               for other_field in fields[i:]))
 
@@ -629,8 +669,8 @@ def cypher_from_fields(nodetype, fields):
         for step in field.split('__'):
             #try to properly match a model field to the provided field string
             rels = getattr(cur_m._meta, '_relationships', {}).items()
-            candidates_on_models = sorted((s for s in ((score_model_rel(step,r),r)
-                for _,r in rels) if s > 0), reverse=True)
+            candidates_on_models = sorted((s for s in ((score_model_rel(step, r), r)
+                                           for _, r in rels) if s > 0), reverse=True)
             if len(candidates_on_models) < 1:
                 # give up if we can't find a valid candidate
                 break
@@ -640,9 +680,9 @@ def cypher_from_fields(nodetype, fields):
             cur_m = (rel_choice.target_model
                      if not rel_choice.target_model is cur_m
                      else rel_choice.source_model)
-        
-        node_match_components = [] # Cypher node identifiers
-        type_matches = [] # full Cypher type matching paths for return types
+
+        node_match_components = []  # Cypher node identifiers
+        type_matches = []  # full Cypher type matching paths for return types
         for ri in xrange(len(rel_match_components)):
             return_node_name = '%s_r%d' % (path_name, ri)
             return_node_type_name = '%s_t' % return_node_name
@@ -651,20 +691,21 @@ def cypher_from_fields(nodetype, fields):
 
             node_match_components.append(return_node_name)
             type_matches.append('%s-[:`%s`]->%s' %
-                    (return_node_type_name, INSTANCE_REL, return_node_name))
+                                (return_node_type_name, INSTANCE_REL, return_node_name))
 
         model_match = ''.join(
             itertools.ifilter(None, itertools.chain.from_iterable(
                 itertools.izip_longest(rel_match_components,
                                        node_match_components))))
 
-        matches.append('%s=(s%s)'  % (path_name, model_match))
+        matches.append('%s=(s%s)' % (path_name, model_match))
         matches.extend(type_matches)
 
     return 'MATCH %s RETURN %s' % (','.join(matches), ','.join(returns))
 
+
 def cypher_match_from_q(nodetype, q):
-    # TODO TODO DRY VIOLATION refactor to share common code with 
+    # TODO TODO DRY VIOLATION refactor to share common code with
     # select_related and Condition
     paths = []
     conditions = condition_tree_leaves(q)
@@ -675,12 +716,12 @@ def cypher_match_from_q(nodetype, q):
             for level, cond_step in enumerate(cond.path):
                 rels = getattr(cur_m._meta, '_relationships', {}).items()
                 candidates_on_model = sorted((s for s in (
-                    (score_model_rel(cond_step,r), r) for _,r in rels
+                    (score_model_rel(cond_step, r), r) for _, r in rels
                 ) if s[0] > 0), reverse=True)
                 rel_choice = candidates_on_model[0][-1]
-    
+
                 direction = ('out'
-                             if (rel_choice.direction == 'out') != 
+                             if (rel_choice.direction == 'out') !=
                                 (rel_choice.target_model is nodetype)
                              else 'in')
                 rel_type = rel_choice.rel_type
@@ -695,6 +736,7 @@ def cypher_match_from_q(nodetype, q):
             path.append('__'.join(['n'] + cond.path))
             paths.append(path)
     return Match(Path(p) for p in paths)
+
 
 ###################
 # QUERY EXECUTION #
@@ -711,6 +753,7 @@ def score_model_rel(field_name, bound_rel):
     if bound_rel.rel_type == field_name:
         score += .5
     return score
+
 
 #XXX this will have to change significantly when issue #1 is worked on
 #TODO this can be broken into retrieval and rebuilding functions
@@ -740,18 +783,18 @@ def execute_select_related(models=None, query=None, index_name=None,
             raise ValueError("Must provide a model_type if using select_related"
                              " with an index query.")
         models = []
-        start_expr = 'node:`%s`("%s")' % (index_name, str(query).replace('"','\\"'))
+        start_expr = 'node:`%s`("%s")' % (index_name, str(query).replace('"', '\\"'))
         start_depth = 0
     else:
         raise ValueError("Either a model set or an index name and query "
-                            "need to be provided.")
+                         "need to be provided.")
 
     conn = connections[using]
 
     if fields is None:
         if max_depth < 1:
             raise ValueError("If no fields are provided for select_related, "
-                                "max_depth must be > 0.")
+                             "max_depth must be > 0.")
         #the simple depth-only case
         cypher_query = 'START s = %s '\
                        'MATCH p0=(s-[g*%d..%d]-p0_r0), p0_r0_t-[:`%s`]->p0_r0 '\
@@ -771,8 +814,8 @@ def execute_select_related(models=None, query=None, index_name=None,
 
     #TODO this is another example of needing a cypher generation abstraction.
     paths = sorted(not_none(
-                     results.get_all_rows(lambda c:re.match('p\d+$', c) is not None)),
-                   key=lambda p:p['length'])
+                   results.get_all_rows(lambda c: re.match('p\d+$', c) is not None)),
+                   key=lambda p: p['length'])
     nodes, types = [], []
     for path_i in itertools.count():
         path_name = 'p%d' % path_i
@@ -811,14 +854,14 @@ def execute_select_related(models=None, query=None, index_name=None,
         rels_by_id[r.id] = r
 
     #build all the models, ignoring types that django hasn't loaded
-    rel_nodes_types= ((n, get_model(*t.split(':')))
-                      for n, t in itertools.izip(nodes, types))
+    rel_nodes_types = ((n, get_model(*t.split(':')))
+                       for n, t in itertools.izip(nodes, types))
 
     rel_models = (t._neo4j_instance(n) for n, t in rel_nodes_types if
-        (t is not None) and (t._neo4j_instance(n) not in models))
+                  (t is not None) and (t._neo4j_instance(n) not in models))
     models_so_far = dict((m.id, m) for m in itertools.chain(models, rel_models))
 
-    # TODO HACK set model rel caches to empty 
+    # TODO HACK set model rel caches to empty
     # in the future, we'd like to properly mark a cache as 'filled', 'empty',
     # or 'unknown', to deal with deferred relationships versus those that have
     # been serviced by select_related. That will require doing more bookkeeping-
@@ -832,13 +875,13 @@ def execute_select_related(models=None, query=None, index_name=None,
                 #if rel is many side
                 rel_on_model = getattr(m, field_name, None)
                 if rel_on_model is not None and hasattr(rel_on_model, '_cache'):
-                    rel_on_model._get_or_create_cache() #set the cache to loaded and empty
+                    rel_on_model._get_or_create_cache()  # set the cache to loaded and empty
                 else:
                     #otherwise single side
                     field._set_cached_relationship(m, None)
 
     #paths ordered by shortest to longest
-    paths = sorted(paths, key=lambda v:v['length'])
+    paths = sorted(paths, key=lambda v: v['length'])
 
     for path in paths:
         m = models_so_far[id_from_url(path['start'])]
@@ -853,15 +896,14 @@ def execute_select_related(models=None, query=None, index_name=None,
                 # we've loaded a node outside of neo4django, or of a type
                 # not yet loaded by neo4django. skip it.
                 continue
-            
+
             #make choice ab where it goes
             rel = rels_by_id[rel_id]
-            rel.direction = neo_constants.RELATIONSHIPS_OUT if node_id == rel.end.id \
-                            else neo_constants.RELATIONSHIPS_IN
+            rel.direction = (neo_constants.RELATIONSHIPS_OUT if node_id == rel.end.id
+                             else neo_constants.RELATIONSHIPS_IN)
 
-
-            field_candidates = [(k,v) for k,v in cur_m._meta._relationships.items()
-                                if str(v.rel_type)==str(rel.type) and v.direction == rel.direction]
+            field_candidates = [(k, v) for k, v in cur_m._meta._relationships.items()
+                                if str(v.rel_type) == str(rel.type) and v.direction == rel.direction]
             if len(field_candidates) < 1:
                 # nowhere to put the node- it's either related outside
                 # neo4django or something else is going on
@@ -881,7 +923,7 @@ def execute_select_related(models=None, query=None, index_name=None,
                 rel_on_model._add_to_cache((rel, new_model))
                 if field.ordered:
                     rel_on_model._cache.sort(
-                        key=lambda r:r[0].properties.get(ORDER_ATTR, None))
+                        key=lambda r: r[0].properties.get(ORDER_ATTR, None))
             else:
                 #otherwise single side
                 field._set_cached_relationship(cur_m, new_model)
@@ -889,15 +931,16 @@ def execute_select_related(models=None, query=None, index_name=None,
 
 # we want some methods of SQLQuery but don't want the burder of inheriting
 # everything. these methods are pulled off django.db.models.sql.query.Query
-QUERY_PASSTHROUGH_METHODS = ('set_limits','clear_limits','can_filter',
+QUERY_PASSTHROUGH_METHODS = ('set_limits', 'clear_limits', 'can_filter',
                              'add_ordering', 'clear_ordering',
                              'add_distinct_fields')
+
 
 @borrows_methods(SQLQuery, QUERY_PASSTHROUGH_METHODS)
 class Query(object):
     aggregates_module = aggregates
 
-    def __init__(self, nodetype, filters=None, max_depth=None, 
+    def __init__(self, nodetype, filters=None, max_depth=None,
                  select_related_fields=[]):
         self.filters = filters or []
         self.nodetype = nodetype
@@ -905,13 +948,13 @@ class Query(object):
         self.select_related_fields = list(select_related_fields)
         self.select_related = bool(select_related_fields) or max_depth
 
-        self.return_fields = {'n':'n'}
+        self.return_fields = {'n': 'n'}
 
         self.aggregates = {}
         self.distinct_fields = []
 
         self.start_clause = None
-        self.start_clause_param_func = lambda : {}
+        self.start_clause_param_func = lambda: {}
         self.with_clauses = []
         self.end_clause = None
 
@@ -940,7 +983,7 @@ class Query(object):
         field_alias = aggregate.lookup
         try:
             source = opts.get_field(field_alias)
-        except: #TODO fix bare except (FieldDoesNotExist)
+        except:  # TODO fix bare except (FieldDoesNotExist)
             source = field_alias
 
         aggregate.add_to_query(self, alias, col=field_alias, source=source,
@@ -958,8 +1001,9 @@ class Query(object):
         self.start_clause = clause
         if param_dict_or_func is None:
             param_dict_or_func = {}
-        self.start_clause_param_func = param_dict_or_func if \
-                callable(param_dict_or_func) else lambda:param_dict_or_func
+        self.start_clause_param_func = (param_dict_or_func if
+                                        callable(param_dict_or_func) else
+                                        lambda: param_dict_or_func)
 
     def get_start_clause_and_param_dict(self):
         # TODO if a clause has been set, return that
@@ -983,15 +1027,16 @@ class Query(object):
 
     def get_aggregation(self, using):
         query = self.clone()
+
         def make_aggregate_of_n(agg):
             from .properties import BoundProperty, Property
             #TODO HACK when we start adding more columns this will get messy
             #TODO HACK this should resolve the field, then use field.attname
             # or similar to get the actual db prop name
             #TODO HACK this is just to cover weird cases like '*'...
-            agged_over = 'n.%s' % agg.prop_name \
-                    if isinstance(agg.source, (BoundProperty, Property)) \
-                    else agg.prop_name
+            agged_over = 'n.%s' % (agg.prop_name
+                                   if isinstance(agg.source, (BoundProperty, Property))
+                                   else agg.prop_name)
             return type(agg)(agged_over, source=agg.source,
                              is_summary=agg.is_summary)
         query.return_fields = SortedDict(
@@ -1000,11 +1045,11 @@ class Query(object):
         groovy, params = query.as_groovy(using)
         result_set = connections[using].gremlin_tx(groovy, raw=True, **params)
         # TODO HACK this only works for one aggregate
-        return {query.return_fields.keys()[0]:result_set[0]}
+        return {query.return_fields.keys()[0]: result_set[0]}
 
     def as_groovy(self, using):
         filters = uniqify(self.filters)
-        
+
         id_conditions = []
 
         # check all top-level children for id conditions
@@ -1028,10 +1073,10 @@ class Query(object):
 
         index_qs = not_none(lucene_query_and_index_from_q(using, self.nodetype, q)
                             for q in filters)
-        
+
         # combine any queries headed for the same index and replace lucene
         # queries with strings
-        
+
         index_qs_dict = {}
         for key, val in index_qs:
             if key in index_qs_dict:
@@ -1065,8 +1110,8 @@ class Query(object):
                 non_spanning_filters.append(q)
             else:
                 spanning_filters.append(q)
-        
-        where_clause = cypher_where_from_q(self.nodetype, 
+
+        where_clause = cypher_where_from_q(self.nodetype,
                                            Q(*non_spanning_filters))
 
         with_clauses = self.with_clauses or []
@@ -1077,7 +1122,7 @@ class Query(object):
             match = cypher_match_from_q(self.nodetype, combined_filter)
             # build where clause
             where = cypher_where_from_q(self.nodetype, combined_filter)
-            with_clauses.append(With({'n':'n'}, match=match, where=where))
+            with_clauses.append(With({'n': 'n'}, match=match, where=where))
 
         def negate_order_by(term):
             if term.startswith('-'):
@@ -1086,26 +1131,26 @@ class Query(object):
 
         order_by = [cypher_order_by_term('n', field if self.standard_ordering
                                          else negate_order_by(field))
-                    for field in self.order_by] \
-                or None
-        limit = self.high_mark - self.low_mark if self.high_mark is not None \
-                else None
-        return_clause = Return(self.return_fields, skip=self.low_mark,
-                               limit=limit, order_by_terms=order_by,
-                               distinct_fields=['n'] if self.distinct else [])\
-                if self.end_clause is None else self.end_clause
+                    for field in self.order_by] or None
+        limit = self.high_mark - self.low_mark if self.high_mark is not None else None
+
+        if self.send_clause is None:
+            return_clause = Return(self.return_fields, skip=self.low_mark,
+                                   limit=limit, order_by_terms=order_by,
+                                   distinct_fields=['n'] if self.distinct else [])
+        else:
+            return_clause = self.end_clause
 
         groovy_script = None
         params = {
             #TODO HACK need a generalization
-            'returnColumn':self.return_fields.keys()[0]
+            'returnColumn': self.return_fields.keys()[0]
         }
 
         # TODO none of these queries but the last properly take type into
         # account.
         if len(in_id_lookups) > 0 or len(exact_id_lookups) > 0:
-            id_set = reduce(and_, (set(c.value) for c in in_id_lookups)) \
-                    if in_id_lookups else set([])
+            id_set = reduce(and_, (set(c.value) for c in in_id_lookups)) if in_id_lookups else set([])
             if len(exact_id_lookups) > 0:
                 exact_id = exact_id_lookups[0].value
                 if id_set and exact_id not in id_set:
@@ -1115,8 +1160,8 @@ class Query(object):
                     id_set = set([exact_id])
 
             if len(id_set) >= 1:
-                start_clause = start_clause or Start({'n':'node({startParam})'},
-                                                 ['startParam'])
+                start_clause = start_clause or Start({'n': 'node({startParam})'},
+                                                     ['startParam'])
                 groovy_script = """
                     results = []
                     existingStartIds = Neo4Django.getVerticesByIds(start).\
@@ -1130,7 +1175,7 @@ class Query(object):
                 # XXX None is returned, meaning an empty result set
                 return (None, None)
         elif len(index_qs) > 0:
-            start_clause = start_clause or Start({'n':'node({startParam})'},
+            start_clause = start_clause or Start({'n': 'node({startParam})'},
                                                  ['startParam'])
             groovy_script = """
                 results = []
@@ -1145,7 +1190,7 @@ class Query(object):
             #TODO move this to being index-based - it won't work for abstract model queries
             if start_clause is None:
                 match_clause = 'MATCH %s' % type_restriction_expr
-                start_clause = Clauses([Start({'typeNode':'node({typeNodeId})'},
+                start_clause = Clauses([Start({'typeNode': 'node({typeNodeId})'},
                                               ['typeNodeId']),
                                         match_clause])
                 # we don't need an additional type restriction since it's
@@ -1189,22 +1234,23 @@ class Query(object):
 
         groovy, params = self.as_groovy(using)
 
-        raw_result_set = conn.gremlin_tx(groovy, **params) \
-                if groovy is not None else []
+        raw_result_set = (conn.gremlin_tx(groovy, **params)
+                          if groovy is not None else [])
 
         #make the result_set not insane (properly lazy)
         result_set = [add_auth(LazyNode.from_dict(d), conn)
-                        for d in raw_result_set._list] if raw_result_set else []
-        
+                      for d in raw_result_set._list] if raw_result_set else []
+
         model_results = [self.model_from_node(n)
-                            for n in result_set]
+                         for n in result_set]
 
         if self.select_related:
             sel_fields = self.select_related_fields
-            if not sel_fields: sel_fields = None
+            if not sel_fields:
+                sel_fields = None
             execute_select_related(models=model_results,
-                                    fields=sel_fields,
-                                    max_depth=self.max_depth)
+                                   fields=sel_fields,
+                                   max_depth=self.max_depth)
 
         for r in model_results:
             yield r
@@ -1224,8 +1270,9 @@ class Query(object):
 
     def has_results(self, using):
         obj = self.clone()
-        obj.add_with({'n':'n'}, limit=1)
+        obj.add_with({'n': 'n'}, limit=1)
         return obj.get_count(using) > 0
+
 
 #############
 # QUERYSETS #
@@ -1283,7 +1330,7 @@ class NodeQuerySet(QuerySet):
                 try:
                     if self[i] == value:
                         return True
-                    i+=1
+                    i += 1
                 except (IndexError, StopIteration):
                     return False
         return super(NodeQuerySet, self).__contains__(value)
@@ -1325,7 +1372,7 @@ class NodeQuerySet(QuerySet):
     @transactional
     def in_bulk(self, id_list):
         return dict((o.id, o) for o in self.model.objects.filter(id__in=id_list))
-    
+
     @alters_data
     def delete(self):
         self.query.delete(self.db)
@@ -1354,11 +1401,11 @@ class NodeQuerySet(QuerySet):
         the given field_name, scoped to 'kind'.
         """
         assert kind in ("month", "year", "day"), \
-                "'kind' must be one of 'year', 'month' or 'day'."
+            "'kind' must be one of 'year', 'month' or 'day'."
         assert order in ('ASC', 'DESC'), \
-                "'order' must be either 'ASC' or 'DESC'."
+            "'order' must be either 'ASC' or 'DESC'."
         return self._clone(klass=NodeDateQuerySet, setup=True,
-                _field_name=field_name, _kind=kind, _order=order)
+                           _field_name=field_name, _kind=kind, _order=order)
 
     ##################################################################
     # PUBLIC METHODS THAT ALTER ATTRIBUTES AND RETURN A NEW QUERYSET #
@@ -1421,7 +1468,7 @@ class NodeQuerySet(QuerySet):
     ###################################
     # PUBLIC INTROSPECTION ATTRIBUTES #
     ###################################
-   
+
     @property
     def db(self):
         "Return the database that will be used if this query is executed now"
@@ -1433,21 +1480,22 @@ class NodeQuerySet(QuerySet):
     @not_supported
     def _as_sql(self, connection):
         pass
-    
+
+
 class NodeDateQuerySet(NodeQuerySet):
 
     def _setup_query(self):
         """
         Sets up any special features of the query attribute.
-    
+
         Called by the _clone() method after initializing the rest of the
         instance.
         """
         self.query.clear_deferred_loading()
-        self.query = self.query.clone(klass=sql.DateQuery, setup=True)
+        self.query = self.query.clone(klass=DateQuery, setup=True)
         self.query.select = []
         self.query.add_date_select(self._field_name, self._kind, self._order)
-    
+
     def _clone(self, klass=None, setup=False, **kwargs):
         c = super(DateQuerySet, self)._clone(klass, False, **kwargs)
         c._field_name = self._field_name
@@ -1455,4 +1503,3 @@ class NodeDateQuerySet(NodeQuerySet):
         if setup and hasattr(c, '_setup_query'):
             c._setup_query()
         return c
-

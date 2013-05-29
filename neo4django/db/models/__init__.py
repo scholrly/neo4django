@@ -1,4 +1,4 @@
-__all__ = ['NodeModel','Relationship', 'Property', 'StringProperty',
+__all__ = ['NodeModel', 'Relationship', 'Property', 'StringProperty',
            'EmailProperty', 'URLProperty', 'IntegerProperty', 'DateProperty',
            'DateTimeProperty', 'ArrayProperty', 'StringArrayProperty',
            'IntArrayProperty', 'URLArrayProperty', 'AutoProperty',

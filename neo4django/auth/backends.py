@@ -1,5 +1,6 @@
 from .models import User
 
+
 class NodeModelBackend(object):
     """
     A Neo4j auth backend.
@@ -7,6 +8,7 @@ class NodeModelBackend(object):
     supports_object_permissions = False
     supports_anonymous_user = False
     supports_inactive_user = False
+
     def authenticate(self, username=None, password=None):
         try:
             user = User.objects.get(username=username)
