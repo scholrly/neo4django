@@ -1,5 +1,6 @@
 from decorator import decorator
 
+
 def transactional(func):
     """
     A decorator that currently does, well, nothing. Regardless, flag functions
@@ -9,9 +10,11 @@ def transactional(func):
     func.transactional = True
     return func
 
+
 @decorator
 def not_supported(func, *args, **kw):
     raise TypeError("%s is not supported." % func.__name__)
+
 
 def not_implemented(arg):
     """
@@ -43,7 +46,6 @@ def not_implemented(arg):
 
     respectively.
     """
-    from decorator import decorator
     @decorator
     def not_implemented_dec(func, *args, **kwargs):
         if isinstance(arg, str):
@@ -54,9 +56,11 @@ def not_implemented(arg):
         return not_implemented_dec(arg)
     return not_implemented_dec
 
+
 def alters_data(func):
-    func.alters_data=True
+    func.alters_data = True
     return func
+
 
 @decorator
 def memoized(func, *args, **kwargs):
@@ -74,6 +78,7 @@ def memoized(func, *args, **kwargs):
             #uncacheable
             pass
         return new_val
+
 
 def borrows_methods(target_cls, method_names):
     """
