@@ -2,7 +2,10 @@ from mock import Mock
 from nose.tools import assert_list_equal, with_setup, raises
 from pretend import stub
 
+from django.db.models import Model as DjangoModel
+
 from neo4django import utils
+from neo4django.db.models import NodeModel
 
 
 def test_subborn_dict_restricts_keys():
@@ -193,3 +196,41 @@ def test_attrrouter_unroute_delete():
     router._route(('foo',), member, delete=True)
     router._unroute(('foo',), delete=True)
     del router.foo
+
+
+class BlankDjangoModel(DjangoModel):
+    """
+    A simple/empty subclass of django.db.models.Model for testing
+    """
+
+
+def test_integration_router_is_node_model():
+    router = utils.Neo4djangoIntegrationRouter()
+    model = NodeModel()
+
+    assert router._is_node_model(NodeModel)
+    assert router._is_node_model(model)
+
+
+def test_integration_router_allow_relation_mismatch():
+    router = utils.Neo4djangoIntegrationRouter()
+    node_model = NodeModel()
+    django_model = BlankDjangoModel()
+
+    assert router.allow_relation(node_model, django_model) is False
+
+
+def test_integration_router_allow_relation_between_node_models():
+    router = utils.Neo4djangoIntegrationRouter()
+    node_model1 = NodeModel()
+    node_model2 = NodeModel()
+
+    assert router.allow_relation(node_model1, node_model2) is None
+
+
+def test_integration_router_allow_relation_between_django_models():
+    router = utils.Neo4djangoIntegrationRouter()
+    django_model1 = BlankDjangoModel()
+    django_model2 = BlankDjangoModel()
+
+    assert router.allow_relation(django_model1, django_model2) is None

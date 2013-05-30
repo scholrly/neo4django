@@ -293,21 +293,41 @@ class AttrRouter(object):
 
 
 class Neo4djangoIntegrationRouter(object):
-    def allow_relation(self, obj1, obj2, **hints):
-        "Disallow any relations between Neo4j and regular SQL models."
+    """
+    A django database router that will allow integration of both Neo4j and other
+    RDBMS backends. This will make sure that django apps that rely on the traditional
+    ORM will play nicely with Neo4j models
+    """
+
+    def _is_node_model(self, obj):
+        """
+        Checks if `obj` is a subclass of NodeModel. If `obj` is not a class
+        type, a check if it is an instance of NodeModel is done instead.
+        """
+        # Imported here for circular imports
         from neo4django.db.models import NodeModel
 
-        def type_test(o):
-            return issubclass(o, NodeModel) if isinstance(o, type) else isinstance(o, NodeModel)
-        a, b = (type_test(o) for o in (obj1, obj2))
-        if a != b:
+        try:
+            return issubclass(obj, NodeModel)
+        except TypeError:
+            return isinstance(obj, NodeModel)
+
+    def allow_relation(self, obj1, obj2, **hints):
+        """
+        Checks if a relation between `obj1` and `obj2` should be allowed. This
+        is done by checking that both objects are either NodeModels or regular
+        django models
+        """
+        if self._is_node_model(obj1) != self._is_node_model(obj2):
             return False
         return None
 
     def allow_syncdb(self, db, model):
-        "No Neo4j models should ever be synced."
-        from neo4django.db.models import NodeModel
-        if issubclass(model, NodeModel):
+        """
+        Checks if `model` class should be synced to `db`. This is always False
+        for NodeModels
+        """
+        if self._is_node_model(model):
             return False
         return None
 
