@@ -1,6 +1,7 @@
 import itertools
 
 from abc import ABCMeta
+from collections import defaultdict
 
 from neo4django.decorators import transactional
 
@@ -192,91 +193,97 @@ class AttrRouter(object):
     __metaclass__ = ABCMeta
     __router_dict_key = '_AttrRouter__attr_route_dict'
 
-    def __init__(self, *args, **kwargs):
-        super(AttrRouter, self).__init__(*args, **kwargs)
-        key = AttrRouter.__router_dict_key
-        self._reset_dict(key)
-
-    def _reset_dict(self, key):
-        """
-        Resets the object __dict__ at `key` to a default with
-        empty dicts for 'set', 'get', and 'del'
-        """
-        self.__dict__[key] = {'set': {}, 'del': {}, 'get': {}}
-
-    def _ensure(self, key):
-        """
-        Checks if object __dict__ contains `key`. If it does not, the
-        `__dict__[key]` is set to a default value
-        """
-        if key not in self.__dict__:
-            self._reset_dict(key)
-
     @property
-    def key(self):
+    def _key(self):
+        """
+        Returns the key used to locate get/set/del routings from the object __dict__
+        """
         return AttrRouter.__router_dict_key
 
-    def __getattr__(self, name):
-        key = AttrRouter.__router_dict_key
-        self._ensure(key)
+    @property
+    def _router(self):
+        """
+        Returns the attr router stored in the object __dict__ with key
+        `self._key`. If the key does not exist, it is initialized with
+        a defaultdict
+        """
+        return self.__dict__.setdefault(self._key, defaultdict(dict))
 
-        get_dict = self.__dict__[key]['get']
-        if name in get_dict:
-            return getattr(get_dict[name], name)
-        return getattr(super(AttrRouter, self), name)
+    def __getattr__(self, name):
+        """
+        Gets the routed attribute named `name`. If not routed, the default
+        attribute of the class is returned
+        """
+        target = self._router['get'].get(name, super(AttrRouter, self))
+        return getattr(target, name)
 
     def __setattr__(self, name, value):
+        """
+        Sets the routed attribute named `name` to `value`. If not routed, the
+        class defers to super's __setattr__
+        """
         #remember, getattr and setattr don't work the same way
-        self._ensure(self.key)
-
-        set_dict = self.__dict__[self.key]['set']
-        if name in set_dict:
-            return setattr(set_dict[name], name, value)
+        if name in self._router['set']:
+            return setattr(self._router['set'][name], name, value)
         return super(AttrRouter, self).__setattr__(name, value)
 
     def __delattr__(self, name):
-        self._ensure(self.key)
+        """
+        Deletes the routed attribute named `name` to `value`. If not routed, the
+        class defers to super's __delattr__
+        """
+        router = self._router['del']
 
-        del_dict = self.__dict__[self.key]['del']
-        if name in del_dict:
-            return delattr(del_dict[name], name)
+        if name in router:
+            return delattr(router[name], name)
         return super(AttrRouter, self).__delattr__(name)
 
-    def _route(self, attrs, obj, get=True, set=False, delete=False):
-        self._ensure(self.key)
-
-        router = self.__dict__[self.key]
+    def _build_dict_list(self, get=True, set=False, delete=False):
+        """
+        Constructs a list of all routed attributes for get/set/del indicated
+        by keyword arguments `get`, `set`, `delete`
+        """
         dicts = []
+
         if set:
-            dicts.append(router['set'])
+            dicts.append(self._router['set'])
+
         if get:
-            dicts.append(router['get'])
+            dicts.append(self._router['get'])
+
         if delete:
-            dicts.append(router['del'])
-        for attr in attrs:
-            for d in dicts:
+            dicts.append(self._router['del'])
+
+        return dicts
+
+    def _route(self, attrs, obj, get=True, set=False, delete=False):
+        """
+        Routes `attrs` to `obj` for get/set/del operations indicated by
+        keyword boolean args `get`, `set`, and `delete`.
+        """
+        for d in self._build_dict_list(get=get, set=set, delete=delete):
+            for attr in attrs:
                 d[attr] = obj
 
     def _unroute(self, attrs, get=True, set=False, delete=False):
-        self._ensure(self.key)
-
-        router = self.__dict__[self.key]
-        dicts = []
-        if set:
-            dicts.append(router['set'])
-        if get:
-            dicts.append(router['get'])
-        if delete:
-            dicts.append(router['del'])
-        for attr in attrs:
-            for d in dicts:
-                if attr in d:
-                    del d[attr]
+        """
+        Removes `attrs` routed to `obj` from  routing lists get/set/del
+        indicated by keyword boolean args `get`, `set`, and `delete`.
+        """
+        for d in self._build_dict_list(get=get, set=set, delete=delete):
+            for attr in itertools.ifilter(lambda x: x in d, attrs):
+                del d[attr]
 
     def _route_all(self, attrs, obj):
+        """
+        Routes `attrs` to `obj` for get/set/del operations
+        """
         self._route(attrs, obj, get=True, set=True, delete=True)
 
     def _unroute_all(self, attrs, obj):
+        """
+        Removes `attrs` routed to `obj` from  routing lists get/set/del
+        """
         self._unroute(attrs, obj, get=True, set=True, delete=True)
 
 
@@ -298,6 +305,7 @@ class Neo4djangoIntegrationRouter(object):
         if issubclass(model, NodeModel):
             return False
         return None
+
 
 ## TODO: I think this connection stuff  might belong elsewhere?
 from threading import local
