@@ -192,6 +192,11 @@ class AttrRouter(object):
     __metaclass__ = ABCMeta
     __router_dict_key = '_AttrRouter__attr_route_dict'
 
+    def __init__(self, *args, **kwargs):
+        super(AttrRouter, self).__init__(*args, **kwargs)
+        key = AttrRouter.__router_dict_key
+        self._reset_dict(key)
+
     def _reset_dict(self, key):
         """
         Resets the object __dict__ at `key` to a default with
@@ -199,44 +204,48 @@ class AttrRouter(object):
         """
         self.__dict__[key] = {'set': {}, 'del': {}, 'get': {}}
 
-    def __init__(self, *args, **kwargs):
-        super(AttrRouter, self).__init__(*args, **kwargs)
-        key = AttrRouter.__router_dict_key
-        self._reset_dict(key)
+    def _ensure(self, key):
+        """
+        Checks if object __dict__ contains `key`. If it does not, the
+        `__dict__[key]` is set to a default value
+        """
+        if key not in self.__dict__:
+            self._reset_dict(key)
+
+    @property
+    def key(self):
+        return AttrRouter.__router_dict_key
 
     def __getattr__(self, name):
         key = AttrRouter.__router_dict_key
-        if not key in self.__dict__:
-            self._reset_dict(key)
+        self._ensure(key)
+
         get_dict = self.__dict__[key]['get']
         if name in get_dict:
             return getattr(get_dict[name], name)
         return getattr(super(AttrRouter, self), name)
 
     def __setattr__(self, name, value):
-        key = AttrRouter.__router_dict_key
         #remember, getattr and setattr don't work the same way
-        if not key in self.__dict__:
-            self._reset_dict(key)
-        set_dict = self.__dict__[key]['set']
+        self._ensure(self.key)
+
+        set_dict = self.__dict__[self.key]['set']
         if name in set_dict:
             return setattr(set_dict[name], name, value)
         return super(AttrRouter, self).__setattr__(name, value)
 
     def __delattr__(self, name):
-        key = AttrRouter.__router_dict_key
-        if not key in self.__dict__:
-            self._reset_dict(key)
-        del_dict = self.__dict__[key]['del']
+        self._ensure(self.key)
+
+        del_dict = self.__dict__[self.key]['del']
         if name in del_dict:
             return delattr(del_dict[name], name)
         return super(AttrRouter, self).__delattr__(name)
 
     def _route(self, attrs, obj, get=True, set=False, delete=False):
-        key = AttrRouter.__router_dict_key
-        if not key in self.__dict__:
-            self._reset_dict(key)
-        router = self.__dict__[key]
+        self._ensure(self.key)
+
+        router = self.__dict__[self.key]
         dicts = []
         if set:
             dicts.append(router['set'])
@@ -249,10 +258,9 @@ class AttrRouter(object):
                 d[attr] = obj
 
     def _unroute(self, attrs, get=True, set=False, delete=False):
-        key = AttrRouter.__router_dict_key
-        if not key in self.__dict__:
-            self._reset_dict(key)
-        router = self.__dict__[key]
+        self._ensure(self.key)
+
+        router = self.__dict__[self.key]
         dicts = []
         if set:
             dicts.append(router['set'])
