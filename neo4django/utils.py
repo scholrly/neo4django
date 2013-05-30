@@ -240,8 +240,8 @@ class AttrRouter(object):
 
     def _build_dict_list(self, get=True, set=False, delete=False):
         """
-        Constructs a list of all routed attributes for get/set/del indicated
-        by keyword arguments `get`, `set`, `delete`
+        Constructs a list of all routed attribute dicts for get/set/del
+        indicated by keyword arguments `get`, `set`, `delete`
         """
         dicts = []
 
