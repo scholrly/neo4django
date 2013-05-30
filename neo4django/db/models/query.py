@@ -1349,11 +1349,14 @@ class NodeQuerySet(QuerySet):
 
     #TODO would be awesome if this were transactional
     def get_or_create(self, **kwargs):
+        defaults = kwargs.pop('defaults', {})
         try:
             obj = self.get(**kwargs)
             created = False
         except:
-            obj = self.create(**kwargs)
+            values = dict(defaults)
+            values.update(kwargs)
+            obj = self.create(**values)
             created = True
         return (obj, created)
 
