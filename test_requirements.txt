@@ -3,3 +3,4 @@ nose-regression>=1.0
 requests
 lxml
 mock
+pretend
