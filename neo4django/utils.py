@@ -2,8 +2,13 @@ import itertools
 
 from abc import ABCMeta
 from collections import defaultdict
+from threading import local
+
+from django.core import exceptions
+from django.utils.importlib import import_module
 
 from neo4django.decorators import transactional
+from neo4django.neo4jclient import EnhancedGraphDatabase
 
 
 class StubbornDict(dict):
@@ -308,13 +313,6 @@ class Neo4djangoIntegrationRouter(object):
 
 
 ## TODO: I think this connection stuff  might belong elsewhere?
-from threading import local
-from django.core import exceptions
-from django.utils.importlib import import_module
-
-from .neo4jclient import EnhancedGraphDatabase
-
-
 class ConnectionDoesNotExist(Exception):
     pass
 
