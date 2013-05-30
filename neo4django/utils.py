@@ -1,10 +1,17 @@
 import itertools
+
 from abc import ABCMeta
 
-from decorators import transactional
+from neo4django.decorators import transactional
 
 
 class StubbornDict(dict):
+    """
+    A subclass of dict that enforces a strict set of keys. If an attempt
+    is made to set an item with a key that belongs to a set of blacklisted
+    or "stubborn" keys, no action is taken
+    """
+
     def __init__(self, stubborn_keys, d):
         self._stubborn_keys = stubborn_keys
         super(StubbornDict, self).__init__(d)
@@ -27,6 +34,10 @@ def sliding_pair(seq):
 
 
 def uniqify(seq):
+    """
+    Returns a list of only unique items in `seq` iterable. This has the effect
+    of preserving the original order of `seq` while removing ignoring duplicates.
+    """
     seen = set()
     return [x for x in seq if x not in seen and not seen.add(x)]
 
@@ -39,6 +50,25 @@ def Enum(*enums, **other_enums):
 
 
 def all_your_base(cls, base):
+    """
+    Generator for returning all the common base classes of `cls` that are subclasses
+    of `base`. This will yield common bases of `cls` as well as any common bases
+    of all of the ancestors of `cls`. For example, given the classes::
+
+        >>> class A(object): pass
+        >>> class B(A): pass
+        >>> class C(B): pass
+        >>> class D(object): pass
+        >>> class E(C, D): pass
+
+    Would yield::
+
+        >>> [cls for cls in all_your_base(C, A)]
+        [C, B, A]
+
+        >>> [cls for cls in all_your_base(E, B)]
+        [E, C, B]
+    """
     if issubclass(cls, base):
         yield cls
         for parent in cls.__bases__:
@@ -47,6 +77,9 @@ def all_your_base(cls, base):
 
 
 def write_through(obj):
+    """
+    Returns the value of `obj._meta.write_through`. Defaults to False
+    """
     return getattr(getattr(obj, '_meta', None), 'write_through', False)
 
 

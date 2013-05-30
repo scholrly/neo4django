@@ -142,7 +142,13 @@ tests=[
 	'test_filter_year',
 	'test_filter_month',
 	'test_filter_day',
-	'test_filter_isnull']
+	'test_filter_isnull',
+	'test_subborn_dict_restricts_keys',
+	'test_subborn_dict_allows_keys',
+	'test_uniqify',
+	'test_all_your_base',
+	'test_write_through',
+	'test_write_through_default']
 should_fail=[
 	'test_dates',
 	'test_relationship_model',
