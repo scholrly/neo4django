@@ -11,3 +11,16 @@ class AdminSite(DjangoAdminSite):
         pass
 
 site = AdminSite()
+
+from django.contrib.admin import autodiscover
+import types
+
+autodiscover_globals = dict(autodiscover.func_globals)
+autodiscover_globals['site'] = site
+
+autodiscover = types.FunctionType(autodiscover.func_code, autodiscover_globals,
+                                  name=autodiscover.func_name,
+                                  argdefs=autodiscover.func_defaults,
+                                  closure=autodiscover.func_closure)
+
+del types, DjangoModelAdmin, DjangoAdminSite
