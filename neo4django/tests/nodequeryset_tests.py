@@ -763,6 +763,11 @@ def test_order_by():
     eq_(list(people), sorted(list(people), key=lambda p:p.age, reverse=True))
 
 @with_setup(setup_people, teardown)
+def test_order_by_and_count():
+    num_people = Person.objects.all().order_by('age').count()
+    eq_(num_people, 5)
+
+@with_setup(setup_people, teardown)
 def test_reverse():
     people = Person.objects.all().order_by('age').reverse()
     eq_(len(people), 5)

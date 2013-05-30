@@ -142,7 +142,8 @@ tests=[
 	'test_filter_year',
 	'test_filter_month',
 	'test_filter_day',
-	'test_filter_isnull']
+	'test_filter_isnull',
+    'test_order_by_and_count']
 should_fail=[
 	'test_dates',
 	'test_relationship_model',
