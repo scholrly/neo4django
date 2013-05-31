@@ -4,7 +4,7 @@ from abc import ABCMeta
 from collections import defaultdict
 from threading import local
 
-from django.core import exceptions
+from django.core.exceptions import ImproperlyConfigured
 from django.utils.importlib import import_module
 
 from neo4django.decorators import transactional
@@ -350,27 +350,34 @@ def load_client(client_path):
     try:
         client_mod = import_module(client_modname)
     except ImportError:
-        raise exceptions.ImproperlyConfigured("Could not import %s as a client" % client_path)
+        raise ImproperlyConfigured("Could not import %s as a client" % client_path)
 
     try:
         client = getattr(client_mod, client_classname)
     except AttributeError:
-        raise exceptions.ImproperlyConfigured("Neo4j client module %s has no class %s" %
-                                              (client_mod, client_classname))
+        raise ImproperlyConfigured("Neo4j client module %s has no class %s" %
+                                   (client_mod, client_classname))
 
     if not issubclass(client, EnhancedGraphDatabase):
-        raise exceptions.ImproperlyConfigured("%s is not a subclass of EnhancedGraphDatabase" % client_path)
+        raise ImproperlyConfigured("%s is not a subclass of EnhancedGraphDatabase" % client_path)
 
     return client
 
 
 class ConnectionHandler(object):
+    """
+    This is copied straight from django.db.utils. It uses threadlocality
+    to handle the case where the user wants to change the connection
+    info in middleware -- by keeping the connections thread-local, changes
+    on a per-view basis in middleware will not be applied globally.
+
+    The only difference is whereas the django ConnectionHandler operates on various
+    expected values of the DATABASES setting, this class operates with expected
+    configurations for Neo4j connections
+    """
+
     def __init__(self, databases):
         self.databases = databases
-        ## This is copied straight from django.db.utils. It uses threadlocality
-        #  to handle the case where the user wants to change the connection
-        #  info in middleware -- by keeping the connections thread-local, changes
-        #  on a per-view basis in middleware will not be applied globally.
         self._connections = local()
 
     def ensure_defaults(self, alias):
@@ -388,12 +395,12 @@ class ConnectionHandler(object):
             conn['CLIENT'] = 'neo4django.neo4jclient.EnhancedGraphDatabase'
         conn.setdefault('OPTIONS', {})
         if 'HOST' not in conn or 'PORT' not in conn:
-            raise exceptions.ImproperlyConfigured('Each Neo4j database configured '
-                                                  'needs a configured host and '
-                                                  'port.')
+            raise ImproperlyConfigured('Each Neo4j database configured needs a configured host and port.')
+
         for setting in ['HOST', 'PORT']:
             conn.setdefault(setting, '')
-        ## We can add these back in if we upgrade to supporting 1.6
+
+        # TODO: We can add these back in if we upgrade to supporting 1.6
         # for setting in ['USER', 'PASSWORD']:
         #     conn.setdefault(setting, None)
 
@@ -404,10 +411,9 @@ class ConnectionHandler(object):
         self.ensure_defaults(alias)
         db = self.databases[alias]
         Client = load_client(db['CLIENT'])
-        conn = Client('http://%s:%d/db/data' % (db['HOST'], db['PORT']),
-                      **db['OPTIONS'])
-
+        conn = Client('http://%s:%d/db/data' % (db['HOST'], db['PORT']), **db['OPTIONS'])
         setattr(self._connections, alias, conn)
+
         return conn
 
     def __setitem__(self, key, value):
