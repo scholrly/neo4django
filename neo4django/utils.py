@@ -31,6 +31,10 @@ def uniqify(seq):
     return [x for x in seq if x not in seen and not seen.add(x)]
 
 
+def not_none(it):
+    return itertools.ifilter(None, it)
+
+
 def Enum(*enums, **other_enums):
     enum_items = itertools.izip([str(e).upper() for e in enums],
                                 itertools.count(0))
