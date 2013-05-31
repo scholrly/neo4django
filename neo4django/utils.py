@@ -1,10 +1,23 @@
 import itertools
-from abc import ABCMeta
 
-from decorators import transactional
+from abc import ABCMeta
+from collections import defaultdict
+from threading import local
+
+from django.core.exceptions import ImproperlyConfigured
+from django.utils.importlib import import_module
+
+from neo4django.decorators import transactional
+from neo4django.neo4jclient import EnhancedGraphDatabase
 
 
 class StubbornDict(dict):
+    """
+    A subclass of dict that enforces a strict set of keys. If an attempt
+    is made to set an item with a key that belongs to a set of blacklisted
+    or "stubborn" keys, no action is taken
+    """
+
     def __init__(self, stubborn_keys, d):
         self._stubborn_keys = stubborn_keys
         super(StubbornDict, self).__init__(d)
@@ -22,23 +35,72 @@ def sliding_pair(seq):
     sequence.
     """
     s1, s2 = itertools.tee(seq)
-    s2.next()
+    s2.next()  # This ensures we get a None sentinel for the end of the iterator
     return itertools.izip_longest(s1, s2)
 
 
 def uniqify(seq):
+    """
+    Returns a list of only unique items in `seq` iterable. This has the effect
+    of preserving the original order of `seq` while removing ignoring duplicates.
+    """
     seen = set()
     return [x for x in seq if x not in seen and not seen.add(x)]
 
 
 def Enum(*enums, **other_enums):
-    enum_items = itertools.izip([str(e).upper() for e in enums],
-                                itertools.count(0))
-    enum_items = itertools.chain(enum_items, other_enums.items())
-    return type('Enum', (), dict([(str(i[0]).upper(), i[1]) for i in enum_items]))
+    """
+    Creates an enum-like type that sets attributes with corresponding 0-indexed integer
+    values coming from positional arguments that are converted to uppercase. For example::
+
+        >>> e = Enum('foo', 'bar')
+        >>> e.FOO
+        0
+        >>> e.BAR
+        1
+
+    If keyword arguments are passed, the effect is the same, however the keyword value
+    will represent the value of the enum attribute, rather than a 0-indexed integer.
+    For example::
+
+        >>> e = Enum(foo='bar', baz='qux')
+        >>> e.FOO
+        'bar'
+        >>> e.BAZ
+        'qux'
+    """
+    # Handle args that should be numeric. Swap enumerate idx and value for dict comprehension later
+    numerical_items = itertools.starmap(lambda i, v: (str(v).upper(), i), enumerate(enums))
+
+    # Handle keyword arguments
+    keyword_items = itertools.starmap(lambda k, v: (str(k).upper(), v), other_enums.iteritems())
+
+    # Chain all items
+    all_items = itertools.chain(numerical_items, keyword_items)
+
+    return type('Enum', (), dict(x for x in all_items))
 
 
 def all_your_base(cls, base):
+    """
+    Generator for returning all the common base classes of `cls` that are subclasses
+    of `base`. This will yield common bases of `cls` as well as any common bases
+    of all of the ancestors of `cls`. For example, given the classes::
+
+        >>> class A(object): pass
+        >>> class B(A): pass
+        >>> class C(B): pass
+        >>> class D(object): pass
+        >>> class E(C, D): pass
+
+    Would yield::
+
+        >>> [cls for cls in all_your_base(C, A)]
+        [C, B, A]
+
+        >>> [cls for cls in all_your_base(E, B)]
+        [E, C, B]
+    """
     if issubclass(cls, base):
         yield cls
         for parent in cls.__bases__:
@@ -47,26 +109,49 @@ def all_your_base(cls, base):
 
 
 def write_through(obj):
+    """
+    Returns the value of `obj._meta.write_through`. Defaults to False
+    """
     return getattr(getattr(obj, '_meta', None), 'write_through', False)
 
 
 def buffer_iterator(constructor, items, size=1):
-    items = iter(items)  # make sure we have an iterator
-    while 1:
-        for item in apply_to_buffer(constructor, items, size):
+    """
+    Generator that yields the result of calling `constructor` with each
+    value of `items` as an argument. However, this is done in chunks
+    of at most `size` items
+    For example::
+
+        >>> list(buffer_iterator(lambda x: x**2, range(5), size=2))
+        [0, 1, 4, 9, 16]]
+    """
+    iteritems = iter(items)
+
+    while True:
+        for item in apply_to_buffer(constructor, iteritems, size):
             yield item
 
 
 @transactional
 def apply_to_buffer(constructor, items, size=1):
-    result = [constructor(item) for item in
-              itertools.takewhile(countdown(size), items)]
+    """
+    Calls `constructor` with at the first `size` values from an
+    iterator `items`. Returns a list of return values from these
+    calls, raising StopIteration if no calls were made.
+    """
+    result = [constructor(x) for x in itertools.islice(items, size)]
+
     if not result:
         raise StopIteration
+
     return result
 
 
 def countdown(number):
+    """
+    A method that returns a new method that will return True `number` amount
+    of times and return False from then on.
+    """
     counter = itertools.count()
 
     def done(*junk):
@@ -76,6 +161,24 @@ def countdown(number):
 
 
 class AssignableList(list):
+    """
+    A special subclass of list the allow setting of arbitrary object
+    attributes. The python builtin list prevents this behavior by raising
+    an AttributeError::
+
+        >>> x = []
+        >>> x.foo = 'bar'
+        Traceback (most recent call last):
+        ...
+        AttributeError: 'list' object has not attribute 'foo'
+
+    Alternatively::
+
+        >>> x = AssignableList()
+        >>> x.foo = 'bar'
+        >>> x.foo
+        'bar'
+    """
 
     def __init__(self, *args, **kwargs):
         super(AssignableList, self).__init__(*args, **kwargs)
@@ -87,6 +190,9 @@ class AssignableList(list):
         super(AssignableList, self).__setattr__(name, value)
 
     def get_new_attrs(self):
+        """
+        Returns a copy of all attributes that have been assigned to this object
+        """
         return self._new_attrs.copy()
 
 
@@ -159,138 +265,186 @@ class AttrRouter(object):
     __metaclass__ = ABCMeta
     __router_dict_key = '_AttrRouter__attr_route_dict'
 
-    def __init__(self, *args, **kwargs):
-        super(AttrRouter, self).__init__(*args, **kwargs)
-        key = AttrRouter.__router_dict_key
-        self.__dict__[key] = {'set': {}, 'del': {}, 'get': {}}
+    @property
+    def _key(self):
+        """
+        Returns the key used to locate get/set/del routings from the object __dict__
+        """
+        return AttrRouter.__router_dict_key
+
+    @property
+    def _router(self):
+        """
+        Returns the attr router stored in the object __dict__ with key
+        `self._key`. If the key does not exist, it is initialized with
+        a defaultdict
+        """
+        return self.__dict__.setdefault(self._key, defaultdict(dict))
 
     def __getattr__(self, name):
-        key = AttrRouter.__router_dict_key
-        if not key in self.__dict__:
-            self.__dict__[key] = {'set': {}, 'del': {}, 'get': {}}
-        get_dict = self.__dict__[key]['get']
-        if name in get_dict:
-            return getattr(get_dict[name], name)
-        return getattr(super(AttrRouter, self), name)
+        """
+        Gets the routed attribute named `name`. If not routed, the default
+        attribute of the class is returned
+        """
+        target = self._router['get'].get(name, super(AttrRouter, self))
+        return getattr(target, name)
 
     def __setattr__(self, name, value):
-        key = AttrRouter.__router_dict_key
+        """
+        Sets the routed attribute named `name` to `value`. If not routed, the
+        class defers to super's __setattr__
+        """
         #remember, getattr and setattr don't work the same way
-        if not key in self.__dict__:
-            self.__dict__[key] = {'set': {}, 'del': {}, 'get': {}}
-        set_dict = self.__dict__[key]['set']
-        if name in set_dict:
-            return setattr(set_dict[name], name, value)
+        if name in self._router['set']:
+            return setattr(self._router['set'][name], name, value)
         return super(AttrRouter, self).__setattr__(name, value)
 
     def __delattr__(self, name):
-        key = AttrRouter.__router_dict_key
-        if not key in self.__dict__:
-            self.__dict__[key] = {'set': {}, 'del': {}, 'get': {}}
-        del_dict = self.__dict__[key]['del']
-        if name in del_dict:
-            return delattr(del_dict[name], name)
+        """
+        Deletes the routed attribute named `name` to `value`. If not routed, the
+        class defers to super's __delattr__
+        """
+        router = self._router['del']
+
+        if name in router:
+            return delattr(router[name], name)
         return super(AttrRouter, self).__delattr__(name)
 
-    def _route(self, attrs, obj, get=True, set=False, delete=False):
-        key = AttrRouter.__router_dict_key
-        if not key in self.__dict__:
-            self.__dict__[key] = {'set': {}, 'del': {}, 'get': {}}
-        router = self.__dict__[key]
+    def _build_dict_list(self, get=True, set=False, delete=False):
+        """
+        Constructs a list of all routed attribute dicts for get/set/del
+        indicated by keyword arguments `get`, `set`, `delete`
+        """
         dicts = []
+
         if set:
-            dicts.append(router['set'])
+            dicts.append(self._router['set'])
+
         if get:
-            dicts.append(router['get'])
+            dicts.append(self._router['get'])
+
         if delete:
-            dicts.append(router['del'])
-        for attr in attrs:
-            for d in dicts:
+            dicts.append(self._router['del'])
+
+        return dicts
+
+    def _route(self, attrs, obj, get=True, set=False, delete=False):
+        """
+        Routes `attrs` to `obj` for get/set/del operations indicated by
+        keyword boolean args `get`, `set`, and `delete`.
+        """
+        for d in self._build_dict_list(get=get, set=set, delete=delete):
+            for attr in attrs:
                 d[attr] = obj
 
     def _unroute(self, attrs, get=True, set=False, delete=False):
-        key = AttrRouter.__router_dict_key
-        if not key in self.__dict__:
-            self.__dict__[key] = {'set': {}, 'del': {}, 'get': {}}
-        router = self.__dict__[key]
-        dicts = []
-        if set:
-            dicts.append(router['set'])
-        if get:
-            dicts.append(router['get'])
-        if delete:
-            dicts.append(router['del'])
-        for attr in attrs:
-            for d in dicts:
-                if attr in d:
-                    del d[attr]
+        """
+        Removes `attrs` routed to `obj` from  routing lists get/set/del
+        indicated by keyword boolean args `get`, `set`, and `delete`.
+        """
+        for d in self._build_dict_list(get=get, set=set, delete=delete):
+            for attr in itertools.ifilter(lambda x: x in d, attrs):
+                del d[attr]
 
     def _route_all(self, attrs, obj):
+        """
+        Routes `attrs` to `obj` for get/set/del operations
+        """
         self._route(attrs, obj, get=True, set=True, delete=True)
 
     def _unroute_all(self, attrs, obj):
+        """
+        Removes `attrs` routed to `obj` from  routing lists get/set/del
+        """
         self._unroute(attrs, obj, get=True, set=True, delete=True)
 
 
 class Neo4djangoIntegrationRouter(object):
-    def allow_relation(self, obj1, obj2, **hints):
-        "Disallow any relations between Neo4j and regular SQL models."
+    """
+    A django database router that will allow integration of both Neo4j and other
+    RDBMS backends. This will make sure that django apps that rely on the traditional
+    ORM will play nicely with Neo4j models
+    """
+
+    def _is_node_model(self, obj):
+        """
+        Checks if `obj` is a subclass of NodeModel. If `obj` is not a class
+        type, a check if it is an instance of NodeModel is done instead.
+        """
+        # Imported here for circular imports
         from neo4django.db.models import NodeModel
 
-        def type_test(o):
-            return issubclass(o, NodeModel) if isinstance(o, type) else isinstance(o, NodeModel)
-        a, b = (type_test(o) for o in (obj1, obj2))
-        if a != b:
+        try:
+            return issubclass(obj, NodeModel)
+        except TypeError:
+            return isinstance(obj, NodeModel)
+
+    def allow_relation(self, obj1, obj2, **hints):
+        """
+        Checks if a relation between `obj1` and `obj2` should be allowed. This
+        is done by checking that both objects are either NodeModels or regular
+        django models
+        """
+        if self._is_node_model(obj1) != self._is_node_model(obj2):
             return False
         return None
 
     def allow_syncdb(self, db, model):
-        "No Neo4j models should ever be synced."
-        from neo4django.db.models import NodeModel
-        if issubclass(model, NodeModel):
+        """
+        Checks if `model` class should be synced to `db`. This is always False
+        for NodeModels
+        """
+        if self._is_node_model(model):
             return False
         return None
 
+
 ## TODO: I think this connection stuff  might belong elsewhere?
-from threading import local
-from django.core import exceptions
-from django.utils.importlib import import_module
-
-from .neo4jclient import EnhancedGraphDatabase
-
-
 class ConnectionDoesNotExist(Exception):
     pass
 
 
 def load_client(client_path):
+    """
+    Imports a custom subclass of `neo4django.neo4jclient.EnhancedGraphDatabase`. The
+    only param `client_path` should be an importable python path string in the form
+    `foo.bar.baz`. This method will raise an `ImproperlyConfigured` if a) the module/class
+    cannot be import or the imported class is not a subclass of `EnhancedGraphDatabase`.
+    """
+
     client_modname, client_classname = client_path.rsplit('.', 1)
+
     try:
         client_mod = import_module(client_modname)
     except ImportError:
-        error_msg = "Could not import %s as a client"
-        raise exceptions.ImproperlyConfigured(error_msg % client_path)
+        raise ImproperlyConfigured("Could not import %s as a client" % client_path)
+
     try:
         client = getattr(client_mod, client_classname)
     except AttributeError:
-        error_msg = ("Neo4j client module %s has no class %s"
-                     % (client_mod, client_classname))
-        raise exceptions.ImproperlyConfigured(error_msg)
+        raise ImproperlyConfigured("Neo4j client module %s has no class %s" %
+                                   (client_mod, client_classname))
+
     if not issubclass(client, EnhancedGraphDatabase):
-        error_msg = ("%s is not a subclass of EnhancedGraphDatabase "
-                     "Any custom neo4j clients must subclass EnhancedGraphDatabase"
-                     % client_path)
-        raise exceptions.ImproperlyConfigured(error_msg % client_path)
+        raise ImproperlyConfigured("%s is not a subclass of EnhancedGraphDatabase" % client_path)
+
     return client
 
 
 class ConnectionHandler(object):
+    """
+    This is copied straight from django.db.utils. It uses threadlocality
+    to handle the case where the user wants to change the connection
+    info in middleware -- by keeping the connections thread-local, changes
+    on a per-view basis in middleware will not be applied globally.
+
+    The only difference is whereas the django ConnectionHandler operates on various
+    expected values of the DATABASES setting, this class operates with expected
+    configurations for Neo4j connections
+    """
+
     def __init__(self, databases):
         self.databases = databases
-        ## This is copied straight from django.db.utils. It uses threadlocality
-        #  to handle the case where the user wants to change the connection
-        #  info in middleware -- by keeping the connections thread-local, changes
-        #  on a per-view basis in middleware will not be applied globally.
         self._connections = local()
 
     def ensure_defaults(self, alias):
@@ -308,12 +462,12 @@ class ConnectionHandler(object):
             conn['CLIENT'] = 'neo4django.neo4jclient.EnhancedGraphDatabase'
         conn.setdefault('OPTIONS', {})
         if 'HOST' not in conn or 'PORT' not in conn:
-            raise exceptions.ImproperlyConfigured('Each Neo4j database configured '
-                                                  'needs a configured host and '
-                                                  'port.')
+            raise ImproperlyConfigured('Each Neo4j database configured needs a configured host and port.')
+
         for setting in ['HOST', 'PORT']:
             conn.setdefault(setting, '')
-        ## We can add these back in if we upgrade to supporting 1.6
+
+        # TODO: We can add these back in if we upgrade to supporting 1.6
         # for setting in ['USER', 'PASSWORD']:
         #     conn.setdefault(setting, None)
 
@@ -324,10 +478,9 @@ class ConnectionHandler(object):
         self.ensure_defaults(alias)
         db = self.databases[alias]
         Client = load_client(db['CLIENT'])
-        conn = Client('http://%s:%d/db/data' % (db['HOST'], db['PORT']),
-                      **db['OPTIONS'])
-
+        conn = Client('http://%s:%d/db/data' % (db['HOST'], db['PORT']), **db['OPTIONS'])
         setattr(self._connections, alias, conn)
+
         return conn
 
     def __setitem__(self, key, value):
