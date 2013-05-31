@@ -281,3 +281,12 @@ def test_load_client(import_module):
     import_module.return_value = stub(baz=MyClass)
 
     assert utils.load_client('foo.bar.baz') == MyClass
+
+
+def test_sliding_pair():
+    ret = utils.sliding_pair(('foo', 'bar', 'baz'))
+    expected = [('foo', 'bar'),
+                ('bar', 'baz'),
+                ('baz', None)]
+
+    assert_list_equal(expected, list(ret))
