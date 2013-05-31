@@ -1,5 +1,5 @@
 from mock import Mock, patch
-from nose.tools import assert_list_equal, with_setup, raises
+from nose.tools import with_setup, raises
 from pretend import stub
 
 from django.core.exceptions import ImproperlyConfigured
@@ -8,6 +8,24 @@ from django.db.models import Model as DjangoModel
 from neo4django import utils
 from neo4django.neo4jclient import EnhancedGraphDatabase
 from neo4django.db.models import NodeModel
+
+
+# Nose does a weird copying from unittest asserts, meaning
+# assertListEqual didn't move from unittest2 to unittest until
+# Python 2.7. The yuck below is for 2.6 compatibility
+try:
+    from nose.tools import assert_list_equal
+except ImportError:
+    from itertools import starmap, izip
+
+    def assert_list_equal(a, b):
+        """
+        A simple (but hack) for compatibility with `nose.tools` on python
+        2.6. This just asserts that both lists have the same length and that
+        the values at the same indexes are equal
+        """
+        assert len(a) == len(b)
+        assert all(starmap(lambda i, j: i == j, izip(a, b)))
 
 
 def test_subborn_dict_restricts_keys():
