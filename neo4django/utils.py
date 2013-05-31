@@ -338,23 +338,29 @@ class ConnectionDoesNotExist(Exception):
 
 
 def load_client(client_path):
+    """
+    Imports a custom subclass of `neo4django.neo4jclient.EnhancedGraphDatabase`. The
+    only param `client_path` should be an importable python path string in the form
+    `foo.bar.baz`. This method will raise an `ImproperlyConfigured` if a) the module/class
+    cannot be import or the imported class is not a subclass of `EnhancedGraphDatabase`.
+    """
+
     client_modname, client_classname = client_path.rsplit('.', 1)
+
     try:
         client_mod = import_module(client_modname)
     except ImportError:
-        error_msg = "Could not import %s as a client"
-        raise exceptions.ImproperlyConfigured(error_msg % client_path)
+        raise exceptions.ImproperlyConfigured("Could not import %s as a client" % client_path)
+
     try:
         client = getattr(client_mod, client_classname)
     except AttributeError:
-        error_msg = ("Neo4j client module %s has no class %s"
-                     % (client_mod, client_classname))
-        raise exceptions.ImproperlyConfigured(error_msg)
+        raise exceptions.ImproperlyConfigured("Neo4j client module %s has no class %s" %
+                                              (client_mod, client_classname))
+
     if not issubclass(client, EnhancedGraphDatabase):
-        error_msg = ("%s is not a subclass of EnhancedGraphDatabase "
-                     "Any custom neo4j clients must subclass EnhancedGraphDatabase"
-                     % client_path)
-        raise exceptions.ImproperlyConfigured(error_msg % client_path)
+        raise exceptions.ImproperlyConfigured("%s is not a subclass of EnhancedGraphDatabase" % client_path)
+
     return client
 
 

@@ -1,10 +1,12 @@
-from mock import Mock
+from mock import Mock, patch
 from nose.tools import assert_list_equal, with_setup, raises
 from pretend import stub
 
+from django.core.exceptions import ImproperlyConfigured
 from django.db.models import Model as DjangoModel
 
 from neo4django import utils
+from neo4django.neo4jclient import EnhancedGraphDatabase
 from neo4django.db.models import NodeModel
 
 
@@ -198,7 +200,7 @@ def test_attrrouter_unroute_delete():
     del router.foo
 
 
-class BlankDjangoModel(DjangoModel):
+class MyDjangoModel(DjangoModel):
     """
     A simple/empty subclass of django.db.models.Model for testing
     """
@@ -215,7 +217,7 @@ def test_integration_router_is_node_model():
 def test_integration_router_allow_relation_mismatch():
     router = utils.Neo4djangoIntegrationRouter()
     node_model = NodeModel()
-    django_model = BlankDjangoModel()
+    django_model = MyDjangoModel()
 
     assert router.allow_relation(node_model, django_model) is False
 
@@ -230,7 +232,52 @@ def test_integration_router_allow_relation_between_node_models():
 
 def test_integration_router_allow_relation_between_django_models():
     router = utils.Neo4djangoIntegrationRouter()
-    django_model1 = BlankDjangoModel()
-    django_model2 = BlankDjangoModel()
+    django_model1 = MyDjangoModel()
+    django_model2 = MyDjangoModel()
 
     assert router.allow_relation(django_model1, django_model2) is None
+
+
+@raises(ImproperlyConfigured)
+@patch('neo4django.utils.import_module')
+def test_load_client_fail_module_import(import_module):
+    import_module.side_effect = ImportError
+
+    try:
+        utils.load_client('foo.bar.baz')
+    except ImproperlyConfigured as e:
+        assert 'Could not import' in e.message
+        raise e
+
+
+@raises(ImproperlyConfigured)
+@patch('neo4django.utils.import_module')
+def test_load_client_module_class_missing(import_module):
+    import_module.return_value = stub(foo='bar')
+
+    try:
+        utils.load_client('foo.bar.baz')
+    except ImproperlyConfigured as e:
+        assert 'Neo4j client module' in e.message
+        raise e
+
+
+@raises(ImproperlyConfigured)
+@patch('neo4django.utils.import_module')
+def test_load_client_not_correct_subclass(import_module):
+    MyClass = type('MyClass', (object,), {})
+    import_module.return_value = stub(baz=MyClass)
+
+    try:
+        utils.load_client('foo.bar.baz')
+    except ImproperlyConfigured as e:
+        assert 'is not a subclass of EnhancedGraphDatabase' in e.message
+        raise e
+
+
+@patch('neo4django.utils.import_module')
+def test_load_client(import_module):
+    MyClass = type('MyClass', (EnhancedGraphDatabase,), {})
+    import_module.return_value = stub(baz=MyClass)
+
+    assert utils.load_client('foo.bar.baz') == MyClass
