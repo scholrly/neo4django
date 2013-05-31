@@ -116,22 +116,42 @@ def write_through(obj):
 
 
 def buffer_iterator(constructor, items, size=1):
-    items = iter(items)  # make sure we have an iterator
-    while 1:
-        for item in apply_to_buffer(constructor, items, size):
+    """
+    Generator that yields the result of calling `constructor` with each
+    value of `items` as an argument. However, this is done in chunks
+    of at most `size` items
+    For example::
+
+        >>> list(buffer_iterator(lambda x: x**2, range(5), size=2))
+        [0, 1, 4, 9, 16]]
+    """
+    iteritems = iter(items)
+
+    while True:
+        for item in apply_to_buffer(constructor, iteritems, size):
             yield item
 
 
 @transactional
 def apply_to_buffer(constructor, items, size=1):
-    result = [constructor(item) for item in
-              itertools.takewhile(countdown(size), items)]
+    """
+    Calls `constructor` with at the first `size` values from an
+    iterator `items`. Returns a list of return values from these
+    calls, raising StopIteration if no calls were made.
+    """
+    result = [constructor(x) for x in itertools.islice(items, size)]
+
     if not result:
         raise StopIteration
+
     return result
 
 
 def countdown(number):
+    """
+    A method that returns a new method that will return True `number` amount
+    of times and return False from then on.
+    """
     counter = itertools.count()
 
     def done(*junk):

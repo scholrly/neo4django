@@ -317,3 +317,31 @@ def test_enum_explict_items():
     e = utils.Enum(foo='bar', baz='qux')
     assert e.FOO == 'bar'
     assert e.BAZ == 'qux'
+
+
+def test_countdown():
+    fn = utils.countdown(5)
+
+    # Should return True 5 times, then false
+    assert all([fn() for x in xrange(5)])
+    assert not any([fn() for x in xrange(100)])  # Excessive, but proves it
+
+
+def test_apply_to_buffer():
+    fn = Mock(return_value='a')
+    ret = utils.apply_to_buffer(fn, xrange(100), size=5)
+
+    assert fn.call_count == 5
+    assert_list_equal(ret, ['a', 'a', 'a', 'a', 'a'])
+
+
+@raises(StopIteration)
+def test_apply_to_buffer_raises_stop_iteration():
+    fn = Mock(return_value='a')
+    utils.apply_to_buffer(fn, xrange(100), size=0)
+
+
+def test_buffer_iterator():
+    expected = [0, 1, 4, 9, 16]
+    ret = [x for x in utils.buffer_iterator(lambda x: x**2, xrange(5), size=2)]
+    assert_list_equal(ret, expected)
