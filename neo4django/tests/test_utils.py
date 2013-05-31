@@ -17,6 +17,7 @@ try:
     from nose.tools import assert_list_equal
 except ImportError:
     from itertools import starmap, izip
+    from operator import eq as equals
 
     def assert_list_equal(a, b):
         """
@@ -25,7 +26,7 @@ except ImportError:
         the values at the same indexes are equal
         """
         assert len(a) == len(b)
-        assert all(starmap(lambda i, j: i == j, izip(a, b)))
+        assert all(starmap(equals, izip(a, b)))
 
 
 def test_subborn_dict_restricts_keys():
