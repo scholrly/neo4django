@@ -919,18 +919,34 @@ class Query(object):
             where = cypher_where_from_q(self.nodetype, combined_filter)
             with_clauses.append(With({'n': 'n'}, match=match, where=where))
 
-        order_by = OrderBy([OrderByTerm(ColumnExpression('n', field.lstrip('-')),
-                                        negate=(field.startswith('-') == self.standard_ordering))
-                            for field in self.order_by]) if self.order_by else None
-
         limit = self.high_mark - self.low_mark if self.high_mark is not None else None
 
         if self.end_clause is None:
             return_clause = Return(self.return_fields, skip=self.low_mark,
-                                   limit=limit, order_by=order_by,
-                                   distinct_fields=['n'] if self.distinct else [])
+                    limit=limit, distinct_fields=['n'] if self.distinct else [])
         else:
             return_clause = self.end_clause
+
+        order_by = OrderBy([OrderByTerm(ColumnExpression('n', field.lstrip('-')),
+                                        negate=(field.startswith('-') == self.standard_ordering))
+                            for field in self.order_by]) if self.order_by else None
+
+        if order_by is not None:
+            # decide where to inject the ORDER BY expression - if the fields
+            # ordered aren't being returned, it needs to go before the RETURN
+        
+            all_order_ids_returned = all(i in return_clause.passing_identifiers
+                                         for i in order_by.required_identifiers)
+            if isinstance(return_clause, Return) and all_order_ids_returned:
+                return_clause.order_by = order_by
+            else:
+                # TODO if the clauses before this don't have all the proper
+                # passing identifiers, raise an exception
+                prior_clause = ([start_clause] + with_clauses)[-1]
+                passing_ids = getattr(
+                    prior_clause, 'passing_identifiers', ['n'])
+                with_clauses.append(With(dict((i, i) for i in passing_ids),
+                                        order_by=order_by))
 
         groovy_script = None
         params = {

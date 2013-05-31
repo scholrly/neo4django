@@ -3,7 +3,8 @@ from collections import Iterable
 
 from django.core import exceptions
 
-from ...utils import not_none
+from ...utils import not_none, uniqify
+
 
 def cypher_primitive(val):
     if isinstance(val, basestring):
@@ -26,6 +27,19 @@ class Cypher(object):
     def __unicode__(self):
         return self.as_cypher()
 
+    @property
+    def required_identifiers(self):
+        """
+        A list of str identifiers required by this Cypher snippet.
+        """
+        return []
+
+    @property
+    def passing_identifiers(self):
+        """
+        A list of identifiers yielded by thei Cypher snippet.
+        """
+        return []
 
 class NodeComponent(Cypher):
     cypher_template = '%(id)s'
@@ -81,6 +95,8 @@ class RelationshipComponent(Cypher):
 class Path(Cypher):
     cypher_template = '%(path_assignment)s%(path_expr)s'
 
+    # TODO there should be a way to specify which ids are already bound, and
+    # which aren't so we can get a proper 'required_identifiers' list
     def __init__(self, components, path_variable=None):
         """
         components - a list of alternating node and relationship components
@@ -125,8 +141,12 @@ class Clauses(list):
 
     @property
     def passing_identifiers(self):
-        return self[-1].passing_identifiers \
-                if hasattr(self[-1], 'passing_identifiers') else []
+        return self[-1].passing_identifiers if len(self) > 0 \
+                and hasattr(self[-1], 'passing_identifiers') else []
+    @property
+    def required_identifiers(self):
+        return self[0].required_identifiers if len(self) > 0 \
+                and hasattr(self[0], 'required_identifiers') else []
 
 
 class Start(Clause):
@@ -176,16 +196,17 @@ class Match(Clause):
 
     @property
     def passing_identifiers(self):
-        return list(set(itertools.chain.from_iterable(
+        return uniqify(itertools.chain.from_iterable(
             p.passing_identifiers if hasattr(p, 'passing_identifiers') else []
-            for p in self.paths)))
+            for p in self.paths))
     
 
 class With(Clause):
-    cypher_template = 'WITH %(fields)s %(limit)s %(match)s %(where)s'
+    cypher_template = 'WITH %(fields)s %(order_by)s %(limit)s %(match)s %(where)s'
 
-    def __init__(self, field_dict, limit=None, where=None, match=None):
+    def __init__(self, field_dict, order_by=None, limit=None, where=None, match=None):
         self.field_dict = field_dict
+        self.order_by = order_by
         self.limit = limit
         self.where = where
         self.match = match
@@ -194,6 +215,7 @@ class With(Clause):
         return {
             'fields': ','.join('%s AS %s' % (alias, field)
                                for alias, field in self.field_dict.iteritems()),
+            'order_by':unicode(self.order_by) if self.order_by else '',
             'limit': 'LIMIT %s' % str(self.limit)
                      if self.limit is not None else '',
             'match': ((self.match.as_cypher() if hasattr(self.match, 'as_cypher')
@@ -204,7 +226,9 @@ class With(Clause):
     
     @property
     def passing_identifiers(self):
-        return self.field_dict.keys()
+        match_ids = self.match.passing_identifiers \
+                if hasattr(self.match, 'passing_identifers') else []
+        return uniqify(self.field_dict.keys() + match_ids)
 
 
 class ColumnExpression(Cypher):
@@ -217,6 +241,10 @@ class ColumnExpression(Cypher):
         expr =  u'.'.join(cypher_escape_identifier(i)
                           for i in not_none((self.column, self.prop)))
         return expr + ('!' if self.fail_on_missing else '?')
+
+    @property
+    def required_identifiers(self):
+        return not_none([self.column])
 
 
 class OrderByTerm(Cypher):
@@ -232,6 +260,9 @@ class OrderByTerm(Cypher):
             'desc':'DESC' if self.negate else ''
         }
     
+    @property
+    def required_identifiers(self):
+        return getattr(self.expression, 'required_identifiers', [])
 
 class OrderBy(Cypher):
     cypher_template = 'ORDER BY %(fields)s'
@@ -244,6 +275,11 @@ class OrderBy(Cypher):
             'fields':u','.join(unicode(t) for t in self.terms)
         }
 
+    @property
+    def required_identifiers(self):
+        return uniqify(itertools.chain.from_iterable(
+            getattr(t, 'required_identifiers', []) for t in self.terms))
+    
 
 class Return(Clause):
     cypher_template = 'RETURN %(fields)s %(order_by)s %(skip)s %(limit)s'
@@ -273,6 +309,13 @@ class Return(Clause):
     def passing_identifiers(self):
         return self.field_dict.keys()
 
+    @property
+    def required_identifiers(self):
+        # TODO ultimately we want to know what's required for the field dict as
+        # well, but we need more structure for that
+        return getattr(self.order_by, 'required_identifiers', []) \
+                if self.order_by is not None else []
+
 
 class Delete(Clause):
     cypher_template = 'DELETE %(fields)s'
@@ -282,8 +325,14 @@ class Delete(Clause):
 
     def get_params(self):
         return {
-            'fields': ','.join(self.fields)
+            'fields': ','.join(cypher_escape_identifier(f) for f in self.fields)
         }
+
+    @property
+    def required_identifiers(self):
+        # TODO ultimately we want to know what's required for the field dict as
+        # well, but we need more structure for that
+        return list(self.fields)
 
 
 class DeleteNode(Delete):
