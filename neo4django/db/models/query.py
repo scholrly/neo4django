@@ -759,6 +759,10 @@ class Query(object):
 
         self.standard_ordering = True
 
+        # XXX to handle overreaching django code like in the admin - not used
+        # otherwise
+        self.where = False
+
         self.clear_limits()
         self.clear_ordering()
 
