@@ -304,3 +304,16 @@ def test_assignable_list():
 
     # hasattr() should return True
     assert hasattr(list_obj, 'foo')
+
+
+def test_enum_numerical_items():
+    e = utils.Enum('foo', 'bar', 'baz')
+    assert e.FOO == 0
+    assert e.BAR == 1
+    assert e.BAZ == 2
+
+
+def test_enum_explict_items():
+    e = utils.Enum(foo='bar', baz='qux')
+    assert e.FOO == 'bar'
+    assert e.BAZ == 'qux'

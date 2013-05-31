@@ -49,10 +49,36 @@ def uniqify(seq):
 
 
 def Enum(*enums, **other_enums):
-    enum_items = itertools.izip([str(e).upper() for e in enums],
-                                itertools.count(0))
-    enum_items = itertools.chain(enum_items, other_enums.items())
-    return type('Enum', (), dict([(str(i[0]).upper(), i[1]) for i in enum_items]))
+    """
+    Creates an enum-like type that sets attributes with corresponding 0-indexed integer
+    values coming from positional arguments that are converted to uppercase. For example::
+
+        >>> e = Enum('foo', 'bar')
+        >>> e.FOO
+        0
+        >>> e.BAR
+        1
+
+    If keyword arguments are passed, the effect is the same, however the keyword value
+    will represent the value of the enum attribute, rather than a 0-indexed integer.
+    For example::
+
+        >>> e = Enum(foo='bar', baz='qux')
+        >>> e.FOO
+        'bar'
+        >>> e.BAZ
+        'qux'
+    """
+    # Handle args that should be numeric. Swap enumerate idx and value for dict comprehension later
+    numerical_items = itertools.starmap(lambda i, v: (str(v).upper(), i), enumerate(enums))
+
+    # Handle keyword arguments
+    keyword_items = itertools.starmap(lambda k, v: (str(k).upper(), v), other_enums.iteritems())
+
+    # Chain all items
+    all_items = itertools.chain(numerical_items, keyword_items)
+
+    return type('Enum', (), dict(x for x in all_items))
 
 
 def all_your_base(cls, base):
