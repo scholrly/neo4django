@@ -35,7 +35,7 @@ def sliding_pair(seq):
     sequence.
     """
     s1, s2 = itertools.tee(seq)
-    s2.next()
+    s2.next()  # This ensures we get a None sentinel for the end of the iterator
     return itertools.izip_longest(s1, s2)
 
 
@@ -115,6 +115,24 @@ def countdown(number):
 
 
 class AssignableList(list):
+    """
+    A special subclass of list the allow setting of arbitrary object
+    attributes. The python builtin list prevents this behavior by raising
+    an AttributeError::
+
+        >>> x = []
+        >>> x.foo = 'bar'
+        Traceback (most recent call last):
+        ...
+        AttributeError: 'list' object has not attribute 'foo'
+
+    Alternatively::
+
+        >>> x = AssignableList()
+        >>> x.foo = 'bar'
+        >>> x.foo
+        'bar'
+    """
 
     def __init__(self, *args, **kwargs):
         super(AssignableList, self).__init__(*args, **kwargs)
@@ -126,6 +144,9 @@ class AssignableList(list):
         super(AssignableList, self).__setattr__(name, value)
 
     def get_new_attrs(self):
+        """
+        Returns a copy of all attributes that have been assigned to this object
+        """
         return self._new_attrs.copy()
 
 

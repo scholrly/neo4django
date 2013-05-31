@@ -290,3 +290,17 @@ def test_sliding_pair():
                 ('baz', None)]
 
     assert_list_equal(expected, list(ret))
+
+
+def test_assignable_list():
+    list_obj = utils.AssignableList()
+    list_obj.foo = 'bar'
+
+    # Check that we can get the attribute
+    assert list_obj.foo == 'bar'
+
+    # We should have added object to _new_attrs
+    assert 'foo' in list_obj.get_new_attrs()
+
+    # hasattr() should return True
+    assert hasattr(list_obj, 'foo')
