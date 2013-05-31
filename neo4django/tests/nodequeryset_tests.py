@@ -687,6 +687,10 @@ def test_spanning_lookup():
     jerry = IndexedMouse.objects.all().get(relatedcat_set__relateddog_set__name='Spike')
     eq_(jerry.name, 'jerry')
 
+    # then test by id lookup
+    tom = RelatedCat.objects.get(chases__id=jerry.id)
+    eq_(tom.name, 'Tom')
+
 @with_setup(None, teardown)
 def test_large_query():
     ages = range(1, 151)
