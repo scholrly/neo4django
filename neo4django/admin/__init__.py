@@ -8,6 +8,7 @@ from django.contrib.admin.filters import (ListFilter, SimpleListFilter,
         ChoicesFieldListFilter, DateFieldListFilter, AllValuesFieldListFilter)
 from django.utils.encoding import force_unicode
 
+from ..utils import copy_func
 from ..contenttypes.models import ContentType
 
 # extend ModelAdmin to use our ContentType
@@ -44,12 +45,6 @@ class ModelAdmin(DjangoModelAdmin):
         )
 
 # patch ModelAdmin.render_change_form to use our ContentType
-import types
-def copy_func(func):
-    return types.FunctionType(func.func_code, dict(func.func_globals),
-                              name=func.func_name, argdefs=func.func_defaults,
-                              closure=func.func_closure)
-
 render_func = copy_func(DjangoModelAdmin.render_change_form.im_func)
 render_func.func_globals['ContentType'] = ContentType
 ModelAdmin.render_change_form = render_func
@@ -65,6 +60,21 @@ class AdminSite(DjangoAdminSite):
                                                admin_class or ModelAdmin,
                                                **options)
 
+    def get_urls(self):
+        from django.core.urlresolvers import RegexURLPattern
+        urlpatterns = super(AdminSite, self).get_urls()
+        # copy and replace the contenttypes.shortcut pattern
+        shortcut_pattern, index = [(p, i) for i, p in enumerate(urlpatterns)
+                                   if p.callback and 
+                                   p.callback.func_name == 'shortcut'][0]
+        callback = copy_func(shortcut_pattern.callback)
+        callback.func_globals['ContentType'] = ContentType
+        urlpatterns[index] = RegexURLPattern(shortcut_pattern.regex, callback,
+                default_args=shortcut_pattern.default_args, name = 'shortcut')
+        return urlpatterns
+        
+
+
 site = AdminSite()
 
 # copy autodiscover and patch it to use our admin site
@@ -73,4 +83,4 @@ from django.contrib.admin import autodiscover
 autodiscover = copy_func(autodiscover)
 autodiscover.func_globals['site'] = site
 
-del types, DjangoModelAdmin, DjangoAdminSite, render_func 
+del DjangoModelAdmin, DjangoAdminSite, render_func 
