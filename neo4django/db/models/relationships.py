@@ -13,7 +13,9 @@ from neo4django.decorators import not_implemented, transactional
 from neo4django.utils import AssignableList, AttrRouter
 from neo4django.constants import INTERNAL_ATTR, ORDER_ATTR
 from .base import NodeModel
-from .query import (NodeQuerySet, Query, cypher_rel_str, Clauses, Start, With)
+from .query import (NodeQuerySet, Query, cypher_rel_str)
+from .cypher import  (Clauses, Start, With, Match, Path, NodeComponent,
+        RelationshipComponent, OrderBy, OrderByTerm, ColumnExpression)
 
 from neo4jrestclient.constants import RELATIONSHIPS_IN, RELATIONSHIPS_OUT
 
@@ -785,14 +787,24 @@ class RelationshipQuerySet(NodeQuerySet):
             ORDER BY r.`%s`
         """ % ORDER_ATTR if self._rel_instance.ordered else ''
 
-        rel_str = cypher_rel_str(self._rel.rel_type, self._rel.direction,
-                                 identifier='r')
+        start = Start({'m': 'node({startParam})'}, ['startParam'])
+
+        direction = '>' if self._rel.direction == RELATIONSHIPS_OUT else '<'
+
+        match = Match([
+            Path([NodeComponent('m'),
+                  RelationshipComponent(identifier='r',
+                                        types=[self._rel.rel_type],
+                                        direction=direction),
+                  NodeComponent('n')])])
+
+        order_by = OrderBy([OrderByTerm(ColumnExpression('r', ORDER_ATTR))]) \
+                if self._rel_instance.ordered else None
 
         return Clauses([
-            Start({'m': 'node({startParam})'}, ['startParam']),
-            'MATCH (m)%s(n)' % rel_str,
-            With({'n': 'n', 'r': 'r', 'typeNode': 'typeNode'}),
-            order_clause
+            start,
+            match,
+            With({'n': 'n', 'r': 'r', 'typeNode': 'typeNode'}, order_by=order_by)
         ])
 
     def iterator(self):

@@ -7,7 +7,7 @@ from django.utils.datastructures import SortedDict
 
 from lucenequerybuilder import Q as LQ
 
-from collections import namedtuple, Iterable
+from collections import namedtuple, defaultdict
 from operator import and_, or_
 import itertools
 import re
@@ -15,13 +15,18 @@ import re
 import neo4jrestclient.constants as neo_constants
 
 from .. import DEFAULT_DB_ALIAS, connections
-from ...utils import Enum, uniqify
+from ...utils import Enum, uniqify, not_none
 from ...constants import ORDER_ATTR
 from ...decorators import (transactional,
                            not_supported,
                            alters_data,
                            not_implemented,
                            borrows_methods)
+
+from .cypher import (Clauses, Start, NodeComponent, RelationshipComponent, Path,
+                     Match, With, Return, ColumnExpression, OrderByTerm,
+                     OrderBy, DeleteNode, cypher_primitive)
+
 from . import script_utils
 from .script_utils import id_from_url, LazyNode, _add_auth as add_auth
 from . import aggregates
@@ -48,17 +53,13 @@ class Condition(ConditionTuple):
                     args[1] = tuple(args[1])
         super(Condition, self).__init__(*args, **kwargs)
 
+
 QUERY_CHUNK_SIZE = 100
 
 #TODO these should be moved to constants
 TYPE_REL = '<<TYPE>>'
 INSTANCE_REL = '<<INSTANCE>>'
 INTERNAL_RELATIONSHIPS = (TYPE_REL, INSTANCE_REL)
-
-
-#TODO move to a util module
-def not_none(it):
-    return itertools.ifilter(None, it)
 
 
 #########################
@@ -280,16 +281,6 @@ def lucene_query_and_index_from_q(using, nodetype, q):
     return (index.name, lucene_query_from_condition_tree(cond_q))
 
 
-def cypher_primitive(val):
-    if isinstance(val, basestring):
-        return '"%s"' % val
-    elif val is None:
-        return 'null'
-    elif isinstance(val, Iterable):
-        return "[%s]" % ','.join(cypher_primitive(v) for v in val)
-    return str(val)
-
-
 def cypher_predicate_from_condition(element_name, condition):
     """
     Build a Cypher expression suitable for a WHERE clause from a condition.
@@ -443,195 +434,6 @@ def cypher_where_from_q(nodetype, q):
     return "WHERE %s\n" % exps if exps else ''
 
 
-def cypher_order_by_term(element_name, field):
-    """
-    Return a term for an ORDER BY clause, like "n.name DESC", from a field like
-    "-name".
-    """
-    stripped_field = field.strip()
-    parts = stripped_field.split('-', 1)
-    desc = ''
-    field_name = parts[-1]
-    if len(parts) > 1:
-        desc = 'DESC'
-    return '`%s`.`%s`? %s' % (element_name, field_name, desc)
-
-
-def cypher_order_by_from_fields(element_name, ordering):
-
-    #TODO it would be better if this happened at a higher level, so fields were
-    # validated and default_ordering could be honored.
-    cypher = ''
-    if len(ordering) > 0:
-        cypher = 'ORDER BY %s' % (
-            ', '.join(cypher_order_by_term(element_name, f) for f in ordering))
-    return cypher
-
-
-class Cypher(object):
-    def as_cypher(self):
-        return self.cypher_template % self.get_params()
-
-
-class Path(Cypher):
-    cypher_template = '%(path_assignment)s%(path_expr)s'
-
-    def __init__(self, components, path_variable=None):
-        """
-        components - a list of alternating node identifiers and relationship
-        strs (eg, `['n','-[:friends_with]->','m']`). If a component has an
-        `as_cypher()` method, that will be tried before calling unicode on it.
-        path_variable - a str path identifer. If included, the final Cypher
-        output will be a named path (eg, "p=(`n`)-[:`friends_with`]->(`m`)").
-        """
-        self.path_variable = path_variable
-        if len(components) % 2 == 0:
-            raise exceptions.ValidationError('Paths must have an odd number of '
-                                             'components.')
-        self.components = components
-
-    def get_params(self):
-        components = self.components[:]
-        components.append(None)  # make the list even-length
-        #break components into pairs and fix the node identifiers
-        pairs = [('(`%s`)' % p[0] if p[0] else '()', p[1])
-                 for p in zip(*[iter(components)] * 2)]
-        components = list(itertools.chain.from_iterable(pairs))[:-1]
-        return {
-            'path_assignment': '%s =' % self.path_variable
-                               if self.path_variable is not None else '',
-            'path_expr': ''.join(c.as_cypher() if hasattr(c, 'as_cypher')
-                                 else unicode(c) for c in components)
-        }
-
-
-class Clause(Cypher):
-    pass
-
-
-class Clauses(list):
-    def as_cypher(self):
-        return ' '.join(c.as_cypher() if hasattr(c, 'as_cypher') else unicode(c)
-                        for c in self)
-
-
-class Start(Clause):
-    cypher_template = 'START %(exprs)s'
-
-    def __init__(self, start_assignments, cypher_params):
-        """
-        start_assignments - a dict of variable name keys and assignment
-        expression values to make up a START clause. eg, `{'n':'node(5)'}`
-        will lead to the expression `n=node(5)` in the output Cypher str
-        cypher_params - a list of all Cypher parameters used in `start_exprs`.
-        these won't affect the output, but are for later bookkeeping and
-        manipulation
-        """
-        self.start_assignments = start_assignments
-        self.cypher_params = cypher_params
-
-    def get_params(self):
-        return {
-            'exprs': ','.join('%s=%s' % (k, v)
-                              for k, v in self.start_assignments.iteritems())
-        }
-
-
-class Match(Clause):
-    cypher_template = 'MATCH %(exprs)s'
-
-    def __init__(self, paths):
-        """
-        paths - a list of strs of objects with as_cypher() methods that return
-        Cypher paths- eg, "n-[:FRIENDS_WITH]->friend" or "path=n-->out".
-        """
-        paths = list(paths)
-        if len(paths) < 1:
-            raise exceptions.ValidationError('MATCH clauses require at least '
-                                             'one path.')
-        self.paths = paths
-
-    def get_params(self):
-        return {
-            'exprs': ','.join(p.as_cypher() if hasattr(p, 'as_cypher')
-                              else unicode(p) for p in self.paths)
-        }
-
-
-class With(Clause):
-    cypher_template = 'WITH %(fields)s %(limit)s %(match)s %(where)s'
-
-    def __init__(self, field_dict, limit=None, where=None, match=None):
-        self.field_dict = field_dict
-        self.limit = limit
-        self.where = where
-        self.match = match
-
-    def get_params(self):
-        return {
-            'fields': ','.join('%s AS %s' % (alias, field)
-                               for alias, field in self.field_dict.iteritems()),
-            'limit': 'LIMIT %s' % str(self.limit)
-                     if self.limit is not None else '',
-            'match': ((self.match.as_cypher() if hasattr(self.match, 'as_cypher')
-                       else unicode(self.match)) if self.match else ''),
-            'where': ((self.where.as_cypher() if hasattr(self.where, 'as_cypher')
-                       else unicode(self.where)) if self.where else ''),
-        }
-
-
-class Return(Clause):
-    cypher_template = 'RETURN %(fields)s %(order_by)s %(skip)s %(limit)s'
-
-    def __init__(self, field_dict, limit=None, skip=None, order_by_terms=None,
-                 distinct_fields=None):
-        self.field_dict = field_dict
-        self.limit = limit
-        self.skip = skip
-        self.order_by_terms = order_by_terms
-        self.distinct_fields = distinct_fields
-
-    def get_params(self):
-        distinct_fields = set(self.distinct_fields or [])
-        field_alias_pairs = ((field if field not in distinct_fields
-                              else 'DISTINCT ' + field, alias)
-                             for alias, field in self.field_dict.iteritems())
-        return {
-            'fields': ','.join('%s AS %s' % pair for pair in field_alias_pairs),
-            'limit': 'LIMIT %s' % str(self.limit)
-                     if self.limit is not None else '',
-            'skip': 'SKIP %d' % self.skip if self.skip else '',
-            'order_by': 'ORDER BY %s' % ','.join(self.order_by_terms)
-                        if self.order_by_terms else ''
-        }
-
-
-class Delete(Clause):
-    cypher_template = 'DELETE %(fields)s'
-
-    def __init__(self, fields):
-        self.fields = fields
-
-    def get_params(self):
-        return {
-            'fields': ','.join(self.fields)
-        }
-
-
-class DeleteNode(Delete):
-    cypher_template = 'WITH %(fields)s MATCH %(field_matches)s DELETE %(fields_and_rels)s'
-
-    def get_params(self):
-        field_rels = ['%s_r' % f for f in self.fields]
-        params = {
-            'fields': ','.join(self.fields),
-            'fields_and_rels': ','.join(self.fields + field_rels),
-            'field_matches': ','.join('(%s)-[%s]-()' % (f, r)
-                             for f, r in zip(self.fields, field_rels))
-        }
-        return params
-
-
 def cypher_rel_str(rel_type, rel_dir, identifier=None, optional=False):
     dir_strings = ('<-%s-', '-%s->')
     out = neo_constants.RELATIONSHIPS_OUT
@@ -698,6 +500,10 @@ def cypher_from_fields(nodetype, fields):
     return 'MATCH %s RETURN %s' % (','.join(matches), ','.join(returns))
 
 
+def cypher_column_name_from_cond(cond):
+    return '__'.join(['n'] + cond.path)
+
+
 def cypher_match_from_q(nodetype, q):
     # TODO TODO DRY VIOLATION refactor to share common code with
     # select_related and Condition
@@ -705,7 +511,7 @@ def cypher_match_from_q(nodetype, q):
     conditions = condition_tree_leaves(q)
     for cond in conditions:
         if len(cond.path) > 0:
-            path = ['n']
+            path = [NodeComponent('n')]
             cur_m = nodetype
             for level, cond_step in enumerate(cond.path):
                 rels = getattr(cur_m._meta, '_relationships', {}).items()
@@ -714,21 +520,23 @@ def cypher_match_from_q(nodetype, q):
                 ) if s[0] > 0), reverse=True)
                 rel_choice = candidates_on_model[0][-1]
 
-                direction = ('out'
+                direction = ('>'
                              if (rel_choice.direction == 'out') !=
                                 (rel_choice.target_model is nodetype)
-                             else 'in')
+                             else '<')
                 rel_type = rel_choice.rel_type
 
-                path.append(cypher_rel_str(rel_type, direction, optional=True))
+                path.append(RelationshipComponent(types=[rel_type],
+                        direction=direction, optional=True))
 
                 cur_m = (rel_choice.target_model
                          if not rel_choice.target_model is cur_m
                          else rel_choice.source_model)
                 if level != len(cond.path) - 1:
-                    path.append('')
-            path.append('__'.join(['n'] + cond.path))
+                    path.append(NodeComponent())
+            path.append(NodeComponent(cypher_column_name_from_cond(cond)))
             paths.append(path)
+    
     return Match(Path(p) for p in paths)
 
 
@@ -770,7 +578,7 @@ def execute_select_related(models=None, query=None, index_name=None,
         #infer the model type
         if model_type is None:
             model_type = type(models[0])
-        start_expr = 'node(%s)' % ','.join(str(m.id) for m in models)
+        start_expr = u'node(%s)' % ','.join(str(m.id) for m in models)
         start_depth = 1
     elif index_name and query:
         if model_type is None:
@@ -950,10 +758,16 @@ class Query(object):
         self.with_clauses = []
         self.end_clause = None
 
+        self.limit_before_return = None
+
         self.distinct = False
         self.distinct_fields = None
 
         self.standard_ordering = True
+
+        # XXX to handle overreaching django code like in the admin - not used
+        # otherwise
+        self.where = False
 
         self.clear_limits()
         self.clear_ordering()
@@ -1002,6 +816,9 @@ class Query(object):
         # (requires a refactor from as_groovy())
         return self.start_clause, self.start_clause_param_func()
 
+    def set_limit_before_return(self, i):
+        self.limit_before_return = i
+
     def model_from_node(self, node):
         return self.nodetype._neo4j_instance(node)
 
@@ -1011,7 +828,8 @@ class Query(object):
         clone_attrs = ('order_by', 'return_fields', 'aggregates', 'distinct',
                        'distinct_fields', 'high_mark', 'low_mark',
                        'start_clause', 'start_clause_param_func',
-                       'with_clauses', 'end_clause', 'standard_ordering')
+                       'with_clauses', 'end_clause', 'standard_ordering',
+                       'limit_before_return')
         for a in clone_attrs:
             setattr(clone, a, getattr(self, a))
         return clone
@@ -1091,6 +909,15 @@ class Query(object):
         n<-[:`<<INSTANCE>>`]-()<-[:`<<TYPE>>`*0..]-typeNode
         """
 
+        type_restriction_pattern = Path([
+            NodeComponent('n'),
+            RelationshipComponent(types=['<<INSTANCE>>'], direction='<'),
+            NodeComponent(),
+            RelationshipComponent(types=['<<TYPE>>'], direction='<',
+                                  length_or_range=(0, None)),
+            NodeComponent('typeNode'),
+        ])
+
         # separate filters into those requiring a MATCH clause and those that
         # don't
         non_spanning_filters = []
@@ -1107,30 +934,34 @@ class Query(object):
 
         with_clauses = self.with_clauses or []
 
-        if len(spanning_filters) > 0:
-            combined_filter = reduce(and_, spanning_filters)
-            # build match clause
-            match = cypher_match_from_q(self.nodetype, combined_filter)
-            # build where clause
-            where = cypher_where_from_q(self.nodetype, combined_filter)
-            with_clauses.append(With({'n': 'n'}, match=match, where=where))
-
-        def negate_order_by(term):
-            if term.startswith('-'):
-                return term[1:]
-            return '-' + term
-
-        order_by = [cypher_order_by_term('n', field if self.standard_ordering
-                                         else negate_order_by(field))
-                    for field in self.order_by] or None
         limit = self.high_mark - self.low_mark if self.high_mark is not None else None
 
         if self.end_clause is None:
             return_clause = Return(self.return_fields, skip=self.low_mark,
-                                   limit=limit, order_by_terms=order_by,
-                                   distinct_fields=['n'] if self.distinct else [])
+                    limit=limit, distinct_fields=['n'] if self.distinct else [])
         else:
             return_clause = self.end_clause
+
+        order_by = OrderBy([OrderByTerm(ColumnExpression('n', field.lstrip('-')),
+                                        negate=(field.startswith('-') == self.standard_ordering))
+                            for field in self.order_by]) if self.order_by else None
+
+        if order_by is not None:
+            # decide where to inject the ORDER BY expression - if the fields
+            # ordered aren't being returned, it needs to go before the RETURN
+        
+            all_order_ids_returned = all(i in return_clause.passing_identifiers
+                                         for i in order_by.required_identifiers)
+            if isinstance(return_clause, Return) and all_order_ids_returned:
+                return_clause.order_by = order_by
+            else:
+                # TODO if the clauses before this don't have all the proper
+                # passing identifiers, raise an exception
+                prior_clause = ([start_clause] + with_clauses)[-1]
+                passing_ids = getattr(
+                    prior_clause, 'passing_identifiers', ['n'])
+                with_clauses.append(With(dict((i, i) for i in passing_ids),
+                                        order_by=order_by))
 
         groovy_script = None
         params = {
@@ -1141,26 +972,62 @@ class Query(object):
         # TODO none of these queries but the last properly take type into
         # account.
         if len(in_id_lookups) > 0 or len(exact_id_lookups) > 0:
-            id_set = reduce(and_, (set(c.value) for c in in_id_lookups)) if in_id_lookups else set([])
-            if len(exact_id_lookups) > 0:
-                exact_id = exact_id_lookups[0].value
-                if id_set and exact_id not in id_set:
-                    raise ValueError("Conflicting id__exact and id__in lookups"
-                                     " - a node can't have two ids.")
-                else:
-                    id_set = set([exact_id])
+            # collect id lookups by column
+            in_id_lookups_by_column = defaultdict(list)
+            exact_id_lookups_by_column = defaultdict(list)
 
-            if len(id_set) >= 1:
-                start_clause = start_clause or Start({'n': 'node({startParam})'}, ['startParam'])
+            for lookup in in_id_lookups:
+                in_id_lookups_by_column[cypher_column_name_from_cond(lookup)]\
+                        .append(lookup)
+
+            for lookup in exact_id_lookups:
+                exact_id_lookups_by_column[cypher_column_name_from_cond(lookup)]\
+                        .append(lookup)
+
+            columns = uniqify(exact_id_lookups_by_column.keys() + 
+                              in_id_lookups_by_column.keys())
+
+            start_field_dict = {}
+            start_param_dict = {}
+
+            # for each column, check for conflicts between id lookups and build
+            # out the start clause field dict
+            for column in columns:
+                exact_lookups = exact_id_lookups_by_column[column]
+                in_lookups = in_id_lookups_by_column[column]
+                id_set = reduce(and_, (set(c.value) for c in in_lookups)) if in_lookups else set([])
+                if len(exact_lookups) > 0:
+                    exact_ids = uniqify(e.value for e in exact_lookups)
+                    if len(exact_ids) > 1:
+                        raise ValueError("Conflicting id__exact lookups - a "
+                                         "node can't have two ids.")
+                    exact_id = exact_ids[0]
+                    if id_set and exact_id not in id_set:
+                        raise ValueError("Conflicting id__exact and id__in lookups"
+                                         " - a node can't have two ids.")
+                    else:
+                        id_set = set([exact_id])
+
+                if len(id_set) >= 1:
+                    param = column + '_startParam'
+                    start_field_dict[column] = 'node({%s})' % param
+                    start_param_dict[param] = list(id_set)
+
+            if len(start_field_dict) >= 1:
+                start_clause = start_clause or Start(start_field_dict,
+                                                     start_param_dict.keys())
                 groovy_script = """
                     results = []
-                    existingStartIds = Neo4Django.getVerticesByIds(start).\
-                            collect{it.id}
-                    cypherParams['startParam'] = existingStartIds
+                    startParams = startParams.findResults{
+                        if (it.value) {
+                            [it.key, Neo4Django.getVerticesByIds(it.value).collect{v -> v.id}]
+                        }
+                    }.collectEntries()
+                    cypherParams += startParams
                     table = Neo4Django.cypher(cypherQuery,cypherParams)
                     results = table.columnAs(returnColumn)
                     """
-                params['start'] = list(id_set)
+                params['startParams'] = start_param_dict
             else:
                 # XXX None is returned, meaning an empty result set
                 return (None, None)
@@ -1179,13 +1046,12 @@ class Query(object):
         else:
             #TODO move this to being index-based - it won't work for abstract model queries
             if start_clause is None:
-                match_clause = 'MATCH %s' % type_restriction_expr
                 start_clause = Clauses([Start({'typeNode': 'node({typeNodeId})'},
                                               ['typeNodeId']),
-                                        match_clause])
+                                        Match([type_restriction_pattern])])
                 # we don't need an additional type restriction since it's
                 # handled in the start
-                type_restriction_expr = None
+                type_restriction_pattern = None
             groovy_script = """
                 results = []
                 table = Neo4Django.cypher(cypherQuery, cypherParams)
@@ -1202,13 +1068,39 @@ class Query(object):
             start_clause.cypher_params += ['typeNodeId']
         start_clause = Clauses([start_clause] + extra_start_clauses)
 
-        if type_restriction_expr and not getattr(self.nodetype._meta,
-                                                 'abstract', False):
-            if where_clause:
-                where_clause = ' AND '.join((where_clause,
-                                             type_restriction_expr))
-            else:
-                where_clause = 'WHERE ' + type_restriction_expr
+        # take care of any relationship-spanning lookups
+        if len(spanning_filters) > 0:
+            combined_filter = reduce(and_, spanning_filters)
+            # build match clause
+            match = cypher_match_from_q(self.nodetype, combined_filter)
+            # build where clause
+            where = cypher_where_from_q(self.nodetype, combined_filter)
+            # TODO DRY VIOLATION this prior_clause / WITH clause pattern is showing up a alot
+            prior_clause = ([start_clause] + with_clauses)[-1]
+            passing_ids = getattr(
+                prior_clause, 'passing_identifiers', ['n'])
+            with_clauses.append(With(dict((i, i) for i in passing_ids),
+                                     match=match, where=where))
+
+        # if the type restriction hasn't been removed and this isn't an
+        # abstract model (which can't be type restricted as easily)
+        if type_restriction_pattern and not getattr(self.nodetype._meta,
+                                                    'abstract', False):
+            # TODO DRY violation
+            prior_complex_clause = ([start_clause] + with_clauses)[-1]
+            passing_ids = getattr(prior_complex_clause, 'passing_identifiers', ['n'])
+            with_clauses.append(With(dict((i, i) for i in passing_ids),
+                    where='WHERE ' + unicode(type_restriction_pattern)))
+
+        if self.limit_before_return:
+            # TODO DRY violation
+            prior_clause = ([start_clause] + with_clauses)[-1]
+            passing_ids = getattr(
+                prior_clause, 'passing_identifiers', ['n'])
+            with_clauses.append(With(dict((i, i) for i in passing_ids),
+                                    limit=self.limit_before_return))
+
+
 
         str_clauses = [start_clause.as_cypher(), where_clause] + \
                       [c.as_cypher() for c in with_clauses] + \
@@ -1258,7 +1150,8 @@ class Query(object):
 
     def has_results(self, using):
         obj = self.clone()
-        obj.add_with({'n': 'n'}, limit=1)
+        obj.clear_ordering(True)
+        obj.set_limit_before_return(1)
         return obj.get_count(using) > 0
 
 
@@ -1349,11 +1242,14 @@ class NodeQuerySet(QuerySet):
 
     #TODO would be awesome if this were transactional
     def get_or_create(self, **kwargs):
+        defaults = kwargs.pop('defaults', {})
         try:
             obj = self.get(**kwargs)
             created = False
         except:
-            obj = self.create(**kwargs)
+            values = dict(defaults)
+            values.update(kwargs)
+            obj = self.create(**values)
             created = True
         return (obj, created)
 

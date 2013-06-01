@@ -27,6 +27,15 @@ class StubbornDict(dict):
             return
         return super(StubbornDict, self).__setitem__(key, value)
 
+def copy_func(func):
+    """
+    Return a copy of a function with a shallow copy of the original's
+    func_globals.
+    """
+    import types
+    return types.FunctionType(func.func_code, dict(func.func_globals),
+                              name=func.func_name, argdefs=func.func_defaults,
+                              closure=func.func_closure)
 
 def sliding_pair(seq):
     """
@@ -46,6 +55,10 @@ def uniqify(seq):
     """
     seen = set()
     return [x for x in seq if x not in seen and not seen.add(x)]
+
+
+def not_none(it):
+    return itertools.ifilter(None, it)
 
 
 def Enum(*enums, **other_enums):

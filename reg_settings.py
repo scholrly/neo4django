@@ -178,7 +178,8 @@ tests=[
 	'test_countdown',
 	'test_apply_to_buffer',
 	'test_apply_to_buffer_raises_stop_iteration',
-	'test_buffer_iterator']
+	'test_buffer_iterator',
+    'test_order_by_and_count']
 should_fail=[
 	'test_dates',
 	'test_relationship_model',

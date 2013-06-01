@@ -687,6 +687,10 @@ def test_spanning_lookup():
     jerry = IndexedMouse.objects.all().get(relatedcat_set__relateddog_set__name='Spike')
     eq_(jerry.name, 'jerry')
 
+    # then test by id lookup
+    tom = RelatedCat.objects.get(chases__id=jerry.id)
+    eq_(tom.name, 'Tom')
+
 @with_setup(None, teardown)
 def test_large_query():
     ages = range(1, 151)
@@ -761,6 +765,11 @@ def test_order_by():
     # check the reverse order
     people = Person.objects.all().order_by('-age')
     eq_(list(people), sorted(list(people), key=lambda p:p.age, reverse=True))
+
+@with_setup(setup_people, teardown)
+def test_order_by_and_count():
+    num_people = Person.objects.all().order_by('age').count()
+    eq_(num_people, 5)
 
 @with_setup(setup_people, teardown)
 def test_reverse():
