@@ -62,6 +62,23 @@ class RelationshipComponent(Cypher):
     
     def __init__(self, identifier=None, types=[], optional=False,
                  length_or_range=1, direction='>'):
+        """
+
+        Arguments:
+        identifier - the relationship identifier, if needed
+        types - a list of string relationship types this component can match,
+        if needed
+        optional - whether or not the relationship is optional (defaults to False)
+        length_or_range - an integer represention a length (defaults to 1) or a
+        tuple pair of ranges for variable-length relationships. None at
+        either end means an unbound range (eg, `(5, None)` with yield a `5..`
+        range.
+        direction - a '>' or '<' indicating which direction the relationship
+        string should point
+        """
+        if isinstance(length_or_range, Iterable) and len(length_or_range) != 2:
+            raise ValueError("length_or_range should be an integer or an "
+                             "integer pair.")
         self.identifier = identifier
         self.types = types
         self.length_or_range = length_or_range
@@ -70,14 +87,14 @@ class RelationshipComponent(Cypher):
 
     def get_params(self):
         length = self.length_or_range
-        length_range =  [length] if isinstance(length, int) else length
+        length_range = unicode(length) if isinstance(length, int) else \
+                u'%s..%s' % tuple('' if i is None else unicode(i) for i in length)
         return {
             'id':self.identifier or '',
             'types':u':' + u'|'.join(cypher_escape_identifier(t)
                                      for t in self.types) \
                     if len(self.types) > 0 else '',
-            'length_range':u'*' + u'..'.join(unicode(i) for i in length_range) \
-                           if length != [1] else '',
+            'length_range':u'*' +  length_range if length != 1 else '',
             'optional':'?' if self.optional else ''
         }
 
@@ -125,8 +142,9 @@ class Path(Cypher):
 
     @property
     def passing_identifiers(self):
-        return list(set(not_none([self.path_variable] + 
-                [c.passing_identifiers for c in self.components])))
+        return uniqify(not_none([self.path_variable] + \
+                list(itertools.chain.from_iterable(c.passing_identifiers
+                                                   for c in self.components))))
 
 
 class Clause(Cypher):
@@ -143,6 +161,7 @@ class Clauses(list):
     def passing_identifiers(self):
         return self[-1].passing_identifiers if len(self) > 0 \
                 and hasattr(self[-1], 'passing_identifiers') else []
+
     @property
     def required_identifiers(self):
         return self[0].required_identifiers if len(self) > 0 \
@@ -227,7 +246,7 @@ class With(Clause):
     @property
     def passing_identifiers(self):
         match_ids = self.match.passing_identifiers \
-                if hasattr(self.match, 'passing_identifers') else []
+                if hasattr(self.match, 'passing_identifiers') else []
         return uniqify(self.field_dict.keys() + match_ids)
 
 
