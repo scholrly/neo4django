@@ -38,7 +38,11 @@ Query against models in Neo4j.
 
 :doc:`auth`
 
-Storing and interacting with users in Neo4j.
+Store and interact with users in Neo4j.
+
+:doc:`admin`
+
+Use Django's admin interface with Neo4j.
 
 :doc:`writing-django-tests`
 
