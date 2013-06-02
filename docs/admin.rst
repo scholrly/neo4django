@@ -2,8 +2,12 @@
 The Admin Interface
 ===================
 
-After a few settings tweaks, you can use the admin interface. First, add
-:mod:`neo4django.admin` and :mod:`neo4django.contenttypes` to your
+After a few settings tweaks, you can use the admin interface.
+
+You'll need neo4django's :doc:`auth` working properly, as well as its
+prerequisites like :mod:`django.contrib.sessions`.
+
+Add :mod:`neo4django.admin` and :mod:`neo4django.contenttypes` to your
 ``INSTALLED_APPS``. Also include :mod:`django.contrib.admin` and
 :mod:`django.contrib.contenttypes`, but make sure they come after the neo4django
 versions.
