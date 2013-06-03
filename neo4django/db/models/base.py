@@ -52,6 +52,9 @@ class IdLookup(object):
         else:  # Allows lookups on Nulls
             return value
 
+    def to_python(self, value):
+        return self.to_neo(value)
+
 
 class NeoModelBase(type(dj_models.Model)):
     """
