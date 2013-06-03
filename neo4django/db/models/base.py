@@ -39,6 +39,8 @@ class IdLookup(object):
     indexed = True
     unique = True
     id = True
+    name = 'id'
+    attname = name
 
     def __init__(self, model):
         self.__model = model
@@ -98,6 +100,10 @@ class NeoModelBase(type(dj_models.Model)):
             attrs[i[0]] = trans_method(i[1])
         #call the superclass method
         new_cls = super_new(cls, name, bases, attrs)
+        # fix the pk field, which will be improperly set for concretely
+        # inherited classes
+        if not new_cls._meta.abstract:
+            new_cls._meta.pk = new_cls.id
         #set the extra meta options
         for k in extra_options:
             setattr(new_cls._meta, k, extra_options[k])
