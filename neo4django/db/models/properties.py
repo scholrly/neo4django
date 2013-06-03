@@ -27,7 +27,8 @@ from neo4django.constants import ERROR_ATTR
 MIN_INT = -9223372036854775808
 MAX_INT = 9223372036854775807
 
-FIELD_PASSTHROUGH_METHODS = ('formfield','get_flatchoices','_get_flatchoices')
+FIELD_PASSTHROUGH_METHODS = ('formfield','get_flatchoices','_get_flatchoices',
+                             'set_attributes_from_name')
 
 
 @borrows_methods(fields.Field, FIELD_PASSTHROUGH_METHODS)
@@ -98,6 +99,9 @@ class Property(object):
     def flatchoices(self):
         return self._get_flatchoices()
 
+    def get_attname_column(self):
+        return (self.name, None)
+
     def has_default(self):
         "Returns a boolean of whether this field has a default value."
         return self._default is not NOT_PROVIDED
@@ -146,6 +150,7 @@ class Property(object):
         Set up properties when the owner class is loaded.
         """
         self.creation_counter = cls.creation_counter
+        self.set_attributes_from_name(name)
         if issubclass(cls, NodeModel):
             prop = BoundProperty(self, cls, self.__name or name, name)
             cls._meta.add_field(prop)
