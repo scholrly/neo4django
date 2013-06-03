@@ -691,6 +691,18 @@ def test_spanning_lookup():
     tom = RelatedCat.objects.get(chases__id=jerry.id)
     eq_(tom.name, 'Tom')
 
+@with_setup(setup_chase, teardown)
+def test_pk_shortcut():
+    """
+    Tests whether 'pk' works in in lieu of id for local and spanning lookups.
+    """
+    jerry = IndexedMouse.objects.get(name='jerry')
+    other_jerry = IndexedMouse.objects.get(pk=jerry.id)
+    eq_(jerry, other_jerry)
+    
+    tom = RelatedCat.objects.get(chases__pk=jerry.id)
+    eq_(tom.name, 'Tom')
+
 @with_setup(None, teardown)
 def test_large_query():
     ages = range(1, 151)

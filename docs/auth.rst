@@ -5,7 +5,13 @@ Authentication
 By using a custom authentication backend, you can make use of Django's
 authentication framework while storing users in Neo4j.
 
-Add :mod:`neo4django.auth` in your ``INSTALLED_APPS`` setting, and add::
+First, make sure the :mod:`django.contrib.auth` and
+:mod:`django.contrib.sessions` middleware and the :mod:`django.contrib.auth`
+template context processor are installed. Also make sure you have a proper
+``SESSION_ENGINE`` set. :mod:`django.contrib.sessions.backends.file` will
+work fine for development.
+
+Next, add :mod:`neo4django.auth` to your ``INSTALLED_APPS``, and add::
 
     AUTHENTICATION_BACKENDS = ('neo4django.auth.backends.NodeModelBackend',)
 
