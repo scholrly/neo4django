@@ -189,4 +189,7 @@ should_fail=[
 	'test_type_query',
 	'test_model_casting_validation',
 	'test_array_use_strings',
-	'test_relationship_models']
+	'test_relationship_models',
+	'test_typenode_transactionality',
+	'test_autoproperty_transactionality',
+]
