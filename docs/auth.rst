@@ -33,7 +33,7 @@ Other models are free to reference users. Consider::
     from django.contrib.auth import authenticate
 
     from neo4django.db import models
-    from neo4django.auth import User
+    from neo4django.auth.models import User
 
     class Post(models.NodeModel):
         title = models.StringProperty()
@@ -57,7 +57,7 @@ Swappable user models are in the works, but until then users can be customized
 by subclassing::
 
     from neo4django.db import models
-    from neo4django.auth import User
+    from neo4django.auth.models import User
 
     class TwitterUser(User):
         follows = models.Relationship('self', rel_type='follows',
