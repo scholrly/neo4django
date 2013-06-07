@@ -74,7 +74,7 @@ class NeoModelBase(type(dj_models.Model)):
         attr_meta = attrs.get('Meta', None)
         extra_options = {}
         if attr_meta:
-            for key in NeoModelBase.meta_additions:
+            for key in set(NeoModelBase.meta_additions + cls.meta_additions):
                 if hasattr(attr_meta, key):
                     extra_options[key] = getattr(attr_meta, key)
                     delattr(attr_meta, key)
