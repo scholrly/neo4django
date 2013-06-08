@@ -28,7 +28,7 @@ MIN_INT = -9223372036854775808
 MAX_INT = 9223372036854775807
 
 FIELD_PASSTHROUGH_METHODS = ('formfield','get_flatchoices','_get_flatchoices',
-                             'set_attributes_from_name')
+                             'set_attributes_from_name', 'get_internal_type')
 
 
 @borrows_methods(fields.Field, FIELD_PASSTHROUGH_METHODS)
@@ -264,6 +264,9 @@ class BoundProperty(AttrRouter):
                      'meta',
                      'MAX',
                      'MIN',
+                     'get_internal_type',
+                     'help_text',
+                     'null',
                      #form-related properties
                      'editable',
                      'blank',

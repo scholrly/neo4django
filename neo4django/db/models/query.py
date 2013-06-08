@@ -764,6 +764,7 @@ class Query(object):
         self.distinct_fields = None
 
         self.standard_ordering = True
+        self.query_terms = None
 
         # XXX to handle overreaching django code like in the admin - not used
         # otherwise
