@@ -28,7 +28,7 @@ MIN_INT = -9223372036854775808
 MAX_INT = 9223372036854775807
 
 FIELD_PASSTHROUGH_METHODS = ('formfield','get_flatchoices','_get_flatchoices',
-                             'set_attributes_from_name', 'get_internal_type')
+                             'set_attributes_from_name')
 
 
 @borrows_methods(fields.Field, FIELD_PASSTHROUGH_METHODS)
@@ -144,6 +144,24 @@ class Property(object):
         that don't support said option need not be concerned.
         """
         return self.to_neo(value)
+
+    def get_internal_type(self):
+        """
+        Returns the "internal" type of an object which instructs API handlers
+        like Tastypie how to represent the field etc.
+
+        Since all those external libraries expect the Django names like
+        "DateTimeField" and our classes are named "DateTimeProperty", we have to
+        replace all "Property"s with "Field". Also, rename "StringField" to
+        "CharField".
+        """
+
+        classname = self.__class__.__name__
+
+        if classname == 'StringProperty':
+            return 'CharField'
+
+        return classname.replace("Property", "Field")
 
     def contribute_to_class(self, cls, name):
         """
