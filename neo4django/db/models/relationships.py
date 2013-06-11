@@ -58,7 +58,7 @@ class Relationship(object):
     def __init__(self, target, rel_type=None, direction=None, optional=True,
                  single=False, related_single=False, related_name=None,
                  editable=True, verbose_name=None, help_text=None,
-                 preserve_ordering=False, metadata={},
+                 preserve_ordering=False, null = True, metadata={},
                  rel_metadata={}):
         if direction is Outgoing:
             direction = RELATIONSHIPS_OUT
@@ -89,6 +89,7 @@ class Relationship(object):
         self.optional = optional
         self.verbose_name = verbose_name
         self.help_text = help_text
+        self.null = null
 
     target_model = property(lambda self: self.__target)
     ordered = property(lambda self: self.__ordered)
@@ -126,6 +127,12 @@ class Relationship(object):
         else:
             name = target.__name__
         return suffix % name.lower()
+
+    def get_internal_type(self):
+        return "Neo4jRelationship"
+
+    def has_default(self):
+        return False
 
     def _get_bound_relationship_type(self):
         # TODO this will change with relationship models (#1)
@@ -224,6 +231,10 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
                      'target_model',
                      'ordered',
                      'meta',
+                     'get_internal_type',
+                     'help_text',
+                     'null',
+                     'has_default',
                      # form handling
                      'editable',
                      'formfield',

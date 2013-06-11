@@ -145,6 +145,24 @@ class Property(object):
         """
         return self.to_neo(value)
 
+    def get_internal_type(self):
+        """
+        Returns the "internal" type of an object which instructs API handlers
+        like Tastypie how to represent the field etc.
+
+        Since all those external libraries expect the Django names like
+        "DateTimeField" and our classes are named "DateTimeProperty", we have to
+        replace all "Property"s with "Field". Also, rename "StringField" to
+        "CharField".
+        """
+
+        classname = self.__class__.__name__
+
+        if classname == 'StringProperty':
+            return 'CharField'
+
+        return classname.replace("Property", "Field")
+
     def contribute_to_class(self, cls, name):
         """
         Set up properties when the owner class is loaded.
@@ -264,6 +282,9 @@ class BoundProperty(AttrRouter):
                      'meta',
                      'MAX',
                      'MIN',
+                     'get_internal_type',
+                     'help_text',
+                     'null',
                      #form-related properties
                      'editable',
                      'blank',
