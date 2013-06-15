@@ -149,6 +149,11 @@ class Relationship(object):
             raise TypeError("Relationships may only extend from Nodes.")
         self.creation_counter = source.creation_counter
 
+        # XXX this is to cover strange situations like accidental overriding 
+        # of abstract models' reverse relationships like issue #190 
+        if hasattr(source, name): 
+            return 
+
         # make sure this relationship doesn't overlap with another of the same
         # type and direction
         if hasattr(source._meta, '_relationships'):
