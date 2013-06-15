@@ -230,6 +230,7 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
                      'direction',
                      'target_model',
                      'ordered',
+                     'help_text',
                      'meta',
                      'get_internal_type',
                      'help_text',
@@ -239,9 +240,16 @@ class BoundRelationship(AttrRouter, DeferredAttribute):
                      'editable',
                      'formfield',
                      ], self.__rel)
+        self.null = False
 
     def clean(self, value, instance):
         return value
+
+    def has_default(self):
+        return None
+
+    def get_internal_type(self):
+        return self.__rel.__class__.__name__
 
     def _setup_reversed(self, target):
         self.__target = target
