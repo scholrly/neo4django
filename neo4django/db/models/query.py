@@ -739,6 +739,11 @@ QUERY_PASSTHROUGH_METHODS = ('set_limits', 'clear_limits', 'can_filter',
 @borrows_methods(sql.Query, QUERY_PASSTHROUGH_METHODS)
 class Query(object):
     aggregates_module = aggregates
+    query_terms = set([
+        'exact', 'contains', 'icontains', 'gt', 'gte', 'lt', 'lte', 'in',
+        'startswith', 'istartswith', 'endswith', 'iendswith', 'range', 'year',
+        'month', 'day', 'week_day', 'isnull', 'search', 'regex', 'iregex',
+        ])
 
     def __init__(self, nodetype, filters=None, max_depth=None,
                  select_related_fields=[]):

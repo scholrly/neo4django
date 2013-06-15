@@ -28,7 +28,7 @@ MIN_INT = -9223372036854775808
 MAX_INT = 9223372036854775807
 
 FIELD_PASSTHROUGH_METHODS = ('formfield','get_flatchoices','_get_flatchoices',
-                             'set_attributes_from_name')
+                             'set_attributes_from_name', )
 
 
 @borrows_methods(fields.Field, FIELD_PASSTHROUGH_METHODS)
@@ -90,6 +90,9 @@ class Property(object):
             messages.update(getattr(c, 'default_error_messages', {}))
         messages.update(error_messages or {})
         self.error_messages = messages
+
+    def get_internal_type(self):
+        return self._internal_type_
 
     @property
     def default(self):
@@ -241,7 +244,10 @@ class BoundProperty(AttrRouter):
                      'indexed_fulltext',
                      'indexed_range',
                      'indexed_by_member',
+                     'get_internal_type',
                      'unique',
+                     'help_text',
+                     'null',
                      'to_neo',
                      'to_neo_index',
                      'to_neo_index_gremlin',
@@ -488,6 +494,7 @@ class StringProperty(Property):
     #since strings don't have a natural max, this is an arbitrarily high utf-8
     #string. this is necessary for gt string queries, since Lucene range
     #queries (prior 4.0) don't support open-ended ranges
+    _internal_type_ = 'StringProperty'
     MAX = u'\U0010FFFF' * 20
     MIN = u''
 
@@ -517,19 +524,21 @@ class StringProperty(Property):
 
 class EmailProperty(StringProperty):
     #TODO docstring
+    _internal_type_ = 'EmailProperty'
     default_validators = [validators.validate_email]
 
     formfield = formfields.EmailField
 
 
 class URLProperty(StringProperty):
+    _internal_type_ = 'URLProperty'
     formfield = formfields.URLField
 
     #TODO docstring
     def __init__(self, verify_exists=False, **kwargs):
         kwargs['max_length'] = kwargs.get('max_length', 2083)
         super(URLProperty, self).__init__(**kwargs)
-        self.validators.append(validators.URLValidator(verify_exists=verify_exists))
+        self.validators.append(validators.URLValidator())
 
     def formfield(self, **kwargs):
         defaults = {'form_class': formfields.URLField}
@@ -541,6 +550,7 @@ class IntegerProperty(Property):
     """
     A 64-bit integer, akin to Django's `BigIntegerField`.
     """
+    _internal_type_ = 'IntegerProperty'
     default_validators = [validators.MinValueValidator(MIN_INT), validators.MaxValueValidator(MAX_INT)]
 
     MAX = MAX_INT
@@ -584,6 +594,7 @@ class IntegerProperty(Property):
 
 
 class AutoProperty(IntegerProperty):
+    _internal_type_ = 'AutoProperty'
     editable = False
     formfield = formfields.IntegerField
 
@@ -614,6 +625,7 @@ class AutoProperty(IntegerProperty):
 @borrows_methods(fields.DateField, ('to_python',))
 class DateProperty(Property):
 
+    _internal_type_ = 'DateProperty'
     default_error_messages = {
         'invalid': _('Enter a valid date in YYYY-MM-DD format.'),
         'invalid_date': _('Invalid date: %s'),
@@ -654,6 +666,7 @@ class DateProperty(Property):
 
 @borrows_methods(fields.DateTimeField, ('to_python',))
 class DateTimeProperty(DateProperty):
+    _internal_type_ = 'DateTimeProperty'
     default_error_messages = fields.DateTimeField.default_error_messages
 
     MAX = datetime.datetime.max
@@ -690,6 +703,7 @@ class DateTimeProperty(DateProperty):
 
 class ArrayProperty(Property):
     __metaclass__ = ABCMeta
+    _internal_type_ = 'ArrayProperty'
 
     formfield = fields.CharField
 
@@ -757,9 +771,11 @@ class ArrayProperty(Property):
 
 class StringArrayProperty(ArrayProperty):
     default_validators = [validate_str_array]
+    _internal_type_ = 'StringArrayProperty'
 
 
 class URLArrayProperty(StringArrayProperty):
+    _internal_type_ = 'URLArrayProperty'
     def __init__(self, *args, **kwargs):
         per_key = 'per_element_validators'
         per_val = validators.URLValidator()
@@ -771,12 +787,14 @@ class URLArrayProperty(StringArrayProperty):
 
 
 class IntArrayProperty(ArrayProperty):
+    _internal_type_ = 'IntArrayProperty'
     default_validators = [validate_int_array]
 
     member_to_neo_index = IntegerProperty.to_neo_index.im_func
 
 
 class BooleanProperty(Property):
+    _internal_type_ = 'BooleanProperty'
     formfield = formfields.BooleanField
 
     def to_neo(self, value):
