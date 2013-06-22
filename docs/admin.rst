@@ -24,6 +24,16 @@ In your `urls.py`, instead of importing :mod:`django.contrib.admin`, import
         (r'^admin/', include(admin.site.urls)),
     )
 
+And in your app's `admin.py`, do the same::
+
+    from neo4django import admin
+    from my_app.models import MyModel
+    
+    class MyModelAdmin(admin.ModelAdmin):
+        ...
+    
+    admin.site.register(MyModel, MyModelAdmin)
+
 Since we don't use `syncdb`, you probably won't have created a neo4django
 superuser. Run `manage.py shell` and create a superuser with::
 
