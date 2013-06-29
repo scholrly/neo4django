@@ -215,6 +215,7 @@ def condition_tree_from_q(nodetype, q, predicate=lambda x:True):
     children = [condition_tree_from_q(nodetype, child, predicate=predicate)
                 for child in new_q.children]
     new_q.children = filter(predicate, children)
+    new_q.children_filtered = len(new_q.children) != len(q.children)
     return new_q
 
 
@@ -262,10 +263,12 @@ def lucene_query_and_index_from_q(using, nodetype, q):
 
     def predicate(cond):
         if isinstance(cond, Q):
-            # exclude OR'd fields as they can't be pulled from an index.
-            if cond.connector == 'OR':
-                return False
-            return True
+            # exclude OR'd fields that aren't *all* indexed, as they can't
+            # use an index to help. we use the "children_filtered" bool set by
+            # condition_tree_from_q
+            from nose.tools import set_trace; set_trace()
+            return not(cond.connector == 'OR' and
+                       getattr(cond, 'children_filtered', False))
         # make sure the field is indexed, isn't a rel-spanning field,
         # and isn't an id field
         if len(cond.path) < 1 and cond.field.indexed \
@@ -279,10 +282,7 @@ def lucene_query_and_index_from_q(using, nodetype, q):
             return True
 
     cond_q = condition_tree_from_q(nodetype, q, predicate=predicate)
-    # exclude OR'd fields as they can't be pulled from an index.
-    if cond_q.connector == 'OR':
-        cond_q.children = []
-    if len(prop_indexes) == 0:
+    if len(prop_indexes) == 0 or not predicate(cond_q):
         return None
     index = next(iter(prop_indexes))
     return (index.name, lucene_query_from_condition_tree(cond_q))
@@ -908,7 +908,7 @@ class Query(object):
 
         index_qs = [(key, unicode(val)) for key, val in index_qs_dict.iteritems()
                     if val is not None]
-
+        
         # use index lookups, ids, OR a type tree traversal as a cypher START,
         # then unindexed conditions as a WHERE
 
