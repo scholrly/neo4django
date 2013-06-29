@@ -266,7 +266,6 @@ def lucene_query_and_index_from_q(using, nodetype, q):
             # exclude OR'd fields that aren't *all* indexed, as they can't
             # use an index to help. we use the "children_filtered" bool set by
             # condition_tree_from_q
-            from nose.tools import set_trace; set_trace()
             return not(cond.connector == 'OR' and
                        getattr(cond, 'children_filtered', False))
         # make sure the field is indexed, isn't a rel-spanning field,
