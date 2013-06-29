@@ -202,7 +202,7 @@ def lucene_query_from_condition(condition):
     return lq
 
 
-def condition_tree_from_q(nodetype, q, predicate=lambda c: True):
+def condition_tree_from_q(nodetype, q, predicate=lambda x:True):
     """
     Returns a new Q tree with kwargs pairs replaced by conditions. Any
     conditions that don't meet an optional predicate will be removed.
@@ -212,7 +212,7 @@ def condition_tree_from_q(nodetype, q, predicate=lambda c: True):
             return q
         return condition_from_kw(nodetype, q)
     new_q = clone_q(q)
-    children = [condition_tree_from_q(nodetype, child)
+    children = [condition_tree_from_q(nodetype, child, predicate=predicate)
                 for child in new_q.children]
     new_q.children = filter(predicate, children)
     return new_q
@@ -254,14 +254,17 @@ def lucene_query_and_index_from_q(using, nodetype, q):
     Return an index name / Lucene query pair based on a given database, node
     type, and Q filter tree- which can have a mix of kwargs or Condition leaves.
     """
-    # crawl the Q tree and prune all non-indexed fields. cry about conflicting
-    # indices
+    # crawl the Q tree and prune all non-indexed fields. collect all indexed
+    # non-rel-spanning fields, but drop any that have been OR'd against
 
     # XXX hack to get around lack of real closure support
     prop_indexes = set([])
 
     def predicate(cond):
         if isinstance(cond, Q):
+            # exclude OR'd fields as they can't be pulled from an index.
+            if cond.connector == 'OR':
+                return False
             return True
         # make sure the field is indexed, isn't a rel-spanning field,
         # and isn't an id field
@@ -274,7 +277,11 @@ def lucene_query_and_index_from_q(using, nodetype, q):
                                                  "to two indexed properties "
                                                  "that don't share an index.")
             return True
+
     cond_q = condition_tree_from_q(nodetype, q, predicate=predicate)
+    # exclude OR'd fields as they can't be pulled from an index.
+    if cond_q.connector == 'OR':
+        cond_q.children = []
     if len(prop_indexes) == 0:
         return None
     index = next(iter(prop_indexes))
@@ -888,7 +895,7 @@ class Query(object):
 
         index_qs = not_none(lucene_query_and_index_from_q(using, self.nodetype, q)
                             for q in filters)
-
+        
         # combine any queries headed for the same index and replace lucene
         # queries with strings
 
