@@ -1,4 +1,4 @@
-from nose.tools import with_setup, eq_
+from nose.tools import with_setup, eq_, raises
 
 from django.core import exceptions
 from django.db.models import Q
@@ -888,3 +888,12 @@ def test_inherited_indexed_filter():
     eq_(SpecializedPerson.objects.filter(name='Pete')\
                          .get(position__contains='Manager'),
         pete)
+
+@with_setup(None, teardown)
+@raises(Exception)
+def test_create_with_id():
+    """
+    Confirm 'create()' errors out when given an id. Confirms #201.
+    """
+    pete = Person.objects.create()
+    bad_obj = Person.objects.create(id=pete.id)
