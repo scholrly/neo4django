@@ -1,5 +1,5 @@
 from nose.tools import eq_, with_setup, raises
-from django.core.exceptions import FieldError
+from django.core.exceptions import FieldError, ObjectDoesNotExist
 
 def setup():
     global Person, neo4django, settings, gdb, models
@@ -364,6 +364,38 @@ def test_relationship_filter():
     eq_(len(choices.filter(votes__gte=3, choice='Matt')), 0)
     eq_(len(choices.filter(votes__gte=3).filter(choice='Matt')), 0)
     eq_(len(p.choices.filter(votes__gte=3).filter(choice='Matt')), 0)
+
+@with_setup(None, teardown)
+@raises(ObjectDoesNotExist)
+def test_relationship_get_by_id():
+    """
+    Confirm `get(id=<related_id>)` returns the proper related object, and that
+    `get(id=<unrelated_id>)` raises an ObjectDoesNotExist exception.
+
+    Attempting (unsucessfully) to replicate #202.
+    """
+    class PollG(models.NodeModel):
+        question = models.StringProperty()
+
+    class ChoiceG(models.NodeModel):
+        poll = models.Relationship(PollG,
+                                    rel_type=neo4django.Incoming.OWNS,
+                                    single=True,
+                                    related_name='choices')
+        choice = models.StringProperty()
+        votes = models.IntegerProperty()
+
+    p = PollG(question="Who's the best?")
+    names = ['Matt', 'Corbin', 'Bob', 'Billy', 'Chris', 'Gus Chiggens']
+    choices = [ChoiceG(poll=p, choice=name, votes=n) for n, name in enumerate(names)]
+    for c in choices:
+        c.save()
+    p.save()
+
+    eq_(p.choices.get(id=choices[1].id), choices[1])
+
+    another_choice = ChoiceG.objects.create(choice='Unrelated Choice')
+    p.choices.get(id=another_choice.id)
 
 @with_setup(None, teardown)
 def test_relationship_create():

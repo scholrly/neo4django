@@ -181,7 +181,8 @@ tests=[
 	'test_buffer_iterator',
     'test_order_by_and_count',
     'test_pk_shortcut',
-    'test_create_with_id']
+    'test_create_with_id',
+    'test_relationship_get_by_id']
 should_fail=[
 	'test_dates',
 	'test_relationship_model',
