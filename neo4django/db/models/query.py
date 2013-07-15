@@ -1250,6 +1250,8 @@ class NodeQuerySet(QuerySet):
     #TODO leaving this todo for later transaction work
     @transactional
     def create(self, **kwargs):
+        if 'id' in kwargs or 'pk' in kwargs:
+            raise ValueError("Neo4j doesn't allow node ids to be assigned.")
         return super(NodeQuerySet, self).create(**kwargs)
 
     #TODO would be awesome if this were transactional

@@ -180,7 +180,8 @@ tests=[
 	'test_apply_to_buffer_raises_stop_iteration',
 	'test_buffer_iterator',
     'test_order_by_and_count',
-    'test_pk_shortcut']
+    'test_pk_shortcut',
+    'test_create_with_id']
 should_fail=[
 	'test_dates',
 	'test_relationship_model',
