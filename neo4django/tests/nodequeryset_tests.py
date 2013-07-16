@@ -897,3 +897,18 @@ def test_create_with_id():
     """
     pete = Person.objects.create()
     bad_obj = Person.objects.create(id=pete.id)
+
+@with_setup(setup_people, teardown)
+def test_update():
+    """
+    Confirm basic use of `update()`.
+    """
+    # update an indexed field
+    teens = set(Person.objects.filter(age=15))
+    Person.objects.filter(age=15).update(age=20)
+    twenties = set(Person.objects.filter(age=20))
+    eq_(teens, twenties)
+
+    # and an unindexed field
+    Person.objects.filter(age=20).update(name='Twenty')
+    eq_(twenties, set(Person.objects.filter(age=20)))

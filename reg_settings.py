@@ -182,7 +182,8 @@ tests=[
     'test_order_by_and_count',
     'test_pk_shortcut',
     'test_create_with_id',
-    'test_relationship_get_by_id']
+    'test_relationship_get_by_id',
+    'test_update',]
 should_fail=[
 	'test_dates',
 	'test_relationship_model',
@@ -194,4 +195,5 @@ should_fail=[
 	'test_relationship_models',
 	'test_typenode_transactionality',
 	'test_autoproperty_transactionality',
+    'test_update',
 ]
