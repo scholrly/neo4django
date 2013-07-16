@@ -1,6 +1,6 @@
 from django.db.models import Q
 from django.db.models.query import QuerySet
-from django.db.models import sql
+from django.db.models.sql import subqueries
 from django.core import exceptions
 from django.db.models.loading import get_model
 from django.utils.datastructures import SortedDict
@@ -24,7 +24,7 @@ from ...decorators import (transactional,
                            borrows_methods)
 
 from .cypher import (Clauses, Start, NodeComponent, RelationshipComponent, Path,
-                     Match, With, Return, ColumnExpression, OrderByTerm,
+                     Match, With, Set, Return, ColumnExpression, OrderByTerm,
                      OrderBy, DeleteNode, cypher_primitive)
 
 from . import script_utils
@@ -739,10 +739,10 @@ def execute_select_related(models=None, query=None, index_name=None,
 # everything. these methods are pulled off django.db.models.sql.query.Query
 QUERY_PASSTHROUGH_METHODS = ('set_limits', 'clear_limits', 'can_filter',
                              'add_ordering', 'clear_ordering',
-                             'add_distinct_fields')
+                             'add_distinct_fields', 'add_update_values',
+                             'add_update_fields')
 
-
-@borrows_methods(sql.Query, QUERY_PASSTHROUGH_METHODS)
+@borrows_methods(subqueries.UpdateQuery, QUERY_PASSTHROUGH_METHODS)
 class Query(object):
     aggregates_module = aggregates
     query_terms = set([
@@ -751,10 +751,10 @@ class Query(object):
         'month', 'day', 'week_day', 'isnull', 'search', 'regex', 'iregex',
         ])
 
-    def __init__(self, nodetype, filters=None, max_depth=None,
+    def __init__(self, model, filters=None, max_depth=None,
                  select_related_fields=[]):
         self.filters = filters or []
-        self.nodetype = nodetype
+        self.model = model
         self.max_depth = max_depth
         self.select_related_fields = list(select_related_fields)
         self.select_related = bool(select_related_fields) or max_depth
@@ -784,8 +784,12 @@ class Query(object):
         self.clear_limits()
         self.clear_ordering()
 
+        # for updates
+        self.values = []
+        self.related_updates = {}
+
     def add_q(self, q):
-        cond_q = condition_tree_from_q(self.nodetype, q)
+        cond_q = condition_tree_from_q(self.model, q)
         self.filters.append(cond_q)
         return self
 
@@ -806,6 +810,10 @@ class Query(object):
 
         aggregate.add_to_query(self, alias, col=field_alias, source=source,
                                is_summary=is_summary)
+
+    def add_related_update(self, model, field, value):
+        raise FieldError('Cannot update model field %s - only non-relations are'
+                         ' permitted.' % field)
 
     def add_with(self, field_dict, **kwargs):
         self.with_clauses.append(With(field_dict, **kwargs))
@@ -832,16 +840,16 @@ class Query(object):
         self.limit_before_return = i
 
     def model_from_node(self, node):
-        return self.nodetype._neo4j_instance(node)
+        return self.model._neo4j_instance(node)
 
     def clone(self):
-        clone = type(self)(self.nodetype, self.filters, self.max_depth,
+        clone = type(self)(self.model, self.filters, self.max_depth,
                            self.select_related_fields)
         clone_attrs = ('order_by', 'return_fields', 'aggregates', 'distinct',
                        'distinct_fields', 'high_mark', 'low_mark',
                        'start_clause', 'start_clause_param_func',
                        'with_clauses', 'end_clause', 'standard_ordering',
-                       'limit_before_return')
+                       'limit_before_return', 'values', 'related_updates')
         for a in clone_attrs:
             setattr(clone, a, getattr(self, a))
         return clone
@@ -892,7 +900,7 @@ class Query(object):
 
         # build index queries from filters
 
-        index_qs = not_none(lucene_query_and_index_from_q(using, self.nodetype, q)
+        index_qs = not_none(lucene_query_and_index_from_q(using, self.model, q)
                             for q in filters)
         
         # combine any queries headed for the same index and replace lucene
@@ -915,7 +923,7 @@ class Query(object):
 
         # add the typeNodeId param, either for type verification or initial
         # type tree traversal
-        cypher_params['typeNodeId'] = self.nodetype._type_node(using).id
+        cypher_params['typeNodeId'] = self.model._type_node(using).id
 
         type_restriction_expr = """
         n<-[:`<<INSTANCE>>`]-()<-[:`<<TYPE>>`*0..]-typeNode
@@ -941,14 +949,19 @@ class Query(object):
             else:
                 spanning_filters.append(q)
 
-        where_clause = cypher_where_from_q(self.nodetype,
+        where_clause = cypher_where_from_q(self.model,
                                            Q(*non_spanning_filters))
 
         with_clauses = self.with_clauses or []
 
         limit = self.high_mark - self.low_mark if self.high_mark is not None else None
 
-        if self.end_clause is None:
+        if self.end_clause is None and len(self.values) > 0:
+            # for updating queries
+            return_clause = Clauses([Set(dict((tup[0].name, tup[2])
+                                              for tup in self.values)),
+                                     Return(self.return_fields)])
+        elif self.end_clause is None:
             return_clause = Return(self.return_fields, skip=self.low_mark,
                     limit=limit, distinct_fields=['n'] if self.distinct else [])
         else:
@@ -1080,13 +1093,33 @@ class Query(object):
             start_clause.cypher_params += ['typeNodeId']
         start_clause = Clauses([start_clause] + extra_start_clauses)
 
+        # add groovy to re-index after an update
+        if len(self.values) > 0:
+            reindex_values = [((model or self.model).index_name(),
+                               field.name,
+                               field.to_neo_index(value))
+                              for field, model, value in self.values if field.indexed]
+            if len(reindex_values) > 0:
+                groovy_script += """
+                def nodeToIndex, rawIndex, index
+                while( results.hasNext() ) {
+                    nodeToIndex = results.next()
+                    valuesToIndexPerNode.each{ indexName, field, value ->
+                        (index, rawIndex) = Neo4Django.getOrCreateIndex(indexName)
+                        rawIndex.add(nodeToIndex, field, value)
+                    }
+                }
+                """
+                params['valuesToIndexPerNode'] = reindex_values
+
+
         # take care of any relationship-spanning lookups
         if len(spanning_filters) > 0:
             combined_filter = reduce(and_, spanning_filters)
             # build match clause
-            match = cypher_match_from_q(self.nodetype, combined_filter)
+            match = cypher_match_from_q(self.model, combined_filter)
             # build where clause
-            where = cypher_where_from_q(self.nodetype, combined_filter)
+            where = cypher_where_from_q(self.model, combined_filter)
             # TODO DRY VIOLATION this prior_clause / WITH clause pattern is showing up a alot
             prior_clause = ([start_clause] + with_clauses)[-1]
             passing_ids = getattr(
@@ -1096,7 +1129,7 @@ class Query(object):
 
         # if the type restriction hasn't been removed and this isn't an
         # abstract model (which can't be type restricted as easily)
-        if type_restriction_pattern and not getattr(self.nodetype._meta,
+        if type_restriction_pattern and not getattr(self.model._meta,
                                                     'abstract', False):
             # TODO DRY violation
             prior_complex_clause = ([start_clause] + with_clauses)[-1]
@@ -1153,10 +1186,18 @@ class Query(object):
         for m in clone.execute(using):
             pass
 
+    def update(self, using, updates):
+        if 'id' in updates or 'pk' in updates:
+            raise FieldError("Neo4j doesn't allow node ids to be updated.")
+        clone = self.clone()
+        clone.add_update_values(updates)
+        for m in clone.execute(using):
+            pass
+
     def get_count(self, using):
         from django.db.models import Count
         obj = self.clone()
-        obj.add_aggregate(Count('*'), self.nodetype, 'count', True)
+        obj.add_aggregate(Count('*'), self.model, 'count', True)
         aggregation = obj.get_aggregation(using)
         return aggregation.get('count', None)
 
@@ -1251,7 +1292,7 @@ class NodeQuerySet(QuerySet):
     @transactional
     def create(self, **kwargs):
         if 'id' in kwargs or 'pk' in kwargs:
-            raise ValueError("Neo4j doesn't allow node ids to be assigned.")
+            raise FieldError("Neo4j doesn't allow node ids to be assigned.")
         return super(NodeQuerySet, self).create(**kwargs)
 
     #TODO would be awesome if this were transactional
@@ -1275,10 +1316,9 @@ class NodeQuerySet(QuerySet):
     def delete(self):
         self.query.delete(self.db)
 
-    @not_implemented
     @alters_data
     def update(self, **kwargs):
-        pass
+        self.query.update(self.db, kwargs)
 
     ##################################################
     # PUBLIC METHODS THAT RETURN A QUERYSET SUBCLASS #

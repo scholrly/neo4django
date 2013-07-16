@@ -41,6 +41,7 @@ class Cypher(object):
         """
         return []
 
+
 class NodeComponent(Cypher):
     cypher_template = '%(id)s'
     def __init__(self, identifier=None):
@@ -283,6 +284,7 @@ class OrderByTerm(Cypher):
     def required_identifiers(self):
         return getattr(self.expression, 'required_identifiers', [])
 
+
 class OrderBy(Cypher):
     cypher_template = 'ORDER BY %(fields)s'
 
@@ -368,4 +370,21 @@ class DeleteNode(Delete):
         return params
 
 
+class Set(Clause):
+    cypher_template = 'SET %(fields)s'
 
+    def __init__(self, fields_and_values):
+        self.fields_and_values = fields_and_values
+
+    def get_params(self):
+        assignments = ('n.%s=%s' % (cypher_escape_identifier(field),
+                                  cypher_primitive(value))
+                       for field, value in self.fields_and_values.iteritems())
+        params = {
+            'fields':','.join(assignments),
+        }
+        return params
+
+    # TODO
+    #@property
+    #def required_identifiers(self)

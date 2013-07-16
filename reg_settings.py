@@ -179,11 +179,11 @@ tests=[
 	'test_apply_to_buffer',
 	'test_apply_to_buffer_raises_stop_iteration',
 	'test_buffer_iterator',
-    'test_order_by_and_count',
-    'test_pk_shortcut',
-    'test_create_with_id',
-    'test_relationship_get_by_id',
-    'test_update',]
+	'test_order_by_and_count',
+	'test_pk_shortcut',
+	'test_create_with_id',
+	'test_relationship_get_by_id',
+	'test_update']
 should_fail=[
 	'test_dates',
 	'test_relationship_model',
@@ -194,6 +194,4 @@ should_fail=[
 	'test_array_use_strings',
 	'test_relationship_models',
 	'test_typenode_transactionality',
-	'test_autoproperty_transactionality',
-    'test_update',
-]
+	'test_autoproperty_transactionality']
