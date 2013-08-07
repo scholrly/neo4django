@@ -353,7 +353,7 @@ def cypher_predicate_from_condition(element_name, condition):
         if isinstance(field._property, StringProperty):
             #TODO this is a poor man's excuse for Java regex escaping. we need
             # a better solution
-            regex = ('.*%s.*' % re.escape(value))
+            regex = ('.*%s.*' % re.sub('"\'`;:{}\(\)\|', '', value) )
             cypher = '%s =~ %s' % (element_name, cypher_primitive(regex))
         else:
             raise exceptions.ValidationError('The contains operator is only'
