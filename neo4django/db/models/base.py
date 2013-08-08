@@ -152,7 +152,7 @@ class NodeModel(NeoModel):
         for name in connections:
             connection_url = connections[name].url
             # Remove the authentication part
-            connection_url = re.sub("htTp(s?)\:\/\/\w+:\w+\@", "", connection_url, flags=re.I)
+            connection_url = re.sub("http(s?)\:\/\/\w+:\w+\@", "", connection_url, flags=re.I)
 
             if connection_url in neo_node.url:
                 names.append(name)
