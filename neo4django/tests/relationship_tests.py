@@ -377,21 +377,21 @@ def test_relationship_filter_many_to_many():
                                     rel_type='FRIEND',
                                     related_name='friendsFrom')
         
-        myfriends=['bill','bruce','tom','robert']
-        # Create guys and variables too
-        for who in myfriends:
-            vars()[who] = MyGuy(who)
-            vars()[who].save()
-        print "making tom friend hank and bill"
-        tom.friends.add(bruce)
-        tom.friends.add(bill)
-        tom.save()
-        eq_(len(tom.friends.filter()),2)
-        eq_(len(tom.friends.filter(name="bruce")),1)
-        eq_(len(tom.friends.filter(name__startswith="b")),2) # bill & bruce
-        eq_(len(tom.friends.filter(name__istartswith="B")),2)
-        eq_(len(tom.friends.filter(name__contains="b")),3) # bill, bruce and robert
-        eq_(len(tom.friends.filter(name__icontains="B")),3)
+    myfriends=['bill','bruce','tom','robert']
+    # Create guys and variables too
+    for who in myfriends:
+        vars()[who] = MyGuy(who)
+        vars()[who].save()
+    print "making tom friend hank and bill"
+    tom.friends.add(bruce)
+    tom.friends.add(bill)
+    tom.save()
+    eq_(len(tom.friends.filter()),2)
+    eq_(len(tom.friends.filter(name="bruce")),1)
+    eq_(len(tom.friends.filter(name__startswith="b")),2) # bill & bruce
+    eq_(len(tom.friends.filter(name__istartswith="B")),2)
+    eq_(len(tom.friends.filter(name__contains="b")),3) # bill, bruce and robert
+    eq_(len(tom.friends.filter(name__icontains="B")),3)
     
 @with_setup(None, teardown)
 @raises(ObjectDoesNotExist)
