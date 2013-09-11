@@ -382,7 +382,7 @@ def test_relationship_filter_many_to_many():
     for who in myfriends:
         vars()[who] = MyGuy(who)
         vars()[who].save()
-    print "making tom friend hank and bill"
+    print "making tom's friends: bruce and bill"
     tom.friends.add(bruce)
     tom.friends.add(bill)
     tom.save()
