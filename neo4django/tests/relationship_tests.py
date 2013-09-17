@@ -372,26 +372,26 @@ def test_relationship_filter_many_to_many():
     Confirm filter works in a many to many relationship with string search
     """
     class MyGuy(models.NodeModel):
-        name = models.StringProperty()
+        name = models.StringProperty(indexed=True)
         friends = models.Relationship('MyGuy',
                                     rel_type='FRIEND',
                                     related_name='friendsFrom')
         
-    myfriends=['bill','bruce','tom','robert']
-    # Create guys and variables too
-    for who in myfriends:
-        vars()[who] = MyGuy(who)
-        vars()[who].save()
-    print "making tom's friends: bruce and bill"
+    tom = MyGuy.objects.create(name='tom')
+    bill = MyGuy.objects.create(name='bill')
+    bruce = MyGuy.objects.create(name='bruce')
+    robert = MyGuy.objects.create(name='robert')
+
     tom.friends.add(bruce)
     tom.friends.add(bill)
+    tom.friends.add(robert)
     tom.save()
-    eq_(len(tom.friends.filter()),2)
-    eq_(len(tom.friends.filter(name="bruce")),1)
-    eq_(len(tom.friends.filter(name__startswith="b")),2) # bill & bruce
-    eq_(len(tom.friends.filter(name__istartswith="B")),2)
-    eq_(len(tom.friends.filter(name__contains="b")),3) # bill, bruce and robert
-    eq_(len(tom.friends.filter(name__icontains="B")),3)
+    eq_(len(tom.friends.filter()), 3) # Not a typo, wanted to check filter with no args
+    eq_(len(tom.friends.filter(name="bruce")), 1)
+    eq_(len(tom.friends.filter(name__startswith="b")), 2) # bill & bruce
+    eq_(len(tom.friends.filter(name__istartswith="B")), 2)
+    eq_(len(tom.friends.filter(name__contains="b")), 3) # bill, bruce and robert
+    eq_(len(tom.friends.filter(name__icontains="B")), 3)
     
 @with_setup(None, teardown)
 @raises(ObjectDoesNotExist)
