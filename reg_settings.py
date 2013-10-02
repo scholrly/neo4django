@@ -183,7 +183,8 @@ tests=[
 	'test_pk_shortcut',
 	'test_create_with_id',
 	'test_relationship_get_by_id',
-	'test_update']
+	'test_update',
+	'test_relationship_filter_many_to_many']
 should_fail=[
 	'test_dates',
 	'test_relationship_model',
@@ -194,4 +195,5 @@ should_fail=[
 	'test_array_use_strings',
 	'test_relationship_models',
 	'test_typenode_transactionality',
-	'test_autoproperty_transactionality']
+	'test_autoproperty_transactionality',
+	'test_relationship_filter_many_to_many']
