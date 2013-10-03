@@ -8,7 +8,7 @@ setup(
     description='A Django/Neo4j ORM layer.',
     license = 'GPL',
     url = "https://neo4django.readthedocs.org/en/latest/",
-    packages=['neo4django','neo4django.auth','neo4django.db',
+    packages=['neo4django','neo4django.graph_auth','neo4django.db',
               'neo4django.db.models','neo4django.tests', 'neo4django.gremlin',
               'neo4django.admin', 'neo4django.admin.templatetags', 
               'neo4django.contenttypes'],

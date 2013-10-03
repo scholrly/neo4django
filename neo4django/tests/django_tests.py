@@ -43,7 +43,7 @@ def test_syncdb():
 
 @with_setup(None, teardown)
 def test_auth():
-    from neo4django.auth.models import User
+    from neo4django.graph_auth.models import User
     user = User.objects.create_user('john', 'lennon@thebeatles.com', 'johnpassword')
 
     from django.contrib.auth import authenticate
@@ -51,10 +51,10 @@ def test_auth():
 
 @with_setup(None, teardown)
 def test_auth_backend():
-    from neo4django.auth.models import User
+    from neo4django.graph_auth.models import User
     user = User.objects.create_user('paul', 'mccartney@thebeatles.com', 'paulpassword')
 
-    from neo4django.auth.backends import NodeModelBackend
+    from neo4django.graph_auth.backends import NodeModelBackend
     backend = NodeModelBackend()
     eq_(backend.authenticate(username='paul', password='paulpassword'), user)
     eq_(backend.get_user(user.id), user)

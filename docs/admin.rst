@@ -37,7 +37,7 @@ And in your app's `admin.py`, do the same::
 Since we don't use `syncdb`, you probably won't have created a neo4django
 superuser. Run `manage.py shell` and create a superuser with::
 
-    from neo4django.auth.models import User
+    from neo4django.graph_auth.models import User
     User.objects.create_superuser('matt', 'matt@emailprovider.com', 'password')
   
 Run `manage.py runserver`, and visit http://localhost:8000/admin. Voila. Sign
