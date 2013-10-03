@@ -11,11 +11,13 @@ template context processor are installed. Also make sure you have a proper
 ``SESSION_ENGINE`` set. :mod:`django.contrib.sessions.backends.file` will
 work fine for development.
 
-Next, add :mod:`neo4django.auth` to your ``INSTALLED_APPS``, and add::
+Next, add :mod:`neo4django.graph_auth` to your ``INSTALLED_APPS``, and add::
 
-    AUTHENTICATION_BACKENDS = ('neo4django.auth.backends.NodeModelBackend',)
+    AUTHENTICATION_BACKENDS = ('neo4django.graph_auth.backends.NodeModelBackend',)
 
-in your settings.py.
+in your settings.py. If you're running Django 1.5+, set the ``AUTH_USER_MODEL``::
+
+    AUTH_USER_MODEL = 'graph_auth.User'
 
 To create a new user, use something like::
     
@@ -23,7 +25,7 @@ To create a new user, use something like::
 
 Login, reset password, and other included auth views should work as expected.
 In your views, :attr:`~Request.user` will contain an instance of 
-:class:`neo4django.auth.models.User` for authenticated users.
+:class:`neo4django.graph_auth.models.User` for authenticated users.
 
 Referencing Users
 =================
@@ -33,7 +35,7 @@ Other models are free to reference users. Consider::
     from django.contrib.auth import authenticate
 
     from neo4django.db import models
-    from neo4django.auth.models import User
+    from neo4django.graph_auth.models import User
 
     class Post(models.NodeModel):
         title = models.StringProperty()
@@ -53,11 +55,11 @@ Other models are free to reference users. Consider::
 Customizing Users
 =================
 
-Swappable user models are in the works, but until then users can be customized
-by subclassing::
+Swappable user models are supported for Django 1.5+. You can subclass the
+included `NodeModel` user::
 
     from neo4django.db import models
-    from neo4django.auth.models import User
+    from neo4django.graph_auth.models import User
 
     class TwitterUser(User):
         follows = models.Relationship('self', rel_type='follows',
@@ -76,10 +78,15 @@ by subclassing::
     jim.follows.add(jack)
     jim.save()
 
-The caveats are, first, that :class:`~User` manager shortcuts, like
-:func:`~create_user`, aren't available, and that :func:`~authenticate` and other
-included functions to work with users will return the wrong model type. This is
-fairly straightforward to handle, though, using the included convenience method
+And in your settings.py, add::
+
+    AUTH_USER_MODEL = 'my_model.TwitterUser'
+
+If you're still using 1.4, you can use the subclassing approach, with caveats.
+First, that :class:`~User` manager shortcuts, like :func:`~create_user`, aren't
+available, and that :func:`~authenticate` and other included functions to work
+with users will return the wrong model type. This is fairly straightforward to
+handle, though, using the included convenience method 
 :meth:`~neo4django.db.models.NodeModel.from_model`::
 
     from django.contrib.auth import authenticate

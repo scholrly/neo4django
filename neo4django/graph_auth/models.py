@@ -1,10 +1,11 @@
-from django.contrib.auth import models as django_auth_models
 from django.utils import timezone
+from django.conf import settings
+
+from django.contrib.auth import models as django_auth_models
 
 from ..db import models
 from ..db.models.manager import NodeModelManager
 from ..decorators import borrows_methods
-
 
 class UserManager(NodeModelManager, django_auth_models.UserManager):
     pass
@@ -19,9 +20,10 @@ USER_PASSTHROUGH_METHODS = (
     "get_group_permissions", "get_all_permissions", "has_perm", "has_perms",
     "has_module_perms", "email_user", 'get_profile')
 
-
 @borrows_methods(django_auth_models.User, USER_PASSTHROUGH_METHODS)
 class User(models.NodeModel):
+    objects = UserManager()
+
     username = models.StringProperty(indexed=True, unique=True)
     first_name = models.StringProperty()
     last_name = models.StringProperty()
@@ -36,7 +38,6 @@ class User(models.NodeModel):
     last_login = models.DateTimeProperty(default=timezone.now())
     date_joined = models.DateTimeProperty(default=timezone.now())
 
-    objects = UserManager()
+    USERNAME_FIELD = 'username'
+    REQUIRED_FIELDS=['email']
 
-    class Meta:
-        app_label = 'neo_auth'
