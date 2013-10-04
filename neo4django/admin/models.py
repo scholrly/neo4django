@@ -4,7 +4,7 @@ from django.utils.encoding import smart_text
 
 from ..db import models
 from ..db.models.manager import NodeModelManager
-from ..auth.models import User
+from ..graph_auth.models import User
 from ..decorators import borrows_methods
 from ..contenttypes.models import ContentType
 
