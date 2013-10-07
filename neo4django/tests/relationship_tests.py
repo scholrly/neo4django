@@ -368,14 +368,13 @@ def test_relationship_filter():
 @with_setup(None, teardown)
 def test_relationship_filter_many_to_many():
     """
-    Deeper filter on relationship tests.
-    Confirm filter works in a many to many relationship with string search
+    Confirm filter works in a many to many relationship with string search.
     """
     class MyGuy(models.NodeModel):
         name = models.StringProperty(indexed=True)
         friends = models.Relationship('MyGuy',
-                                    rel_type='FRIEND',
-                                    related_name='friendsFrom')
+                                      rel_type='FRIEND',
+                                      related_name='friendsFrom')
         
     tom = MyGuy.objects.create(name='tom')
     bill = MyGuy.objects.create(name='bill')
@@ -386,7 +385,9 @@ def test_relationship_filter_many_to_many():
     tom.friends.add(bill)
     tom.friends.add(robert)
     tom.save()
-    eq_(len(tom.friends.filter()), 3) # Not a typo, wanted to check filter with no args
+    eq_(len(tom.friends.all()), 3)
+    # Not a typo, wanted to check filter with no args
+    eq_(len(tom.friends.filter()), 3) 
     eq_(len(tom.friends.filter(name="bruce")), 1)
     eq_(len(tom.friends.filter(name__startswith="b")), 2) # bill & bruce
     eq_(len(tom.friends.filter(name__istartswith="B")), 2)

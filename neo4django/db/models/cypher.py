@@ -20,7 +20,20 @@ def cypher_escape_identifier(i):
     return u'`%s`' % i
 
 
+####################
+# QUERY COMPONENTS #
+####################
+
 class Cypher(object):
+    """
+    A class representing a Cypher snippet. Subclasses should implement
+    get_params() and have an attribute, 'cypher_template', which will be used
+    as a %-style template with the dict returned from get_params().
+
+    Alternatively, subclasses can override as_cypher(), returning a unicode
+    query string, for more complicated situations.
+    """
+
     def as_cypher(self):
         return self.cypher_template % self.get_params()
 
@@ -37,13 +50,16 @@ class Cypher(object):
     @property
     def passing_identifiers(self):
         """
-        A list of identifiers yielded by thei Cypher snippet.
+        A list of identifiers yielded by this Cypher snippet.
         """
         return []
 
 
 class NodeComponent(Cypher):
+    """ A paren-delimited node identifier, for use in path expressions."""
+
     cypher_template = '%(id)s'
+
     def __init__(self, identifier=None):
         self.identifier = identifier
 
@@ -59,12 +75,13 @@ class NodeComponent(Cypher):
 
 
 class RelationshipComponent(Cypher):
+    """ A relationship component for use in path expressions."""
+
     cypher_template = '-[%(id)s%(optional)s%(types)s%(length_range)s]-'
     
     def __init__(self, identifier=None, types=[], optional=False,
                  length_or_range=1, direction='>'):
         """
-
         Arguments:
         identifier - the relationship identifier, if needed
         types - a list of string relationship types this component can match,
@@ -111,21 +128,33 @@ class RelationshipComponent(Cypher):
 
 
 class Path(Cypher):
+    """ A path expression, like those used in MATCH and WHERE clauses."""
+
     cypher_template = '%(path_assignment)s%(path_expr)s'
 
     # TODO there should be a way to specify which ids are already bound, and
     # which aren't so we can get a proper 'required_identifiers' list
-    def __init__(self, components, path_variable=None):
+    def __init__(self, components, path_variable=None,
+                 required_identifiers=tuple()):
         """
+        Arguments:
         components - a list of alternating node and relationship components
-        path_variable - a str path identifer. If included, the final Cypher
+
+        Keyword arguments:
+        path_variable - a string path identifer. If included, the final Cypher
         output will be a named path (eg, "p=(`n`)-[:`friends_with`]->(`m`)").
+        Note that path_variable shouldn't be included for paths meant to be used
+        is a WHERE clause.
+        required_identifiers - a list of identifiers this path requires to be
+        connected, if any (eg, `['n']` for a path the expects the column 'n'
+        to have been bound earlier in the query).
         """
         self.path_variable = path_variable
         if len(components) % 2 == 0:
             raise exceptions.ValidationError('Paths must have an odd number of '
                                              'components.')
         self.components = components
+        self._required_identifiers = required_identifiers
 
     def get_params(self):
         components = self.components[:]
@@ -147,6 +176,54 @@ class Path(Cypher):
                 list(itertools.chain.from_iterable(c.passing_identifiers
                                                    for c in self.components))))
 
+    @property
+    def required_identifiers(self):
+        return self._required_identifiers
+
+
+class ColumnExpression(Cypher):
+    """
+    A column expression to be used in WHERE comparisons or RETURN lists.
+    """
+
+    def __init__(self, column, prop=None, fail_on_missing=False):
+        self.column = column
+        self.prop = prop
+        self.fail_on_missing = fail_on_missing
+
+    def as_cypher(self):
+        expr =  u'.'.join(cypher_escape_identifier(i)
+                          for i in not_none((self.column, self.prop)))
+        return expr + ('!' if self.fail_on_missing else '?')
+
+    @property
+    def required_identifiers(self):
+        return not_none([self.column])
+
+
+class OrderByTerm(Cypher):
+    """ An expression used in an ORDER BY clause."""
+
+    cypher_template = '%(expr)s %(desc)s'
+
+    def __init__(self, expression, negate=False):
+        self.expression = expression
+        self.negate = negate
+
+    def get_params(self):
+        return {
+            'expr':unicode(self.expression),
+            'desc':'DESC' if self.negate else ''
+        }
+    
+    @property
+    def required_identifiers(self):
+        return getattr(self.expression, 'required_identifiers', [])
+
+
+###########
+# CLAUSES #
+###########
 
 class Clause(Cypher):
     @property
@@ -251,41 +328,7 @@ class With(Clause):
         return uniqify(self.field_dict.keys() + match_ids)
 
 
-class ColumnExpression(Cypher):
-    def __init__(self, column, prop=None, fail_on_missing=False):
-        self.column = column
-        self.prop = prop
-        self.fail_on_missing = fail_on_missing
-
-    def as_cypher(self):
-        expr =  u'.'.join(cypher_escape_identifier(i)
-                          for i in not_none((self.column, self.prop)))
-        return expr + ('!' if self.fail_on_missing else '?')
-
-    @property
-    def required_identifiers(self):
-        return not_none([self.column])
-
-
-class OrderByTerm(Cypher):
-    cypher_template = '%(expr)s %(desc)s'
-
-    def __init__(self, expression, negate=False):
-        self.expression = expression
-        self.negate = negate
-
-    def get_params(self):
-        return {
-            'expr':unicode(self.expression),
-            'desc':'DESC' if self.negate else ''
-        }
-    
-    @property
-    def required_identifiers(self):
-        return getattr(self.expression, 'required_identifiers', [])
-
-
-class OrderBy(Cypher):
+class OrderBy(Clause):
     cypher_template = 'ORDER BY %(fields)s'
 
     def __init__(self, terms):
@@ -300,7 +343,7 @@ class OrderBy(Cypher):
     def required_identifiers(self):
         return uniqify(itertools.chain.from_iterable(
             getattr(t, 'required_identifiers', []) for t in self.terms))
-    
+
 
 class Return(Clause):
     cypher_template = 'RETURN %(fields)s %(order_by)s %(skip)s %(limit)s'

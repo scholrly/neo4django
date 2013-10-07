@@ -1,7 +1,9 @@
 import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-AUTHENTICATION_BACKENDS = ('neo4django.auth.backends.NodeModelBackend',)
+AUTHENTICATION_BACKENDS = ('neo4django.graph_auth.backends.NodeModelBackend',)
+
+AUTH_USER_MODEL = 'graph_auth.User'
 
 NEO4J_DATABASES = {
     'default' : {
