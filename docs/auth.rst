@@ -80,7 +80,7 @@ included `NodeModel` user::
 
 And in your settings.py, add::
 
-    AUTH_USER_MODEL = 'my_model.TwitterUser'
+    AUTH_USER_MODEL = 'my_app.TwitterUser'
 
 If you're still using 1.4, you can use the subclassing approach, with caveats.
 First, that :class:`~User` manager shortcuts, like :func:`~create_user`, aren't
