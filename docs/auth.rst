@@ -56,12 +56,13 @@ Customizing Users
 =================
 
 Swappable user models are supported for Django 1.5+. You can subclass the
-included `NodeModel` user::
+included `NodeModel` user, remember to set also the default manager as follows::
 
     from neo4django.db import models
-    from neo4django.graph_auth.models import User
+    from neo4django.graph_auth.models import User, UserManager
 
-    class TwitterUser(User):
+    class TwitterUser(User):  
+        objects = UserManager()
         follows = models.Relationship('self', rel_type='follows',
                                       related_name='followed_by')
 
