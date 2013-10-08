@@ -18,7 +18,7 @@ USER_PASSTHROUGH_METHODS = (
     "is_anonymous", "is_authenticated", "get_full_name", "set_password",
     "check_password", "set_unusable_password", "has_usable_password",
     "get_group_permissions", "get_all_permissions", "has_perm", "has_perms",
-    "has_module_perms", "email_user", 'get_profile')
+    "has_module_perms", "email_user", 'get_profile','get_username')
 
 @borrows_methods(django_auth_models.User, USER_PASSTHROUGH_METHODS)
 class User(models.NodeModel):
