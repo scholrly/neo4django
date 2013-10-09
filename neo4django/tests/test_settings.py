@@ -48,7 +48,8 @@ DATABASE_ROUTERS = ['neo4django.utils.Neo4djangoIntegrationRouter']
 USE_TZ = True
 
 INSTALLED_APPS = (
-    'neo4django.tests',   
+    'neo4django.tests',
+    'neo4django.graph_auth', 
 )
 
 SECRET_KEY="shutupdjangowe'retryingtotesthere"
