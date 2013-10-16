@@ -329,7 +329,7 @@ class With(Clause):
 
 
 class OrderBy(Clause):
-    cypher_template = 'ORDER BY %(fields)s'
+    cypher_template = 'ORDER BY lower(%(fields)s)'
 
     def __init__(self, terms):
         self.terms = terms
