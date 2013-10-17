@@ -212,8 +212,8 @@ class OrderByTerm(Cypher):
 
     def get_params(self):
         return {
-            'expr': 'LOWER(%s)' % unicode(self.expression),
-            'desc': 'DESC' if self.negate else ''
+            'expr': unicode(self.expression),
+            'desc':'DESC' if self.negate else ''
         }
     
     @property
