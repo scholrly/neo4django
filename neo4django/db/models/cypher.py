@@ -212,7 +212,7 @@ class OrderByTerm(Cypher):
 
     def get_params(self):
         return {
-            'expr':unicode(self.expression),
+            'expr': unicode(self.expression),
             'desc':'DESC' if self.negate else ''
         }
     
@@ -329,7 +329,7 @@ class With(Clause):
 
 
 class OrderBy(Clause):
-    cypher_template = 'ORDER BY lower(%(fields)s)'
+    cypher_template = 'ORDER BY %(fields)s'
 
     def __init__(self, terms):
         self.terms = terms
