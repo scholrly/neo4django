@@ -13,7 +13,6 @@ class NodeModelBackend(object):
     supports_inactive_user = False
 
     def authenticate(self, username=None, password=None):
-        UserModel = get_user_model()
         try:
             user = UserModel.objects.get(username=username)
             if user is not None and user.check_password(password):
@@ -22,7 +21,6 @@ class NodeModelBackend(object):
             pass
 
     def get_user(self, user_id):
-        UserModel = get_user_model()
         try:
             return UserModel.objects.get(id=user_id)
         except UserModel.DoesNotExist:
