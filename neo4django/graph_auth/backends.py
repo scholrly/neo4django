@@ -1,5 +1,8 @@
-from django.contrib.auth import get_user_model
-
+try:
+    from django.contrib.auth import get_user_model
+    UserModel = get_user_model()
+except ImportError:
+    from .models import User as UserModel
 
 class NodeModelBackend(object):
     """

@@ -212,7 +212,7 @@ class OrderByTerm(Cypher):
 
     def get_params(self):
         return {
-            'expr':unicode(self.expression),
+            'expr': unicode(self.expression),
             'desc':'DESC' if self.negate else ''
         }
     
