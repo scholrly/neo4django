@@ -194,7 +194,7 @@ class NodeModel(NeoModel):
     pk = id = IdProperty(_get_pk_val, _set_pk_val)
 
     def __eq__(self, other):
-        if not other:
+        if type(self) != type(other):
             return False
         pk1 = self._get_pk_val()
         pk2 = other._get_pk_val()
