@@ -15,9 +15,9 @@ like::
 
     OnlinePerson.objects.filter(emails__member="wicked_cool_email@example.com")
 
-=====
-JOINs
-=====
+==================
+Loading a Subgraph
+==================
 
 It's important to remember that, since we're using a graph database, "JOIN-like"
 operations are much less expensive. Consider a more connected model::
