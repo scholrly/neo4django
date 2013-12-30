@@ -491,7 +491,7 @@ class ConnectionHandler(object):
         self.ensure_defaults(alias)
         db = self.databases[alias]
         Client = load_client(db['CLIENT'])
-        conn = Client('http://%s:%d/db/data' % (db['HOST'], db['PORT']), **db['OPTIONS'])
+        conn = Client('http://%s:%d%s' % (db['HOST'], db['PORT'], db['ENDPOINT']), **db['OPTIONS'])
         setattr(self._connections, alias, conn)
 
         return conn
