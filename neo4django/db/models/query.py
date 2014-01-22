@@ -909,7 +909,8 @@ class Query(object):
         index_qs_dict = {}
         for key, val in index_qs:
             if key in index_qs_dict:
-                index_qs_dict[key] &= val
+                if index_qs_dict[key]:
+                    index_qs_dict[key] &= val
             else:
                 index_qs_dict[key] = val
 
