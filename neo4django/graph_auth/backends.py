@@ -1,5 +1,8 @@
-from .models import User
-
+try:
+    from django.contrib.auth import get_user_model
+    UserModel = get_user_model()
+except ImportError:
+    from .models import User as UserModel
 
 class NodeModelBackend(object):
     """
@@ -11,14 +14,14 @@ class NodeModelBackend(object):
 
     def authenticate(self, username=None, password=None):
         try:
-            user = User.objects.get(username=username)
+            user = UserModel.objects.get(username=username)
             if user is not None and user.check_password(password):
                 return user
-        except User.DoesNotExist:
+        except UserModel.DoesNotExist:
             pass
 
     def get_user(self, user_id):
         try:
-            return User.objects.get(id=user_id)
-        except User.DoesNotExist:
+            return UserModel.objects.get(id=user_id)
+        except UserModel.DoesNotExist:
             return None

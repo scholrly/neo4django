@@ -499,6 +499,12 @@ class SingleNode(BoundRelationship):
             rels.single = self._create_neo_relationship(node, other)
             #other._save_neo4j_node(DEFAULT_DB_ALIAS)
 
+    def save_form_data(self, instance, data):
+        # TODO we need a function like _get_relationship that only takes a
+        # model instance...
+        state = self._state_for(instance)
+        self._set_relationship(instance, state, data)
+
     def _set_cached_relationship(self, obj, other):
         state = BoundRelationship._state_for(obj)
         if self.name in state and state[self.name]:
