@@ -32,7 +32,7 @@ class LogEntry(models.NodeModel):
     action_flag = models.IntegerProperty() # _('action flag')
     action_time = models.DateTimeProperty(auto_now=True) # _('action time'), 
     # TODO django 1.5 support (user models, #143)
-    user = models.Relationship(User, rel_type='completed_by', single=True)
+    user = models.Relationship(User, rel_type='completed_by',related_name='completed_by', single=True)
     content_type = models.Relationship(ContentType, single=True, rel_type='content_type')
     object_id = models.StringProperty() # _('object id')
     object_repr = models.StringProperty(max_length=200) # _('object repr'),
