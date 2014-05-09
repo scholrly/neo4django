@@ -17,6 +17,7 @@ from .manager import NodeModelManager
 
 import inspect
 import itertools
+import re
 from decorator import decorator
 
 
@@ -145,10 +146,17 @@ class NodeModel(NeoModel):
         #A factory method to create NodeModels from a neo4j node.
         instance = cls.__new__(cls)
         instance.__node = neo_node
-
+        
         #take care of using by inferring from the neo4j node
-        names = [name for name in connections
-                 if connections[name].url in neo_node.url]
+        names = []
+        for name in connections:
+            connection_url = connections[name].url
+            # Remove the authentication part
+            connection_url = re.sub("http(s?)\:\/\/\w+:\w+\@", "", connection_url, flags=re.I)
+
+            if connection_url in neo_node.url:
+                names.append(name)
+
         if len(names) < 1:
             raise NoSuchDatabaseError(url=neo_node.url)
 
