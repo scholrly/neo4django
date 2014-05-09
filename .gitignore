@@ -8,3 +8,8 @@
 .project
 \#*
 \.#*
+virtualenv
+.env
+lib
+build
+dist
