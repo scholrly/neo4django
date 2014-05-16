@@ -419,10 +419,11 @@ def cypher_predicates_from_q(q):
         identifier = '__'.join(['n'] + q.path)
         if getattr(q.field, 'id', False):
             value_exp = 'ID(%s)' % identifier
+            return '(%s)' % cypher_predicate_from_condition(value_exp, q)
         else:
             value_field = '%s.%s' % (identifier, q.field.attname)        
             value_exp   = '%s!' % value_field
-        return '( HAS(%s) AND %s)' % ( value_field, cypher_predicate_from_condition(value_exp, q), )
+            return '( HAS(%s) AND %s)' % ( value_field, cypher_predicate_from_condition(value_exp, q), )
     children = list(not_none(cypher_predicates_from_q(c) for c in q.children))
     if len(children) > 0:
         expr = (" %s " % q.connector).join(children)
