@@ -732,9 +732,9 @@ class RelationshipInstance(models.Manager):
                                                     ordered=self.ordered))
             rels_by_node = defaultdict(list)
             for neo_rel in neo_rels:
-                other_end = neo_rel.start if neo_rel.end == self._obj.node else neo_rel.end
-                rels_by_node[other_end.url].append(neo_rel)
-
+                rels_by_node[neo_rel.start.url].append(neo_rel)
+                rels_by_node[neo_rel.end.url].append(neo_rel)
+                
             for obj in objs:
                 candidate_rels = rels_by_node[obj.node.url] if hasattr(obj, 'node') else []
                 if candidate_rels:
