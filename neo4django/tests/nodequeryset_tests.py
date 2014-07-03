@@ -594,6 +594,46 @@ def test_filter_isnull():
     eq_(len(q3), 1)
     eq_(q3[0], nameless_person)
 
+@with_setup(None,teardown)
+def test_filter_chain_istartswith():
+    class MyGuy(models.NodeModel):
+        name = models.StringProperty(indexed=True)
+        age = models.IntegerProperty(indexed=True)
+
+    MyGuy.objects.create(name='Alex')
+    MyGuy.objects.create(name='Albert')
+    MyGuy.objects.create(name='Alicia')
+    AL_A = list(MyGuy.objects.filter(name__istartswith='Al').filter(name__istartswith='A'))
+    A_AL = list(MyGuy.objects.filter(name__istartswith='A').filter(name__istartswith='Al'))
+    eq_(len(AL_A),3)
+    eq_(len(A_AL),3)
+
+@with_setup(None,teardown)
+def test_filter_chain_icontains():
+    class MyGuy(models.NodeModel):
+        name = models.StringProperty(indexed=True)
+        age = models.IntegerProperty(indexed=True)
+        
+    MyGuy.objects.create(name='Alex')
+    MyGuy.objects.create(name='Albert')
+    MyGuy.objects.create(name='Alicia')
+    AL_E = list(MyGuy.objects.filter(name__istartswith='Al').filter(name__icontains='e'))
+    E_AL = list(MyGuy.objects.filter(name__icontains='e').filter(name__istartswith='Al'))
+    eq_(len(AL_E),2) # Albert Alex
+    eq_(len(E_AL),2)
+
+@with_setup(None,teardown)
+def test_filter_chain_contains_istartswith():
+    class MyGuy(models.NodeModel):
+        name = models.StringProperty(indexed=True)
+        age = models.IntegerProperty(indexed=True)
+
+    MyGuy.objects.create(name='Alex')
+    MyGuy.objects.create(name='Albert')
+    MyGuy.objects.create(name='Alicia')
+    E_AL = list(MyGuy.objects.filter(name__contains='e').filter(name__istartswith='Al'))
+    eq_(len(E_AL),2) # Albert Alex
+
 @with_setup(None, teardown)
 def test_exclude_exact():
     pass
