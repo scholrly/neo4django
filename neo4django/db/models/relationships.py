@@ -853,6 +853,10 @@ class RelationshipQuerySet(NodeQuerySet):
         return super(RelationshipQuerySet, self)._clone(klass=klass,
                                                         setup=setup, **kwargs)
 
+    def delete(self):
+        for obj in self:
+            obj.delete()
+
     def count(self):
         removed = list(self._rel_instance._old)
         added = list(self._rel_instance._new)
