@@ -62,7 +62,7 @@ Similarly, you can stop the local instance via ``lib/neo4j-community-<VERSION>bi
 Running Tests
 -------------
 
-If you are working withing an virtualenv (and you should be), activate your venv
+If you are working within an virtualenv (and you should be), activate your venv
 (see above) and use ``pip`` to install both the core requirements and the requirements
 for running tests::
 
